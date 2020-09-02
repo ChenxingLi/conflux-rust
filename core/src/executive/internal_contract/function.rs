@@ -12,19 +12,27 @@ use crate::{
 };
 use cfx_types::U256;
 
-/// The standard implementation of the solidity function trait. The developer of
-/// new functions should implement the following traits.
+/// The standard implementation of `SolidityFunctionTrait`. The
+/// `SolidityFunctionTrait` will be implemented automatically if the following
+/// traits is implemented:
 ///
-/// The `InterfaceTrait` is implemented when constructing a new struct with
-/// macro `make_solidity_function`.
+/// - `InterfaceTrait`: Specifies the types of input, output and function
+///   interface. It is implemented automatically when constructing a new struct
+///   with macro `make_solidity_function`.
 ///
-/// The `PreExecCheckTrait` and `UpfrontPaymentTrait` trait can be implemented
-/// by macro `set_default_config`. By default, the contract with be set non
-/// payable and forbid static. Sometimes we need to implement
-/// `UpfrontPaymentTrait` manually if the gas required is not a constant value.
+/// - `PreExecCheckTrait`: Check if the current function call matches some
+///   constraints, s.t. no transferred value to a non-payable function. If the
+///   internal contract implements `PreExecCheckConfTrait` to specify whether
+///   such internal function is payable and whether it should forbid static call
+///   (has write operation), `PreExecCheckTrait` will be implemented
+///   automatically. `PreExecCheckConfTrait` can be implemented by macro
+///  `impl_function_type`.
 ///
-/// You always needs to implement `ExecutionTrait`, which is the core of the
-/// function execution.
+/// - `UpfrontPaymentTrait`: The gas charged before function execution. If the
+///   upfront payment is a constant value, it can be implemented by macro
+///   `impl_function_type`.
+///
+/// - `ExecutionTrait`: The execution task for this function.
 impl<T> SolidityFunctionTrait for T
 where T: InterfaceTrait
         + PreExecCheckTrait
@@ -45,21 +53,21 @@ where T: InterfaceTrait
             return Err(vm::Error::OutOfGas);
         }
 
-        self.execute_inner(solidity_params, params, spec, state, substate)
-            .and_then(|output| {
-                let output = output.abi_encode();
-                let length = output.len();
-                let return_cost = (length + 31) / 32 * spec.memory_gas;
-                if params.gas < cost + return_cost {
-                    Err(vm::Error::OutOfGas)
-                } else {
-                    Ok(GasLeft::NeedsReturn {
-                        gas_left: params.gas - cost - return_cost,
-                        data: ReturnData::new(output, 0, length),
-                        apply_state: true,
-                    })
-                }
+        let output =
+            self.execute_inner(solidity_params, params, spec, state, substate)?;
+
+        let encoded_output = output.abi_encode();
+        let length = encoded_output.len();
+        let return_cost = (length + 31) / 32 * spec.memory_gas;
+        if params.gas < cost + return_cost {
+            Err(vm::Error::OutOfGas)
+        } else {
+            Ok(GasLeft::NeedsReturn {
+                gas_left: params.gas - cost - return_cost,
+                data: ReturnData::new(encoded_output, 0, length),
+                apply_state: true,
             })
+        }
     }
 
     fn name(&self) -> &'static str { return Self::NAME_AND_PARAMS; }
@@ -110,14 +118,17 @@ impl<T: PreExecCheckConfTrait> PreExecCheckTrait for T {
 }
 
 #[macro_export]
-/// Make a solidity interface function, it requires three parameters
+/// Make a solidity function.
+///
+/// # Arguments
 /// 1. The type of input parameters.
 /// 2. The string to compute interface signature.
-/// 3. The type of output parameters.
+/// 3. (Optional) The type of output parameters. (If the third parameter is
+/// omitted, the return type is regarded as `()`)
 ///
-/// For example, in order to make a function with interface
-/// get_whitelist(address user, address contract) public returns bool, you
-/// should use
+/// # Example
+/// Make a function with interface
+/// `get_whitelist(address user, address contract) public returns bool`
 /// ```
 /// use cfxcore::make_solidity_function;
 /// use cfx_types::{Address,U256};
@@ -127,7 +138,6 @@ impl<T: PreExecCheckConfTrait> PreExecCheckTrait for T {
 ///     struct WhateverStructName((Address, Address), "get_whitelist(address,address)", bool);
 /// }
 /// ```
-/// If the function has no return value, the third parameter can be omitted.
 macro_rules! make_solidity_function {
     ( $(#[$attr:meta])* $visibility:vis struct $name:ident ($input:ty, $interface:expr ); ) => {
         $crate::make_solidity_function! {
@@ -148,6 +158,42 @@ macro_rules! make_solidity_function {
 }
 
 #[macro_export]
+/// When making a solidity function with macro `make_solidity_function`, the
+/// `InterfaceTrait` is implemented automatically. This macro can implement
+/// `PreExecCheckTrait` and `UpfrontPaymentTrait`.
+///
+/// # Arguments
+///
+/// 1. A string specifies function type. (One of `non_payable_write`,
+/// `payable_write`, `query` and `query_with_default_gas`) 2. `gas` - (Optional)
+/// Gas required in upfront payment, argument name `gas` is required.
+///
+/// Specially, if the function type is `query_with_default_gas`, the `gas`
+/// parameter should not be provided.
+///
+/// # Examples
+///
+/// ```ignore
+/// use crate::{
+///     evm::{ActionParams, Spec},
+///     executive::function::*,
+///     impl_function_type, make_solidity_function,
+///     state::State,
+/// };
+/// use cfx_types::{Address, U256};
+///
+///
+/// make_solidity_function! {
+///     struct AddPrivilege(Vec<Address>, "addPrivilege(address[])");
+/// }
+/// impl_function_type!(AddPrivilege, "non_payable_write");
+///
+///
+/// make_solidity_function! {
+///     struct IsWhitelisted((Address,Address), "isWhitelisted(address,address)", bool);
+/// }
+/// impl_function_type!(IsWhitelisted, "query", gas: 200);
+/// ```
 macro_rules! impl_function_type {
     ( $name:ident, "non_payable_write" $(, gas: $gas:expr)? ) => {
         $crate::impl_function_type!(@inner, $name, false, true $(, $gas)?);
