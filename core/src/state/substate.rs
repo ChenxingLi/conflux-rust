@@ -8,7 +8,7 @@ use cfx_state::{
     state_trait::StateOpsTrait, substate_trait::SubstateMngTrait, SubstateTrait,
 };
 use cfx_statedb::Result as DbResult;
-use cfx_types::{Address, U256};
+use cfx_types::{Address, H256, U256};
 use primitives::LogEntry;
 use std::{
     cell::RefCell,
@@ -18,14 +18,15 @@ use std::{
 
 #[derive(Debug, Default)]
 pub struct CallStackInfo {
-    call_stack_recipient_addresses: Vec<Address>,
+    pub call_stack_recipient_addresses: Vec<Address>,
     address_counter: HashMap<Address, u32>,
     first_reentrancy_depth: Option<usize>,
+    pub tx_hash: H256,
 }
 
 impl CallStackInfo {
     fn push(&mut self, address: Address) {
-        if self.reentrancy_happens_when_push(&address) {
+        if self.reentrancy_happens_when_push(&address).1 {
             self.first_reentrancy_depth
                 .get_or_insert(self.call_stack_recipient_addresses.len());
         }
@@ -54,7 +55,9 @@ impl CallStackInfo {
         maybe_address
     }
 
-    pub fn reentrancy_happens_when_push(&self, address: &Address) -> bool {
+    pub fn reentrancy_happens_when_push(
+        &self, address: &Address,
+    ) -> (bool, bool) {
         // Consistent with old behaviour.
         // The old (unexpected) behaviour is equivalent to the top element is
         // lost.
@@ -69,9 +72,12 @@ impl CallStackInfo {
         let contains_key = self.contains_key(address)
             && (self.last() != Some(address)
                 || self.address_counter[address] > 1);
-        !self_call && contains_key
+        let old_ans = !self_call && contains_key;
         // Expected behaviour
-        // self.last() != Some(address) && self.contains_key(address)
+        let new_ans =
+            self.last() != Some(address) && self.contains_key(address);
+
+        return (old_ans, new_ans);
     }
 
     pub fn last(&self) -> Option<&Address> {
@@ -82,16 +88,17 @@ impl CallStackInfo {
         self.address_counter.contains_key(key)
     }
 
-    pub fn in_reentrancy(&self) -> bool {
+    pub fn in_reentrancy(&self) -> (bool, bool) {
         // Consistent with old behaviour
         // The old (unexpected) behaviour is equivalent to the top element is
         // lost.
-        self.first_reentrancy_depth.map_or(false, |depth| {
+        let old_ans = self.first_reentrancy_depth.map_or(false, |depth| {
             (depth as isize)
                 < self.call_stack_recipient_addresses.len() as isize - 1
-        })
+        });
         // Expected behaviour
-        // self.first_reentrancy_depth.is_some()
+        let new_ans = self.first_reentrancy_depth.is_some();
+        return (old_ans, new_ans);
     }
 }
 
@@ -259,7 +266,26 @@ impl SubstateTrait for Substate {
     }
 
     fn in_reentrancy(&self) -> bool {
-        self.contracts_in_callstack.borrow().in_reentrancy()
+        let (old, new) = self.contracts_in_callstack.borrow().in_reentrancy();
+        if old != new {
+            let tx_hash = self
+                .contracts_in_callstack()
+                .borrow().tx_hash;
+            let callstack = &self
+                .contracts_in_callstack
+                .borrow()
+                .call_stack_recipient_addresses;
+            error!(
+                "Reentrancy bug, write, {} -> {}, {:?}, {:?}, {:?}, {:?}",
+                old,
+                new,
+                tx_hash,
+                callstack.first().unwrap(),
+                callstack.last().unwrap(),
+                callstack
+            )
+        }
+        old
     }
 
     fn sstore_clears_refund(&self) -> i128 { self.sstore_clears_refund }
@@ -275,9 +301,30 @@ impl SubstateTrait for Substate {
     }
 
     fn reentrancy_happens_when_push(&self, address: &Address) -> bool {
-        self.contracts_in_callstack
+        let (old, new) = self
+            .contracts_in_callstack
             .borrow()
-            .reentrancy_happens_when_push(address)
+            .reentrancy_happens_when_push(address);
+        if old != new {
+            let tx_hash = self
+                .contracts_in_callstack()
+                .borrow().tx_hash;
+            let callstack = &self
+                .contracts_in_callstack
+                .borrow()
+                .call_stack_recipient_addresses;
+            error!(
+                "Reentrancy bug, call, {} -> {}, {:?}, {:?}, {:?}, {:?}, {:?}",
+                old,
+                new,
+                tx_hash,
+                callstack.first().unwrap(),
+                callstack.last().unwrap(),
+                address,
+                callstack
+            )
+        }
+        old
     }
 
     fn record_storage_release(&mut self, address: &Address, collaterals: u64) {

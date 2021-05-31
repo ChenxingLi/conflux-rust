@@ -136,8 +136,28 @@ impl<T: PreExecCheckConfTrait> PreExecCheckTrait for T {
             ));
         }
 
+        let (old,new) = substate.contracts_in_callstack().borrow().in_reentrancy();
+        if old != new {
+            let tx_hash = substate
+                .contracts_in_callstack()
+                .borrow().tx_hash;
+            let callstack = &substate
+                .contracts_in_callstack()
+                .borrow()
+                .call_stack_recipient_addresses;
+            error!(
+                "Reentrancy bug, write internal, {} -> {}, {:?}, {:?}, {:?}, {:?}",
+                old,
+                new,
+                tx_hash,
+                callstack.first().unwrap(),
+                callstack.last().unwrap(),
+                callstack
+            )
+        }
+
         if Self::HAS_WRITE_OP
-            && (substate.contracts_in_callstack().borrow().in_reentrancy()
+            && (substate.contracts_in_callstack().borrow().in_reentrancy().0
                 || params.call_type == CallType::StaticCall)
         {
             return Err(vm::Error::MutableCallInStaticContext);

@@ -1549,7 +1549,11 @@ impl<
         }
 
         self.state.checkpoint();
-        let mut substate = Substate::new();
+
+        let mut call_stack = CallStackInfo::default();
+        call_stack.tx_hash = tx.hash.clone();
+        let mut substate =
+            Substate::with_call_stack(Rc::new(RefCell::new(call_stack)));
 
         let res = match tx.action {
             Action::Create => {
