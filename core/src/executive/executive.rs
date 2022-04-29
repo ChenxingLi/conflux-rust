@@ -573,12 +573,16 @@ impl<'a, Substate: SubstateMngTrait> CallCreateExecutive<'a, Substate> {
 
         // Trace task
         if is_create {
-            debug!(
-                "CallCreateExecutiveKind::ExecCreate: contract_addr = {:?}",
+            info!(
+                "[cccde] CreateContract: contract_addr = {:?}",
                 params.address
             );
             tracer.record_create(&params);
         } else {
+            info!(
+                "[cccde] CallContract: contract_addr = {:?}",
+                params.address
+            );
             tracer.record_call(&params);
         }
 
@@ -692,6 +696,9 @@ impl<'a, Substate: SubstateMngTrait> CallCreateExecutive<'a, Substate> {
         // (result of self).
         let trap_result = match output {
             TrapResult::Return(result) => {
+                info!(
+                    "[cccde] Return {:?}", result,
+                );
                 TrapResult::Return(self.process_return(
                     result,
                     state,
@@ -1154,6 +1161,8 @@ impl<
     pub fn transact(
         &mut self, tx: &SignedTransaction, options: TransactOptions,
     ) -> DbResult<ExecutionOutcome> {
+        info!("[cccde] transact {:?}", tx.hash());
+
         let mut observer = options.observer;
 
         let spec = &self.spec;
@@ -1723,6 +1732,8 @@ impl<
         //            &min_balance,
         //            spec.kill_dust == CleanDustMode::WithCodeAndStorage,
         //        )?;
+
+        info!("[cccde] transact done");
 
         match result {
             Err(vm::Error::StateDbError(e)) => bail!(e.0),

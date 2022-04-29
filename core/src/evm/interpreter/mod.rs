@@ -693,7 +693,7 @@ impl<Cost: CostType> Interpreter<Cost> {
         tracer: &mut dyn VmObserve,
     ) -> vm::Result<InstructionResult<Cost>>
     {
-        trace!("exec instruction: {:?}", instruction);
+        info!("[cccde] evm exec instruction: {:?}, gas_left: {:?}", instruction, gas);
         match instruction {
             instructions::JUMP => {
                 let jump = self.stack.pop_back();
@@ -908,6 +908,7 @@ impl<Cost: CostType> Interpreter<Cost> {
                 let can_call = has_balance
                     && context.depth() < context.spec().max_depth
                     && valid_code_address;
+                info!("[cccde] Call {:?}, can_call {}", receive_address, can_call);
                 if !can_call {
                     self.stack.push(U256::zero());
                     return Ok(InstructionResult::UnusedGas(call_gas));
@@ -1144,7 +1145,9 @@ impl<Cost: CostType> Interpreter<Cost> {
                 ));
             }
             instructions::CODESIZE => {
-                self.stack.push(U256::from(self.reader.len()));
+                let answer = U256::from(self.reader.len());
+                info!("[cccde] codesize: {:?}", answer);
+                self.stack.push(answer);
             }
             instructions::RETURNDATASIZE => {
                 self.stack.push(U256::from(self.return_data.len()))
@@ -1152,6 +1155,7 @@ impl<Cost: CostType> Interpreter<Cost> {
             instructions::EXTCODESIZE => {
                 let address = u256_to_address(&self.stack.pop_back());
                 let len = context.extcodesize(&address)?.unwrap_or(0);
+                info!("[cccde] extcodesize of {:?}: {:?}", address, len);
                 self.stack.push(U256::from(len));
             }
             instructions::EXTCODEHASH => {
@@ -1432,6 +1436,7 @@ impl<Cost: CostType> Interpreter<Cost> {
             }
             instructions::ISZERO => {
                 let a = self.stack.pop_back();
+                info!("[cccde] is_zero {:?}", a);
                 self.stack.push(Self::bool_to_u256(a.is_zero()));
             }
             instructions::AND => {
