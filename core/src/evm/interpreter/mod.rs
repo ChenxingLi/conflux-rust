@@ -1091,6 +1091,8 @@ impl<Cost: CostType> Interpreter<Cost> {
                 self.stack.pop_back().to_big_endian(key.as_mut());
                 let val = self.stack.pop_back();
 
+                debug!("key {:?}, val {:?}",key,val);
+
                 context.set_storage(key, val)?;
             }
             instructions::PC => {
@@ -1219,6 +1221,7 @@ impl<Cost: CostType> Interpreter<Cost> {
                     .push(address_to_u256(context.env().author.clone()));
             }
             instructions::TIMESTAMP => {
+                debug!("[cccde] timestamp: {}", U256::from(context.env().timestamp));
                 self.stack.push(U256::from(context.env().timestamp));
             }
             instructions::NUMBER => {
