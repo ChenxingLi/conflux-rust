@@ -866,7 +866,9 @@ impl ConsensusExecutionHandler {
         debug!("Receive execution task: {:?}", task);
         match task {
             ExecutionTask::ExecuteEpoch(task) => {
-                self.handle_epoch_execution(task, None)
+                let mut debug_record = ComputeEpochDebugRecord::default();
+                self.handle_epoch_execution(task, Some(&mut debug_record));
+                // info!("Debug record {:?}", debug_record);
             }
             ExecutionTask::GetResult(task) => self.handle_get_result_task(task),
             ExecutionTask::Stop => return false,

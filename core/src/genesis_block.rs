@@ -425,7 +425,7 @@ pub fn register_transaction(
 
     let bls_pub_key = bls_priv_key.public_key();
     let (commit, answer) =
-    sigma_protocol::prove(bls_priv_key.raw_key(), &mut OsRng, legacy);
+        sigma_protocol::prove(bls_priv_key.raw_key(), &mut OsRng, legacy);
 
     let mut encoded_commit = Vec::<u8>::new();
     BlsPubKey::from(commit)

@@ -1960,6 +1960,17 @@ impl ConsensusNewBlockHandler {
         let mut start_compute_epoch_pivot_index =
             self.get_force_compute_index(inner, start_pivot_index, end_index);
 
+        if let Some(force_recompute_index) =
+            std::env::var("FORCE_RECOMPUTE_EPOCH").ok()
+                .and_then(|s| s.parse().ok())
+        {
+            if force_recompute_index > 0 {
+                info!("Load recompute epoch {} from env", force_recompute_index);
+                start_compute_epoch_pivot_index =
+                    min(start_compute_epoch_pivot_index, force_recompute_index);
+            }
+        }
+
         // Retrieve the earliest non-executed epoch
         for pivot_index in start_pivot_index + 1..end_index {
             let pivot_arena_index = inner.pivot_chain[pivot_index];
@@ -2017,10 +2028,13 @@ impl ConsensusNewBlockHandler {
                     .upper_bound += 1;
             }
 
-            info!(
-                "construct_pivot_state: index {} height {} compute_epoch {}.",
-                pivot_index, height, compute_epoch,
-            );
+            if compute_epoch {
+                info!(
+                    "construct_pivot_state: index {} height {} compute_epoch {}.",
+                    pivot_index, height, compute_epoch,
+                );
+            }
+            
 
             if compute_epoch {
                 let reward_execution_info = self
@@ -2126,7 +2140,7 @@ impl ConsensusNewBlockHandler {
                             pivot_block_height,
                         ) {
                             force_compute_index = pivot_index + 1;
-                            debug!(
+                            info!(
                                 "Force compute start index {}",
                                 force_compute_index
                             );

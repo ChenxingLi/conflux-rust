@@ -24,6 +24,12 @@ pub trait TestRpc {
     #[rpc(name = "getgoodput")]
     fn get_goodput(&self) -> RpcResult<String>;
 
+    #[rpc(name = "getexec")]
+    fn get_executed(&self) -> RpcResult<u64>;
+
+    #[rpc(name = "earlystop")]
+    fn early_stop(&self) -> RpcResult<bool>;
+
     #[rpc(name = "generate_empty_blocks")]
     fn generate_empty_blocks(&self, num_blocks: usize) -> RpcResult<Vec<H256>>;
 

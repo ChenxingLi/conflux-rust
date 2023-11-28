@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 substrate-bn = { git = "https://github.com/paritytech/bn", default-features = false, rev="63f8c587356a67b33c7396af98e065b66fca5dda" }
 byteorder = "1.0"
+backtrace = "*"
 cfxkey = { path = "../../accounts/cfxkey" }
 cfx-bytes = { path = "../../cfx_bytes" }
 cfx-math = { path = "../../cfx_math"}
