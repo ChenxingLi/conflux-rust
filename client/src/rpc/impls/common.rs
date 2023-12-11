@@ -40,7 +40,10 @@ use cfx_types::{
     Address, AddressSpaceUtil, Space, H160, H256, H520, U128, U256, U512, U64,
 };
 use cfxcore::{
-    consensus::{consensus_inner::{LATEST_EXECUTED, EARLY_STOP}, pos_handler::PosVerifier},
+    consensus::{
+        consensus_inner::{EARLY_STOP, LATEST_EXECUTED},
+        pos_handler::PosVerifier,
+    },
     genesis_block::register_transaction,
     rpc_errors::invalid_params_check,
     BlockDataManager, ConsensusGraph, ConsensusGraphTrait, PeerInfo,

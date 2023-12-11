@@ -47,7 +47,7 @@ use std::{
     convert::TryFrom,
     mem,
     sync::{
-        atomic::{AtomicU64, Ordering, AtomicBool},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
 };
@@ -2852,7 +2852,7 @@ impl ConsensusGraphInner {
                         }
                     }
                 }
-            }  
+            }
         }
 
         if early_stop {

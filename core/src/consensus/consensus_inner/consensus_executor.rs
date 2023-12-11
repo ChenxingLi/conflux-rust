@@ -8,7 +8,10 @@ use std::{
     convert::From,
     fmt::{Debug, Formatter},
     sync::{
-        atomic::{AtomicBool, Ordering::Relaxed},
+        atomic::{
+            AtomicBool,
+            Ordering::{Relaxed, SeqCst},
+        },
         mpsc::{channel, RecvError, Sender, TryRecvError},
         Arc,
     },
@@ -44,7 +47,7 @@ use crate::{
     consensus::{
         consensus_inner::{
             consensus_new_block_handler::ConsensusNewBlockHandler,
-            StateBlameInfo,
+            StateBlameInfo, EARLY_STOP,
         },
         pos_handler::PosVerifier,
         ConsensusGraphInner,
@@ -326,7 +329,17 @@ impl ConsensusExecutor {
                     sender,
                 }))
                 .expect("Cannot fail");
-            receiver.recv().unwrap().ok_or(
+
+            {
+                match receiver.recv() {
+                    Ok(x) => x,
+                    Err(e) => {
+                        EARLY_STOP.store(true, SeqCst);
+                        panic!("{:?}", e);
+                    }
+                }
+            }
+            .ok_or(
                 "Waiting for an execution result that is not enqueued!"
                     .to_string(),
             )

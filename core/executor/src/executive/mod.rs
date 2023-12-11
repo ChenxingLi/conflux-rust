@@ -59,11 +59,6 @@ impl<'a> ExecutiveContext<'a> {
             "Execute_transaction {:?} (height {})",
             tx.hash, self.env.epoch_height
         );
-        if &tx.hash.0[..2] == &[0, 0] {
-            use backtrace::Backtrace;
-            let bt = Backtrace::new();
-            info!("transact() backtrace: {:?}", bt);
-        }
         let fresh_exec = FreshExecutive::new(self, tx, options);
 
         let pre_checked_exec = match fresh_exec.check_all()? {

@@ -1961,11 +1961,15 @@ impl ConsensusNewBlockHandler {
             self.get_force_compute_index(inner, start_pivot_index, end_index);
 
         if let Some(force_recompute_index) =
-            std::env::var("FORCE_RECOMPUTE_EPOCH").ok()
+            std::env::var("FORCE_RECOMPUTE_EPOCH")
+                .ok()
                 .and_then(|s| s.parse().ok())
         {
             if force_recompute_index > 0 {
-                info!("Load recompute epoch {} from env", force_recompute_index);
+                info!(
+                    "Load recompute epoch {} from env",
+                    force_recompute_index
+                );
                 start_compute_epoch_pivot_index =
                     min(start_compute_epoch_pivot_index, force_recompute_index);
             }
@@ -2034,7 +2038,6 @@ impl ConsensusNewBlockHandler {
                     pivot_index, height, compute_epoch,
                 );
             }
-            
 
             if compute_epoch {
                 let reward_execution_info = self
