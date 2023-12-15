@@ -556,6 +556,8 @@ type Bytes20 = [u8; 20];
 pub fn build_bloom_and_recover_phantom(
     logs: &[LogEntry], tx_hash: H256,
 ) -> (Vec<PhantomTransaction>, Bloom) {
+    info!("Recover phantom tx_hash {:?}", tx_hash);
+
     let mut phantom_txs: Vec<PhantomTransaction> = Default::default();
     let mut maybe_working_tx: Option<PhantomTransaction> = None;
     let mut all_bloom = Bloom::default();
@@ -564,11 +566,14 @@ pub fn build_bloom_and_recover_phantom(
         let log_bloom = log.bloom();
         all_bloom.accrue_bloom(&log_bloom);
         if log.address == CROSS_SPACE_CONTRACT_ADDRESS {
+            info!("Recover phantom log {:?}", log);
             let event_sig = log.topics.first().unwrap();
             if event_sig == &CallEvent::EVENT_SIG
                 || event_sig == &CreateEvent::EVENT_SIG
             {
                 assert!(maybe_working_tx.is_none());
+
+                
 
                 let from = Address::from(
                     Bytes20::abi_decode(&log.topics[1].as_ref()).unwrap(),
