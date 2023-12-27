@@ -55,14 +55,26 @@ impl<'a> ExecutiveContext<'a> {
     pub fn transact<O: ExecutiveObserver>(
         self, tx: &SignedTransaction, options: TransactOptions<O>,
     ) -> DbResult<ExecutionOutcome> {
+        info!(
+            "Execute_transaction {:?} (height {})",
+            tx.hash, self.env.epoch_height
+        );
         let fresh_exec = FreshExecutive::new(self, tx, options);
 
         let pre_checked_exec = match fresh_exec.check_all()? {
             Ok(executive) => executive,
-            Err(execution_outcome) => return Ok(execution_outcome),
+            Err(execution_outcome) => {
+                info!("Execute_transaction Not Execute.");
+                return Ok(execution_outcome);
+            }
         };
 
-        pre_checked_exec.execute_transaction()
+        let ans = pre_checked_exec.execute_transaction()?;
+        info!("Execute_transaction Done.");
+        if let Some(executed) = ans.try_as_executed() {
+            // info!("{:?}", executed);
+        }
+        Ok(ans)
     }
 }
 
