@@ -145,20 +145,20 @@ build_config! {
         (genesis_secrets, (Option<String>), None)
         (initial_difficulty, (Option<u64>), None)
         (tanzanite_transition_height, (u64), TANZANITE_HEIGHT)
-        (hydra_transition_number, (Option<u64>), None)
-        (hydra_transition_height, (Option<u64>), None)
-        (dao_vote_transition_number, (Option<u64>), None)
-        (dao_vote_transition_height, (Option<u64>), None)
-        (cip43_init_end_number, (Option<u64>), None)
+        (hydra_transition_number, (Option<u64>), Some(92060600))
+        (hydra_transition_height, (Option<u64>), Some(36935000))
+        (dao_vote_transition_number, (Option<u64>), Some(133800000))
+        (dao_vote_transition_height, (Option<u64>), Some(56800000))
+        (cip43_init_end_number, (Option<u64>), Some(92751800))
         (cip78_patch_transition_number,(Option<u64>),None)
         (cip90_transition_height,(Option<u64>),None)
         (cip90_transition_number,(Option<u64>),None)
         (cip105_transition_number, (Option<u64>), None)
-        (sigma_fix_transition_number, (Option<u64>), None)
-        (cip107_transition_number, (Option<u64>), None)
-        (cip112_transition_height, (Option<u64>), None)
-        (cip118_transition_number, (Option<u64>), None)
-        (cip119_transition_number, (Option<u64>), None)
+        (sigma_fix_transition_number, (Option<u64>), Some(137740000))
+        (cip107_transition_number, (Option<u64>), Some(188900000))
+        (cip112_transition_height, (Option<u64>), Some(79050000))
+        (cip118_transition_number, (Option<u64>), Some(188900000))
+        (cip119_transition_number, (Option<u64>), Some(188900000))
         (referee_bound, (usize), REFEREE_DEFAULT_BOUND)
         (params_dao_vote_period, (u64), DAO_PARAMETER_VOTE_PERIOD)
         (timer_chain_beta, (u64), TIMER_CHAIN_DEFAULT_BETA)
@@ -329,8 +329,8 @@ build_config! {
         // Deferred epoch count before a confirmed epoch.
         (pos_pivot_decision_defer_epoch_count, (u64), 50)
         (cip113_pivot_decision_defer_epoch_count, (u64), 20)
-        (cip113_transition_height, (u64), u64::MAX)
-        (pos_reference_enable_height, (u64), u64::MAX)
+        (cip113_transition_height, (u64), 79050000)
+        (pos_reference_enable_height, (u64), 37400000)
         (pos_initial_nodes_path, (String), "./pos_config/initial_nodes.json".to_string())
         (pos_private_key_path, (String), "./pos_config/pos_key".to_string())
         (pos_round_per_term, (u64), ROUND_PER_TERM)
@@ -338,9 +338,12 @@ build_config! {
         (pos_term_elected_size, (usize), TERM_ELECTED_SIZE)
         (pos_in_queue_locked_views, (u64), IN_QUEUE_LOCKED_VIEWS)
         (pos_out_queue_locked_views, (u64), OUT_QUEUE_LOCKED_VIEWS)
-        (pos_cip99_transition_view, (u64), u64::MAX)
-        (pos_cip99_in_queue_locked_views, (u64), IN_QUEUE_LOCKED_VIEWS)
-        (pos_cip99_out_queue_locked_views, (u64), OUT_QUEUE_LOCKED_VIEWS)
+        (pos_cip99_transition_view, (u64), 330000)
+        (pos_cip99_in_queue_locked_views, (u64), 1440)
+        (pos_cip99_out_queue_locked_views, (u64), 18720)
+        (pos_fix_cip99_transition_view, (u64), 360900)
+        (pos_fix_cip99_in_queue_locked_views, (u64), 18720)
+        (pos_fix_cip99_out_queue_locked_views, (u64), 1440)
         (nonce_limit_transition_view, (u64), u64::MAX)
         (dev_pos_private_key_encryption_password, (Option<String>), None)
         (pos_started_as_voter, (bool), true)
@@ -1357,6 +1360,9 @@ impl Configuration {
             self.raw_conf.pos_cip99_transition_view,
             self.raw_conf.pos_cip99_in_queue_locked_views,
             self.raw_conf.pos_cip99_out_queue_locked_views,
+            self.raw_conf.pos_fix_cip99_transition_view,
+            self.raw_conf.pos_fix_cip99_in_queue_locked_views,
+            self.raw_conf.pos_fix_cip99_out_queue_locked_views,
             self.raw_conf.nonce_limit_transition_view,
             20_000, // 2 * 10^7 CFX
         )

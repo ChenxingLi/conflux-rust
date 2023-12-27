@@ -1,7 +1,3 @@
-# 1.0.4
-
-## Improvements
-
 - Add config parameter `executive_trace` to allow storing block execution traces. (default is `false`)
 - Add config parameter `enable_tracing` to allow public access to `trace_*` RPC APIs. (default is `false`)
 - Add new rpc `trace_block` for archive/full nodes. (only works for blocks processed after setting `executive_trace`)
