@@ -1956,9 +1956,27 @@ impl ConsensusNewBlockHandler {
             }
         }
 
+        let test_require =  if let Some(force_recompute_index) =
+            std::env::var("FORCE_RECOMPUTE_EPOCH")
+                .ok()
+                .and_then(|s| s.parse().ok())
+        {
+            if force_recompute_index > 0 {
+                info!(
+                    "Load recompute epoch {} from env",
+                    force_recompute_index
+                );
+                Some(force_recompute_index)
+            }else{
+                None
+            }
+        } else {
+            None
+        };
+
         // Retrieve the most recently executed epoch
         let mut start_compute_epoch_pivot_index =
-            self.get_force_compute_index(inner, start_pivot_index, end_index);
+            self.get_force_compute_index(inner, start_pivot_index, end_index, test_require);
 
         if let Some(force_recompute_index) =
             std::env::var("FORCE_RECOMPUTE_EPOCH")
@@ -2125,7 +2143,7 @@ impl ConsensusNewBlockHandler {
 
     fn get_force_compute_index(
         &self, inner: &mut ConsensusGraphInner, start_pivot_index: usize,
-        end_index: usize,
+        end_index: usize, test_require: Option<u64>,
     ) -> usize
     {
         let mut force_compute_index = start_pivot_index + 1;
@@ -2167,6 +2185,12 @@ impl ConsensusNewBlockHandler {
                             .block_header_by_hash(&pivot_hash)
                             .expect("must exists")
                             .height();
+
+                        if let Some(require) = test_require {
+                            if pivot_block_height >= require {
+                                continue;
+                            }
+                        }
 
                         // ensure current epoch is new executed whether there
                         // is a fork or not
