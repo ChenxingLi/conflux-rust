@@ -7,6 +7,7 @@ bootnodes="cfxnode://25265e1aa470d9d8667947820c4830a64e9f9678d6cb23ecde91e044752
 
 use_isolated_db_for_mpt_table=true
 debug_invalid_state_root=true
+enable_discovery=false
 
 # Set the node type to Full node, Archive node, or Light node.
 # Possible values are "full", "archive", or "light".
