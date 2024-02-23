@@ -1,14 +1,11 @@
 #![allow(dead_code)]
 
 use cfx_types::H256;
-use frost_core::{keys::VerifiableSecretSharingCommitment, Element};
-use frost_secp256k1::Secp256K1Sha256;
 use group::GroupEncoding;
 use serde::{Deserialize, Serialize};
 use tiny_keccak::{Hasher, Keccak};
 
-type PolynomialCommitment = VerifiableSecretSharingCommitment<Secp256K1Sha256>;
-type PointCommitment = Element<Secp256K1Sha256>;
+use crate::crypto_types::{Element, PolynomialCommitment};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 enum VSSPayloadType {
@@ -41,7 +38,7 @@ enum VSSPayloadError {
 }
 
 impl VSSPayload {
-    pub fn validate(&self) -> Result<(), VSSPayloadError> {
+    pub fn validate_witness(&self) -> Result<(), VSSPayloadError> {
         if self.commitment_hash != polynomial_commitment_hash(&self.commitment)
         {
             return Err(VSSPayloadError::InconsistentCommitmentHash);
@@ -50,8 +47,7 @@ impl VSSPayload {
         // TODO: secret share validation
 
         if self.type_tag == VSSPayloadType::SecretShareRotation
-            && self.commitment.coefficients()[0].value()
-                != PointCommitment::IDENTITY
+            && self.commitment.coefficients()[0].value() != Element::IDENTITY
         {
             return Err(VSSPayloadError::NotZeroHole);
         }
