@@ -10,14 +10,24 @@ use frost_core::{
 use std::collections::{BTreeMap, BTreeSet};
 
 pub struct FrostSignTask {
+    /// Received shares $z_i$ for each participant $i$
     received_shares: BTreeMap<Identifier, SignatureShare>,
 
+    /// $\rho_i$ for each participants $i$
     binding_factor_list: BindingFactorList,
+    /// Group commitment $R$, summation of signing shares in signing package.
     group_commitment: GroupCommitment,
-    signing_package: SigningPackage,
-    pubkey_package: PublicKeyPackage,
+    /// Challenge $c$
     challenge: Challenge,
+
+    /// $R_i$ for each participants $i$
+    signing_package: SigningPackage,
+    /// $Y_i$ for each participants $i$
+    pubkey_package: PublicKeyPackage,
+
+    /// Message $m$
     message: Vec<u8>,
+    /// All the valid participants $i$
     all_identifiers: BTreeSet<Identifier>,
 }
 
@@ -28,6 +38,7 @@ impl FrostSignTask {
     ) -> Self {
         const BINDING_FACTOR_PREFIX: &'static [u8] = b"conflux-promise";
 
+        // Get the group public key $k$.
         let verifying_key = pubkey_package.verifying_key();
 
         let binding_factor_list = compute_binding_factor_list(
@@ -35,7 +46,7 @@ impl FrostSignTask {
             verifying_key,
             BINDING_FACTOR_PREFIX,
         );
-        // TODO: Remember check validity of input: identifier != hiding / biding
+
         let group_commitment =
             compute_group_commitment(&signing_package, &binding_factor_list)
                 .unwrap();
@@ -92,7 +103,7 @@ impl FrostSignTask {
         if !self.all_shares_ready() {
             return None;
         }
-        // unwrap safety: FrostSignTask should reject unknown identifiers
+        // unwrap safety: FrostSignTask should have rejected unknown identifiers in `insert_signature_share`.
         Some(
             frost_core::aggregate(
                 &self.signing_package,
@@ -103,6 +114,7 @@ impl FrostSignTask {
         )
     }
 
+    /// Extract from FROST source code function `aggregate`, validate the signature share. (Step 7)
     pub fn verify_signature_share(
         &self, identifier: &Identifier, signature_share: &SignatureShare,
     ) -> Result<(), FrostError> {
@@ -117,7 +129,7 @@ impl FrostSignTask {
             .get(identifier)
             .ok_or(FrostError::UnknownSigner)?;
 
-        // Compute Lagrange coefficient.
+        // Compute Lagrange coefficient. ($\lambda_i$ in 5)
         let lambda_i = compute_lagrange_coefficient(
             &self.all_identifiers,
             None,
@@ -125,19 +137,20 @@ impl FrostSignTask {
         )
         .unwrap();
 
+        // ($\rho_i$ in 7.a)
         let binding_factor = self
             .binding_factor_list
             .get(identifier)
             .ok_or(FrostError::UnknownSigner)?;
 
-        // Compute the commitment share.
+        // Compute the commitment share. ($R_i$ in 7.a)
         let r_share = self
             .signing_package
             .signing_commitment(identifier)
             .ok_or(FrostError::UnknownSigner)?
             .to_group_commitment_share(binding_factor);
 
-        // Compute relation values to verify this signature share.
+        // Compute relation values to verify this signature share. (7.a)
         signature_share
             .verify(*identifier, &r_share, signer_pubkey, lambda_i, &challenge)
             .map_err(|_| FrostError::InvalidSignatureShare)?;

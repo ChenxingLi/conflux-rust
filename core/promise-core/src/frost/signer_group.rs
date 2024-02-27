@@ -45,7 +45,7 @@ impl FrostSignerGroup {
         self.valid_nodes.insert(*id);
 
         // For insert operation, emulated_verifying_shares is lazily updated by
-        // `FrostState`
+        // `FrostEpochState`
     }
 
     pub fn valid_nodes(&self) -> impl Iterator<Item = NodeID> + '_ {

@@ -65,7 +65,7 @@ impl FrostEpochState {
             &self.context.identifier_groups,
         )?;
 
-        // Should always success here
+        // Should not generate error here, since we have *consumed* a nonce_commitments.
         let task = self
             .signer_group
             .make_sign_task(&nonce_commitments, message);
