@@ -1,11 +1,13 @@
 #[derive(PartialEq, Eq, Debug)]
 pub enum FrostError {
     NotEnoughUnusedPreCommit,
+    NotEnoughVotes,
     TooLatePreCommit,
     EpochNotStart,
-    EjectedNodePreCommit,
+    EjectedNode,
     UnknownSignTask,
     UnknownSigner,
+    UnknownNodeID,
     InvalidSignatureShare,
     DuplicatedSignatureShare,
     IdentityNonceCommitment,

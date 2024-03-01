@@ -1,4 +1,4 @@
-use super::{FrostPubKeyContext, FrostSignTask, NodeID};
+use super::{error::FrostError, FrostPubKeyContext, FrostSignTask, NodeID};
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -18,6 +18,7 @@ pub struct FrostSignerGroup {
 
     valid_nodes: BTreeSet<NodeID>,
 
+    total_votes: usize,
     emulated_verifying_shares: BTreeMap<Identifier, VerifyingShare>,
 }
 
@@ -27,10 +28,30 @@ impl FrostSignerGroup {
     }
 
     #[inline]
+    pub(crate) fn insert_node(
+        &mut self, id: &NodeID,
+    ) -> Result<(), FrostError> {
+        let changed = self.valid_nodes.insert(*id);
+        if changed {
+            self.total_votes += self
+                .context
+                .identifier_groups
+                .get(id)
+                .ok_or(FrostError::UnknownNodeID)?
+                .len();
+        }
+
+        Ok(())
+
+        // For insert operation, emulated_verifying_shares is lazily updated by
+        // `FrostEpochState`
+    }
+
+    #[inline]
     pub fn remove_nodes(&mut self, node_list: &[NodeID]) {
         let mut changed = false;
         for id in node_list {
-            changed != self.valid_nodes.remove(&id);
+            changed |= self.valid_nodes.remove(&id);
         }
 
         if !changed {
@@ -38,14 +59,6 @@ impl FrostSignerGroup {
         }
 
         self.update_emulated_verifying_shares();
-    }
-
-    #[inline]
-    pub fn insert_node(&mut self, id: &NodeID) {
-        self.valid_nodes.insert(*id);
-
-        // For insert operation, emulated_verifying_shares is lazily updated by
-        // `FrostEpochState`
     }
 
     pub fn valid_nodes(&self) -> impl Iterator<Item = NodeID> + '_ {
@@ -56,43 +69,64 @@ impl FrostSignerGroup {
         self.emulated_verifying_shares = self.make_emulated_verifying_shares();
     }
 
+    fn get_exact_size_identifier_groups(
+        &self, num_identifiers: usize,
+    ) -> Option<BTreeMap<NodeID, Vec<Identifier>>> {
+        let mut identifier_groups = BTreeMap::new();
+        let mut rest_votes = num_identifiers;
+        for node_id in &self.valid_nodes {
+            let node_identifiers =
+                self.context.identifier_groups.get(node_id).unwrap();
+
+            let picked_identifiers = if rest_votes <= node_identifiers.len() {
+                &node_identifiers[..rest_votes]
+            } else {
+                &node_identifiers[..]
+            };
+
+            identifier_groups.insert(*node_id, picked_identifiers.to_vec());
+            rest_votes -= picked_identifiers.len();
+            if rest_votes == 0 {
+                return Some(identifier_groups);
+            }
+        }
+        None
+    }
+
     fn make_emulated_verifying_shares(
         &self,
     ) -> BTreeMap<Identifier, VerifyingShare> {
         let mut answer = BTreeMap::new();
 
-        let all_identifiers = self
-            .valid_nodes
-            .iter()
-            .map(|id| self.context.identifier_groups.get(id).unwrap().iter())
+        let identifier_groups =
+            self.get_exact_size_identifier_groups(self.context.min_votes).expect("The signer group should guarantee enough votes when making emulated shares");
+        let all_emulated_identifiers = identifier_groups
+            .keys()
+            .map(|node_id| node_id.to_identifier())
+            .collect();
+        let all_origin_identifiers = identifier_groups
+            .values()
+            .map(|x| x.iter().copied())
             .flatten()
-            .cloned()
-            .collect();
-        let all_emulated_identifiers = self
-            .valid_nodes
-            .iter()
-            .map(|id| id.to_identifier())
             .collect();
 
-        for node_id in self.valid_nodes.iter() {
-            let mut scalars = vec![];
-            let mut elements = vec![];
+        for (node_id, origin_identifier_list) in identifier_groups {
+            let mut lambdas = vec![];
+            let mut origin_verifying_shares = vec![];
 
-            for node_identifier in
-                self.context.identifier_groups.get(&node_id).unwrap()
-            {
-                elements.push(
+            for origin_identifier in origin_identifier_list {
+                origin_verifying_shares.push(
                     self.context
                         .verifying_shares()
-                        .get(node_identifier)
+                        .get(&origin_identifier)
                         .unwrap()
                         .to_element(),
                 );
-                scalars.push(
+                lambdas.push(
                     compute_lagrange_coefficient(
-                        &all_identifiers,
+                        &all_origin_identifiers,
                         None,
-                        node_identifier.clone(),
+                        origin_identifier.clone(),
                     )
                     .unwrap(),
                 )
@@ -101,7 +135,8 @@ impl FrostSignerGroup {
             let mut emulated_verifying_share: Element = VartimeMultiscalarMul::<
                 Secp256K1Sha256,
             >::vartime_multiscalar_mul(
-                scalars, elements
+                lambdas,
+                origin_verifying_shares,
             );
 
             let emulated_identifier = node_id.to_identifier();

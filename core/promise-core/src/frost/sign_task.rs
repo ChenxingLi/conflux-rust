@@ -20,13 +20,11 @@ pub struct FrostSignTask {
     /// Challenge $c$
     challenge: Challenge,
 
-    /// $R_i$ for each participants $i$
+    /// $R_i$ for each participants $i$ and message $m$
     signing_package: SigningPackage,
     /// $Y_i$ for each participants $i$
     pubkey_package: PublicKeyPackage,
 
-    /// Message $m$
-    message: Vec<u8>,
     /// All the valid participants $i$
     all_identifiers: BTreeSet<Identifier>,
 }
@@ -66,12 +64,11 @@ impl FrostSignTask {
             signing_package,
             pubkey_package,
             all_identifiers,
-            message,
             received_shares: Default::default(),
         }
     }
 
-    pub fn message(&self) -> &[u8] { &self.message }
+    pub fn message(&self) -> &[u8] { &self.signing_package.message() }
 
     pub fn all_shares_ready(&self) -> bool {
         self.received_shares.len() == self.all_identifiers.len()
@@ -103,7 +100,8 @@ impl FrostSignTask {
         if !self.all_shares_ready() {
             return None;
         }
-        // unwrap safety: FrostSignTask should have rejected unknown identifiers in `insert_signature_share`.
+        // unwrap safety: FrostSignTask should have rejected unknown identifiers
+        // in `insert_signature_share`.
         Some(
             frost_core::aggregate(
                 &self.signing_package,
@@ -114,7 +112,8 @@ impl FrostSignTask {
         )
     }
 
-    /// Extract from FROST source code function `aggregate`, validate the signature share. (Step 7)
+    /// Extract from FROST source code function `aggregate`, validate the
+    /// signature share. (Step 7)
     pub fn verify_signature_share(
         &self, identifier: &Identifier, signature_share: &SignatureShare,
     ) -> Result<(), FrostError> {

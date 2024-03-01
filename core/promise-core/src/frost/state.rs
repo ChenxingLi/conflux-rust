@@ -50,7 +50,7 @@ impl FrostEpochState {
             accept_new_node,
         )?;
         if accept_new_node {
-            self.signer_group.insert_node(&node_id);
+            self.signer_group.insert_node(&node_id)?;
         }
         Ok(())
     }
@@ -65,7 +65,8 @@ impl FrostEpochState {
             &self.context.identifier_groups,
         )?;
 
-        // Should not generate error here, since we have *consumed* a nonce_commitments.
+        // Should not generate error here, since we have *consumed* a
+        // nonce_commitments.
         let task = self
             .signer_group
             .make_sign_task(&nonce_commitments, message);
@@ -105,7 +106,9 @@ impl FrostEpochState {
     }
 
     pub fn recycle_timeout_sign_tasks(&mut self, latest_round: Round) {
-        let removed_sign_tasks = self.sign_task_manager.gc_sign_tasks(latest_round, &mut self.signer_group);
+        let removed_sign_tasks = self
+            .sign_task_manager
+            .gc_sign_tasks(latest_round, &mut self.signer_group);
         // TODO: retry timeout sign tasks.
     }
 }

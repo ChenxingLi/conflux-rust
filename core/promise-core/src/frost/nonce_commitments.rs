@@ -2,7 +2,7 @@ use std::collections::{btree_map::Entry, BTreeMap};
 
 use frost_secp256k1::round1::NonceCommitment;
 
-use crate::crypto_types::{Element, Identifier};
+use crate::crypto_types::{Element, Identifier, Scalar};
 
 use super::{
     error::FrostError,
@@ -65,16 +65,18 @@ impl EpochNonceCommitments {
             }
         }
 
-        let new_node = !self.commitments.contains_key(&node_id);
-
         if !accept_new_node {
             if !self.commitments.contains_key(&node_id) {
                 return Err(FrostError::TooLatePreCommit);
             }
             if !signer_group.contains(&node_id) {
-                return Err(FrostError::EjectedNodePreCommit);
+                return Err(FrostError::EjectedNode);
             }
         }
+
+        let id = Identifier::new(1u64.into()).unwrap();
+        let scalar = Scalar::from(1u64);
+        let el = Element::GENERATOR * scalar;
 
         match self.commitments.entry(node_id) {
             Entry::Vacant(e) => {
