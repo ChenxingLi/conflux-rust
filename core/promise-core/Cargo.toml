@@ -8,9 +8,10 @@ edition = "2021"
 
 [dependencies]
 cfx-types = { path="../../cfx_types" }
-frost-core = { git="https://github.com/Conflux-chain/frost", rev="6985bb4552a66d2a75b296946784adff7f78b034", features = ["internals", "serde"] }
-frost-secp256k1 = { git="https://github.com/Conflux-chain/frost", rev="6985bb4552a66d2a75b296946784adff7f78b034", features = ["serde"] }
+frost-core = { git="https://github.com/Conflux-chain/frost", rev="760f4442605e6c552af3892e15cf563f47ad4efd", features = ["internals", "serde"] }
+frost-secp256k1 = { git="https://github.com/Conflux-chain/frost", rev="760f4442605e6c552af3892e15cf563f47ad4efd", features = ["serde"] }
 serde = { version = "1.0.124", features = ["derive"] }
 group = "^0.13"
 tiny-keccak = "^2.0.2"
 rand_core = "0.6.4"
+k256 = { version = "^0.13.3", features = ["serde", "alloc"] }

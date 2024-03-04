@@ -1,6 +1,5 @@
 mod context;
 mod error;
-mod node_id;
 mod nonce_commitments;
 mod sign_manager;
 mod sign_task;
@@ -14,6 +13,8 @@ use node_id::NodeID;
 use sign_task::FrostSignTask;
 use sign_task_manager::SignTaskID;
 use signer_group::FrostSignerGroup;
+
+use super::node_id;
 
 pub type Round = usize;
 

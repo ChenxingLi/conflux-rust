@@ -2422,6 +2422,7 @@ dependencies = [
  "digest 0.10.7",
  "elliptic-curve",
  "rfc6979",
+ "serdect",
  "signature 2.2.0",
  "spki 0.7.3",
 ]
@@ -2478,6 +2479,7 @@ dependencies = [
  "pkcs8 0.10.2",
  "rand_core 0.6.4",
  "sec1",
+ "serdect",
  "subtle",
  "zeroize",
 ]
@@ -2864,7 +2866,7 @@ dependencies = [
 [[package]]
 name = "frost-core"
 version = "1.0.0"
-source = "git+https://github.com/Conflux-chain/frost?rev=6985bb4552a66d2a75b296946784adff7f78b034#6985bb4552a66d2a75b296946784adff7f78b034"
+source = "git+https://github.com/Conflux-chain/frost?rev=760f4442605e6c552af3892e15cf563f47ad4efd#760f4442605e6c552af3892e15cf563f47ad4efd"
 dependencies = [
  "byteorder",
  "const-crc32",
@@ -2885,7 +2887,7 @@ dependencies = [
 [[package]]
 name = "frost-rerandomized"
 version = "1.0.0"
-source = "git+https://github.com/Conflux-chain/frost?rev=6985bb4552a66d2a75b296946784adff7f78b034#6985bb4552a66d2a75b296946784adff7f78b034"
+source = "git+https://github.com/Conflux-chain/frost?rev=760f4442605e6c552af3892e15cf563f47ad4efd#760f4442605e6c552af3892e15cf563f47ad4efd"
 dependencies = [
  "derive-getters",
  "document-features",
@@ -2896,7 +2898,7 @@ dependencies = [
 [[package]]
 name = "frost-secp256k1"
 version = "1.0.0"
-source = "git+https://github.com/Conflux-chain/frost?rev=6985bb4552a66d2a75b296946784adff7f78b034#6985bb4552a66d2a75b296946784adff7f78b034"
+source = "git+https://github.com/Conflux-chain/frost?rev=760f4442605e6c552af3892e15cf563f47ad4efd#760f4442605e6c552af3892e15cf563f47ad4efd"
 dependencies = [
  "document-features",
  "frost-core",
@@ -4026,14 +4028,15 @@ dependencies = [
 
 [[package]]
 name = "k256"
-version = "0.13.1"
+version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cadb76004ed8e97623117f3df85b17aaa6626ab0b0831e6573f104df16cd1bcc"
+checksum = "956ff9b67e26e1a6a866cb758f12c6f8746208489e3e4a4b5580802f2f0a587b"
 dependencies = [
  "cfg-if 1.0.0",
  "ecdsa",
  "elliptic-curve",
  "once_cell",
+ "serdect",
  "sha2 0.10.6",
  "signature 2.2.0",
 ]
@@ -4805,9 +4808,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.17.1"
+version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
+checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 
 [[package]]
 name = "oorandom"
@@ -5620,6 +5623,7 @@ dependencies = [
  "frost-core",
  "frost-secp256k1",
  "group",
+ "k256",
  "rand_core 0.6.4",
  "serde",
  "tiny-keccak 2.0.2",
@@ -6294,6 +6298,7 @@ dependencies = [
  "der 0.7.8",
  "generic-array 0.14.6",
  "pkcs8 0.10.2",
+ "serdect",
  "subtle",
  "zeroize",
 ]

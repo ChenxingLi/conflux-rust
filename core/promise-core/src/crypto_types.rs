@@ -24,3 +24,11 @@ pub type VerifyingKey = frost_core::VerifyingKey<Secp256K1Sha256>;
 pub type VerifyingShare = frost_core::keys::VerifyingShare<Secp256K1Sha256>;
 pub type BindingFactorList = frost_core::BindingFactorList<Secp256K1Sha256>;
 pub type GroupCommitment = frost_core::GroupCommitment<Secp256K1Sha256>;
+pub type CoefficientCommitment =
+    frost_core::keys::CoefficientCommitment<Secp256K1Sha256>;
+
+pub type Affine = k256::AffinePoint;
+pub type Projective = k256::ProjectivePoint;
+
+mod affine_poly_commitment;
+pub use affine_poly_commitment::AffinePolynomialCommitment;

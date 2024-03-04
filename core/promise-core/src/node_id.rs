@@ -14,3 +14,15 @@ impl NodeID {
 
     pub fn as_usize(&self) -> usize { self.0 as usize }
 }
+
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
+pub struct VoteID(usize);
+impl VoteID {
+    pub fn to_identifier(&self) -> Identifier {
+        Identifier::new(Scalar::from(self.0 as u32)).unwrap()
+    }
+
+    pub fn as_usize(&self) -> usize { self.0 as usize }
+}

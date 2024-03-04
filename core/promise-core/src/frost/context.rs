@@ -6,8 +6,6 @@ use crate::crypto_types::{
     Identifier, PublicKeyPackage, VerifyingKey, VerifyingShare,
 };
 
-/// Warning, since FrostContext contains private keys and must be maintained in
-/// proper, it cannot be made publicity.
 pub struct FrostPubKeyContext {
     pub epoch: u64,
     pub pubkey_package: PublicKeyPackage,
