@@ -1,5 +1,4 @@
-#![allow(dead_code, unused)]
-
 pub mod crypto_types;
-mod frost;
+pub mod frost;
+#[allow(dead_code, unused)]
 mod payloads;

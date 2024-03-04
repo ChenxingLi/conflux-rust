@@ -1,7 +1,4 @@
-use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
-    process::id,
-};
+use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +55,12 @@ impl SignTaskManager {
         id
     }
 
+    pub fn get(&self, id: SignTaskID) -> Result<&FrostSignTask, FrostError> {
+        self.open_sign_tasks
+            .get(&id)
+            .ok_or(FrostError::UnknownSignTask)
+    }
+
     pub fn get_mut(
         &mut self, id: SignTaskID,
     ) -> Result<&mut FrostSignTask, FrostError> {
@@ -68,7 +71,7 @@ impl SignTaskManager {
 
     pub fn gc_sign_tasks(
         &mut self, round: Round, signer_group: &mut FrostSignerGroup,
-    ) -> Vec<(SignTaskID, FrostSignTask)> {
+    ) -> Result<Vec<(SignTaskID, FrostSignTask)>, FrostError> {
         let mut removed = self.timeout_info.split_off(&(round + 1));
         std::mem::swap(&mut removed, &mut self.timeout_info);
 
@@ -93,8 +96,8 @@ impl SignTaskManager {
             .valid_nodes()
             .filter(|x| !unsigned_identifiers.contains(&x.to_identifier()))
             .collect();
-        signer_group.remove_nodes(&timeout_nodes);
+        signer_group.remove_nodes(&timeout_nodes)?;
 
-        recycled_tasks
+        Ok(recycled_tasks)
     }
 }

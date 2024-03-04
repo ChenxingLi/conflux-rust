@@ -1,6 +1,4 @@
-use super::{
-    error::FrostError, node_id, FrostPubKeyContext, FrostSignTask, NodeID,
-};
+use super::{error::FrostError, FrostPubKeyContext, FrostSignTask, NodeID};
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -11,16 +9,17 @@ use frost_core::{compute_lagrange_coefficient, VartimeMultiscalarMul};
 use frost_secp256k1::Secp256K1Sha256;
 
 use crate::crypto_types::{
-    Element, Identifier, NonceCommitment, PublicKeyPackage, SigningCommitments,
+    Element, Identifier, PublicKeyPackage, Scalar, SigningCommitments,
     SigningPackage, VerifyingShare,
 };
 
 pub struct FrostSignerGroup {
-    context: Arc<FrostPubKeyContext>,
+    pub context: Arc<FrostPubKeyContext>,
 
     valid_nodes: BTreeSet<NodeID>,
 
     emulated_verifying_shares: BTreeMap<Identifier, VerifyingShare>,
+    emulated_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
 
     cached_total_shares: Option<usize>,
 }
@@ -32,7 +31,7 @@ impl FrostSignerGroup {
 
     pub fn check_enough_shares(&self) -> Result<(), FrostError> {
         if let Some(shares) = self.cached_total_shares {
-            if shares < self.context.min_votes {
+            if shares < self.context.num_signing_shares {
                 return Err(FrostError::NotEnoughSigningShares);
             }
         }
@@ -99,16 +98,19 @@ impl FrostSignerGroup {
         Err(rest_votes)
     }
 
-    pub fn update_emulated_verifying_shares(&mut self) -> Result<(), FrostError> {
-        let mut answer = BTreeMap::new();
+    pub fn update_emulated_verifying_shares(
+        &mut self,
+    ) -> Result<(), FrostError> {
+        let mut emulated_verifying_shares = BTreeMap::new();
+        let mut emulated_coefficients = BTreeMap::new();
 
         let identifier_groups = match self
-            .get_exact_size_identifier_groups(self.context.min_votes)
+            .get_exact_size_identifier_groups(self.context.num_signing_shares)
         {
             Ok(res) => res,
             Err(deficit_shares) => {
                 self.cached_total_shares =
-                    Some(self.context.min_votes - deficit_shares);
+                    Some(self.context.num_signing_shares - deficit_shares);
                 return Err(FrostError::NotEnoughSigningShares);
             }
         };
@@ -148,9 +150,11 @@ impl FrostSignerGroup {
             let mut emulated_verifying_share: Element = VartimeMultiscalarMul::<
                 Secp256K1Sha256,
             >::vartime_multiscalar_mul(
-                lambdas,
+                lambdas.clone(),
                 origin_verifying_shares,
             );
+
+            emulated_coefficients.insert(node_id, lambdas);
 
             let emulated_identifier = node_id.to_identifier();
 
@@ -165,20 +169,23 @@ impl FrostSignerGroup {
 
             emulated_verifying_share *= inv_emulated_lambda_i;
 
-            answer.insert(
+            emulated_verifying_shares.insert(
                 emulated_identifier,
                 VerifyingShare::new(emulated_verifying_share),
             );
         }
-        self.emulated_verifying_shares = answer;
+        self.emulated_verifying_shares = emulated_verifying_shares;
+        self.emulated_coefficients = emulated_coefficients;
         Ok(())
     }
 
     pub(crate) fn make_sign_task(
-        &self, nonce_commitments: &BTreeMap<NodeID, [NonceCommitment; 2]>,
+        &self, nonce_index: usize,
+        nonce_commitments: &BTreeMap<NodeID, SigningCommitments>,
         message: Vec<u8>,
     ) -> FrostSignTask {
-        // The caller should guarantee that the emulated_verifying_shares is ready.
+        // The caller should guarantee that the emulated_verifying_shares is
+        // ready.
 
         let signing_package = {
             let mut signing_commitments = BTreeMap::new();
@@ -186,12 +193,10 @@ impl FrostSignerGroup {
                 self.emulated_verifying_shares
                     .contains_key(&x.to_identifier())
             }) {
-                let [hiding, binding] =
-                    nonce_commitments.get(&node_id).unwrap();
-                signing_commitments.insert(
-                    node_id.to_identifier(),
-                    SigningCommitments::new(*hiding, *binding),
-                );
+                let signing_commitment =
+                    nonce_commitments.get(&node_id).unwrap().clone();
+                signing_commitments
+                    .insert(node_id.to_identifier(), signing_commitment);
             }
             SigningPackage::new(signing_commitments, &message)
         };
@@ -200,6 +205,11 @@ impl FrostSignerGroup {
             self.context.verifying_key().clone(),
         );
 
-        FrostSignTask::new(signing_package, pubkey_package)
+        FrostSignTask::new(
+            signing_package,
+            pubkey_package,
+            self.emulated_coefficients.clone(),
+            nonce_index,
+        )
     }
 }

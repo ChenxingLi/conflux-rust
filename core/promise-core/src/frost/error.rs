@@ -11,4 +11,5 @@ pub enum FrostError {
     InvalidSignatureShare,
     DuplicatedSignatureShare,
     IdentityNonceCommitment,
+    InconsistentNonceCommitment,
 }

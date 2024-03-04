@@ -2864,7 +2864,7 @@ dependencies = [
 [[package]]
 name = "frost-core"
 version = "1.0.0"
-source = "git+https://github.com/Conflux-chain/frost?rev=74e908449e784c8a979b9d0b6458b9d6a9ce46b7#74e908449e784c8a979b9d0b6458b9d6a9ce46b7"
+source = "git+https://github.com/Conflux-chain/frost?rev=6985bb4552a66d2a75b296946784adff7f78b034#6985bb4552a66d2a75b296946784adff7f78b034"
 dependencies = [
  "byteorder",
  "const-crc32",
@@ -2885,7 +2885,7 @@ dependencies = [
 [[package]]
 name = "frost-rerandomized"
 version = "1.0.0"
-source = "git+https://github.com/Conflux-chain/frost?rev=74e908449e784c8a979b9d0b6458b9d6a9ce46b7#74e908449e784c8a979b9d0b6458b9d6a9ce46b7"
+source = "git+https://github.com/Conflux-chain/frost?rev=6985bb4552a66d2a75b296946784adff7f78b034#6985bb4552a66d2a75b296946784adff7f78b034"
 dependencies = [
  "derive-getters",
  "document-features",
@@ -2896,7 +2896,7 @@ dependencies = [
 [[package]]
 name = "frost-secp256k1"
 version = "1.0.0"
-source = "git+https://github.com/Conflux-chain/frost?rev=74e908449e784c8a979b9d0b6458b9d6a9ce46b7#74e908449e784c8a979b9d0b6458b9d6a9ce46b7"
+source = "git+https://github.com/Conflux-chain/frost?rev=6985bb4552a66d2a75b296946784adff7f78b034#6985bb4552a66d2a75b296946784adff7f78b034"
 dependencies = [
  "document-features",
  "frost-core",
@@ -5620,6 +5620,7 @@ dependencies = [
  "frost-core",
  "frost-secp256k1",
  "group",
+ "rand_core 0.6.4",
  "serde",
  "tiny-keccak 2.0.2",
 ]

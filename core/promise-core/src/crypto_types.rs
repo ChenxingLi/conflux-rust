@@ -5,6 +5,8 @@ pub type SignatureShare = frost_core::round2::SignatureShare<Secp256K1Sha256>;
 pub type SigningCommitments =
     frost_core::round1::SigningCommitments<Secp256K1Sha256>;
 pub type NonceCommitment = frost_core::round1::NonceCommitment<Secp256K1Sha256>;
+pub type Nonce = frost_core::round1::Nonce<Secp256K1Sha256>;
+pub type SigningNonces = frost_core::round1::SigningNonces<Secp256K1Sha256>;
 
 pub type PolynomialCommitment =
     frost_core::keys::VerifiableSecretSharingCommitment<Secp256K1Sha256>;

@@ -1,11 +1,10 @@
-use super::FrostError;
+use super::{node_id::NodeID, FrostError};
 use crate::crypto_types::{
-    BindingFactorList, Challenge, GroupCommitment, Identifier,
-    PublicKeyPackage, Signature, SignatureShare, SigningPackage,
+    BindingFactorList, Challenge, Identifier, PublicKeyPackage, Scalar,
+    Signature, SignatureShare, SigningNonces, SigningPackage, SigningShare,
 };
 use frost_core::{
     challenge, compute_binding_factor_list, compute_group_commitment,
-    compute_lagrange_coefficient,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -15,8 +14,6 @@ pub struct FrostSignTask {
 
     /// $\rho_i$ for each participants $i$
     binding_factor_list: BindingFactorList,
-    /// Group commitment $R$, summation of signing shares in signing package.
-    group_commitment: GroupCommitment,
     /// Challenge $c$
     challenge: Challenge,
 
@@ -27,11 +24,15 @@ pub struct FrostSignTask {
 
     /// All the valid participants $i$
     all_identifiers: BTreeSet<Identifier>,
+    emulated_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
+    nonce_index: usize,
 }
 
 impl FrostSignTask {
     pub fn new(
         signing_package: SigningPackage, pubkey_package: PublicKeyPackage,
+        emulated_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
+        nonce_index: usize,
     ) -> Self {
         const BINDING_FACTOR_PREFIX: &'static [u8] = b"conflux-promise";
 
@@ -59,11 +60,13 @@ impl FrostSignTask {
 
         FrostSignTask {
             binding_factor_list,
-            group_commitment,
+            emulated_coefficients,
+            // group_commitment,
             challenge,
             signing_package,
             pubkey_package,
             all_identifiers,
+            nonce_index,
             received_shares: Default::default(),
         }
     }
@@ -94,6 +97,57 @@ impl FrostSignTask {
             .insert(identifier.clone(), signature_share);
 
         Ok(())
+    }
+
+    pub fn sign(
+        &self, node_id: NodeID, signing_shares: &[SigningShare],
+        all_nonces: &Vec<SigningNonces>,
+    ) -> Option<SignatureShare> {
+        // Here we remove most checks, since the consistency should be
+        // guaranteed by the maintainence of sign_tasks.
+        let coefficients = match self.emulated_coefficients.get(&node_id) {
+            None => {
+                return None;
+            }
+            Some(x) if x.is_empty() => {
+                return None;
+            }
+            Some(x) => x,
+        };
+
+        let signer_nonces = all_nonces.get(self.nonce_index).unwrap();
+
+        let signing_share = {
+            let mut summation = Scalar::ZERO;
+            for (coeff, signing_share) in
+                coefficients.iter().zip(signing_shares.iter())
+            {
+                summation += coeff * &signing_share.to_scalar();
+            }
+            SigningShare::new(summation)
+        };
+
+        let node_identifier = node_id.to_identifier();
+
+        let binding_factor = self
+            .binding_factor_list
+            .get(&node_identifier)
+            .unwrap()
+            .clone();
+
+        // Emulated signing shares don't need Lagrange coefficient.
+        let lambda_i = Scalar::ONE;
+
+        // Compute the Schnorr signature share.
+        let signature_share = frost_core::round2::compute_signature_share(
+            signer_nonces,
+            binding_factor,
+            lambda_i,
+            &signing_share,
+            self.challenge.clone(),
+        );
+
+        Some(signature_share)
     }
 
     pub fn try_aggregate_signature_share(&self) -> Option<Signature> {
@@ -128,13 +182,9 @@ impl FrostSignTask {
             .get(identifier)
             .ok_or(FrostError::UnknownSigner)?;
 
-        // Compute Lagrange coefficient. ($\lambda_i$ in 5)
-        let lambda_i = compute_lagrange_coefficient(
-            &self.all_identifiers,
-            None,
-            *identifier,
-        )
-        .unwrap();
+        // Since the signing shares are emulated, we don't need Lagrange
+        // Interplotation here.
+        let lambda_i = Scalar::ONE;
 
         // ($\rho_i$ in 7.a)
         let binding_factor = self
