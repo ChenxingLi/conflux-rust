@@ -1,7 +1,7 @@
 #[derive(PartialEq, Eq, Debug)]
 pub enum FrostError {
     NotEnoughUnusedPreCommit,
-    NotEnoughVotes,
+    NotEnoughSigningShares,
     TooLatePreCommit,
     EpochNotStart,
     EjectedNode,

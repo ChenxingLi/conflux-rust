@@ -22,8 +22,7 @@ impl EpochNonceCommitments {
         identifier_groups: &BTreeMap<NodeID, Vec<Identifier>>,
     ) -> Result<BTreeMap<NodeID, [NonceCommitment; 2]>, FrostError> {
         let mut nonce_commitments = BTreeMap::default();
-        let mut total_votes = 0;
-        let mut remove_nodes = vec![];
+        let mut to_remove_nodes = vec![];
         for (node_id, commitments) in &self.commitments {
             if !signer_group.contains(node_id) {
                 continue;
@@ -31,23 +30,19 @@ impl EpochNonceCommitments {
 
             if let Some(commitment) = commitments.get(self.next_unused_index) {
                 nonce_commitments.insert(*node_id, commitment.clone());
-                total_votes +=
-                    identifier_groups.get(&node_id).map_or(0, Vec::len);
             } else {
-                remove_nodes.push(*node_id);
+                to_remove_nodes.push(*node_id);
             }
-        }
-
-        if total_votes < self.min_votes {
-            return Err(FrostError::NotEnoughUnusedPreCommit);
         }
 
         if nonce_commitments.len() <= 1 {
             return Err(FrostError::NotEnoughUnusedPreCommit);
         }
 
+        signer_group.remove_nodes(&to_remove_nodes)?;
+
+        signer_group.check_enough_shares()?;
         self.next_unused_index += 1;
-        signer_group.remove_nodes(&remove_nodes);
 
         Ok(nonce_commitments)
     }

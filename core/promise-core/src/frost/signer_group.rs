@@ -1,4 +1,6 @@
-use super::{error::FrostError, FrostPubKeyContext, FrostSignTask, NodeID};
+use super::{
+    error::FrostError, node_id, FrostPubKeyContext, FrostSignTask, NodeID,
+};
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -18,8 +20,9 @@ pub struct FrostSignerGroup {
 
     valid_nodes: BTreeSet<NodeID>,
 
-    total_votes: usize,
     emulated_verifying_shares: BTreeMap<Identifier, VerifyingShare>,
+
+    cached_total_shares: Option<usize>,
 }
 
 impl FrostSignerGroup {
@@ -27,19 +30,23 @@ impl FrostSignerGroup {
         self.valid_nodes.contains(id)
     }
 
+    pub fn check_enough_shares(&self) -> Result<(), FrostError> {
+        if let Some(shares) = self.cached_total_shares {
+            if shares < self.context.min_votes {
+                return Err(FrostError::NotEnoughSigningShares);
+            }
+        }
+        Ok(())
+    }
+
     #[inline]
     pub(crate) fn insert_node(
         &mut self, id: &NodeID,
     ) -> Result<(), FrostError> {
-        let changed = self.valid_nodes.insert(*id);
-        if changed {
-            self.total_votes += self
-                .context
-                .identifier_groups
-                .get(id)
-                .ok_or(FrostError::UnknownNodeID)?
-                .len();
+        if !self.context.identifier_groups.contains_key(id) {
+            return Err(FrostError::UnknownNodeID);
         }
+        self.valid_nodes.insert(*id);
 
         Ok(())
 
@@ -48,30 +55,29 @@ impl FrostSignerGroup {
     }
 
     #[inline]
-    pub fn remove_nodes(&mut self, node_list: &[NodeID]) {
+    pub fn remove_nodes(
+        &mut self, node_list: &[NodeID],
+    ) -> Result<(), FrostError> {
         let mut changed = false;
         for id in node_list {
             changed |= self.valid_nodes.remove(&id);
         }
 
         if !changed {
-            return;
+            return Ok(());
         }
 
-        self.update_emulated_verifying_shares();
+        self.update_emulated_verifying_shares()?;
+        Ok(())
     }
 
     pub fn valid_nodes(&self) -> impl Iterator<Item = NodeID> + '_ {
         self.valid_nodes.iter().cloned()
     }
 
-    pub fn update_emulated_verifying_shares(&mut self) {
-        self.emulated_verifying_shares = self.make_emulated_verifying_shares();
-    }
-
     fn get_exact_size_identifier_groups(
         &self, num_identifiers: usize,
-    ) -> Option<BTreeMap<NodeID, Vec<Identifier>>> {
+    ) -> Result<BTreeMap<NodeID, Vec<Identifier>>, usize> {
         let mut identifier_groups = BTreeMap::new();
         let mut rest_votes = num_identifiers;
         for node_id in &self.valid_nodes {
@@ -87,19 +93,26 @@ impl FrostSignerGroup {
             identifier_groups.insert(*node_id, picked_identifiers.to_vec());
             rest_votes -= picked_identifiers.len();
             if rest_votes == 0 {
-                return Some(identifier_groups);
+                return Ok(identifier_groups);
             }
         }
-        None
+        Err(rest_votes)
     }
 
-    fn make_emulated_verifying_shares(
-        &self,
-    ) -> BTreeMap<Identifier, VerifyingShare> {
+    pub fn update_emulated_verifying_shares(&mut self) -> Result<(), FrostError> {
         let mut answer = BTreeMap::new();
 
-        let identifier_groups =
-            self.get_exact_size_identifier_groups(self.context.min_votes).expect("The signer group should guarantee enough votes when making emulated shares");
+        let identifier_groups = match self
+            .get_exact_size_identifier_groups(self.context.min_votes)
+        {
+            Ok(res) => res,
+            Err(deficit_shares) => {
+                self.cached_total_shares =
+                    Some(self.context.min_votes - deficit_shares);
+                return Err(FrostError::NotEnoughSigningShares);
+            }
+        };
+
         let all_emulated_identifiers = identifier_groups
             .keys()
             .map(|node_id| node_id.to_identifier())
@@ -157,16 +170,22 @@ impl FrostSignerGroup {
                 VerifyingShare::new(emulated_verifying_share),
             );
         }
-        answer
+        self.emulated_verifying_shares = answer;
+        Ok(())
     }
 
-    pub fn make_sign_task(
+    pub(crate) fn make_sign_task(
         &self, nonce_commitments: &BTreeMap<NodeID, [NonceCommitment; 2]>,
         message: Vec<u8>,
     ) -> FrostSignTask {
+        // The caller should guarantee that the emulated_verifying_shares is ready.
+
         let signing_package = {
             let mut signing_commitments = BTreeMap::new();
-            for &node_id in &self.valid_nodes {
+            for node_id in self.valid_nodes.iter().filter(|x| {
+                self.emulated_verifying_shares
+                    .contains_key(&x.to_identifier())
+            }) {
                 let [hiding, binding] =
                     nonce_commitments.get(&node_id).unwrap();
                 signing_commitments.insert(
@@ -181,6 +200,6 @@ impl FrostSignerGroup {
             self.context.verifying_key().clone(),
         );
 
-        FrostSignTask::new(signing_package, pubkey_package, message)
+        FrostSignTask::new(signing_package, pubkey_package)
     }
 }

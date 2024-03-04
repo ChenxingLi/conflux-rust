@@ -32,7 +32,6 @@ pub struct FrostSignTask {
 impl FrostSignTask {
     pub fn new(
         signing_package: SigningPackage, pubkey_package: PublicKeyPackage,
-        message: Vec<u8>,
     ) -> Self {
         const BINDING_FACTOR_PREFIX: &'static [u8] = b"conflux-promise";
 
@@ -48,6 +47,7 @@ impl FrostSignTask {
         let group_commitment =
             compute_group_commitment(&signing_package, &binding_factor_list)
                 .unwrap();
+        let message = signing_package.message();
         let challenge = challenge(
             &group_commitment.clone().to_element(),
             &verifying_key,
