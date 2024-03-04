@@ -5,12 +5,20 @@ use super::{
 };
 use crate::crypto_types::{Signature, SignatureShare, SigningCommitments};
 
+/// Represents the state of Frost signature within a given epoch.
 pub struct FrostEpochState {
+    /// Tracks the current valid signers and aggregates each node's signing
+    /// shares.
     signer_group: FrostSignerGroup,
+
+    /// Maintains all nonce commitments for the current epoch.
     nonce_commitments: EpochNonceCommitments,
+
+    /// Manages all outstanding sign tasks.
     sign_task_manager: SignTaskManager,
 
-    // None means the current epoch has not start.
+    /// Records which round of consensus has been reached. `None` indicates
+    /// that the current epoch has not started.
     current_round: Option<usize>,
 }
 

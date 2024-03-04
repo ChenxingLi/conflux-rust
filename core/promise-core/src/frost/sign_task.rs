@@ -24,7 +24,8 @@ pub struct FrostSignTask {
 
     /// All the valid participants $i$
     all_identifiers: BTreeSet<Identifier>,
-    /// Coefficients for aggregating `SigningShare` and `VeryfingShare` per node.
+    /// Coefficients for aggregating `SigningShare` and `VeryfingShare` per
+    /// node.
     lagrange_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
     /// The position index of pre-committed nonce.
     nonce_index: usize,
@@ -86,6 +87,8 @@ impl FrostSignTask {
         unsigned_nodes
     }
 
+    /// Inserts a signature share for a specific identifier and checks its
+    /// correctness.
     pub fn insert_signature_share(
         &mut self, identifier: &Identifier, signature_share: SignatureShare,
     ) -> Result<(), FrostError> {
@@ -100,6 +103,11 @@ impl FrostSignTask {
         Ok(())
     }
 
+    /// Signs based on some private information.
+    /// # Arguments
+    /// * `node_id` - The ID of the node performing the signing.
+    /// * `signing_shares` - The signing shares obtained by node_id.
+    /// * `all_nonces` - All the pre-commit nonces for the current epoch.
     pub fn sign(
         &self, node_id: NodeID, signing_shares: &[SigningShare],
         all_nonces: &Vec<SigningNonces>,
@@ -151,6 +159,8 @@ impl FrostSignTask {
         Some(signature_share)
     }
 
+    /// Attempts to aggregate signature shares. If not all necessary signature
+    /// shares are collected, it returns None.
     pub fn try_aggregate_signature_share(&self) -> Option<Signature> {
         if !self.all_shares_ready() {
             return None;
@@ -169,7 +179,7 @@ impl FrostSignTask {
 
     /// Extract from FROST source code function `aggregate`, validate the
     /// signature share. (Step 7)
-    pub fn verify_signature_share(
+    fn verify_signature_share(
         &self, identifier: &Identifier, signature_share: &SignatureShare,
     ) -> Result<(), FrostError> {
         let challenge = &self.challenge;

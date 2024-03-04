@@ -13,14 +13,29 @@ use crate::crypto_types::{
     SigningPackage, VerifyingShare,
 };
 
+/// Represents a group of Frost signers within a specific epoch.
+/// This structure holds cached information about signers participating in the
+/// Frost signing process. Ideally, this type remain unchanged throughout the
+/// epoch. However, a signer may be considered invalid if they submit erroneous
+/// transactions or fail to respond in time, which changes the inside data.
 pub struct FrostSignerGroup {
+    /// The public key context for the epoch.
     pub context: Arc<FrostPubKeyContext>,
 
+    /// Nodes that considered valid. (Submitted a pre-commit nonce before the
+    /// epoch started and have not been deemed invalid.)
     valid_nodes: BTreeSet<NodeID>,
 
+    /// Caches the aggregated Lagrange interpolation of shares held by the
+    /// node. Updated when the set of valid nodes changes.
     aggregated_verifying_shares: BTreeMap<Identifier, VerifyingShare>,
+
+    /// Lagrange Coefficients in aggregating shares.
     lagrange_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
 
+    /// A cached total count of signable shares. Allows for quick error
+    /// responses when there are insufficient total shares held by valid
+    /// nodes to proceed with signing requests.
     cached_total_shares: Option<usize>,
 }
 
@@ -29,6 +44,7 @@ impl FrostSignerGroup {
         self.valid_nodes.contains(id)
     }
 
+    /// Check if the remain valid nodes hold enough signing shares.
     pub fn check_enough_shares(&self) -> Result<(), FrostError> {
         if let Some(shares) = self.cached_total_shares {
             if shares < self.context.num_signing_shares {
@@ -39,6 +55,7 @@ impl FrostSignerGroup {
     }
 
     #[inline]
+    /// Insert node at the beginning of an epoch.
     pub(crate) fn insert_node(
         &mut self, id: &NodeID,
     ) -> Result<(), FrostError> {
@@ -49,11 +66,12 @@ impl FrostSignerGroup {
 
         Ok(())
 
-        // For insert operation, aggregated_verifying_shares is lazily updated by
-        // `FrostEpochState`
+        // For insert operation, aggregated_verifying_shares is lazily updated
+        // by `FrostEpochState`
     }
 
     #[inline]
+    /// Mark some nodes as invalid.
     pub fn remove_nodes(
         &mut self, node_list: &[NodeID],
     ) -> Result<(), FrostError> {
@@ -74,6 +92,20 @@ impl FrostSignerGroup {
         self.valid_nodes.iter().cloned()
     }
 
+    /// Calculates the exact groups of shares needed from each node for a Frost
+    /// multisignature. The total shares across all nodes
+    /// may exceed the exact required number of signers. This function
+    /// determines which shares from each node are needed for the signature.
+    ///
+    /// # Arguments
+    /// * `num_identifiers` - The exact number of signers (identifiers) required
+    ///   for the signature.
+    ///
+    /// # Returns
+    /// * `Ok(BTreeMap<NodeID, Vec<Identifier>>)` - A map from node IDs to the
+    ///   identifiers of the shares that need to participate in the signature.
+    /// * `Err(usize)` - The gap between the available shares and the minimum
+    ///   required shares.
     fn get_exact_size_identifier_groups(
         &self, num_identifiers: usize,
     ) -> Result<BTreeMap<NodeID, Vec<Identifier>>, usize> {

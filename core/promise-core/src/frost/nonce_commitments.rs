@@ -1,8 +1,6 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
-use frost_secp256k1::round1::SigningCommitments;
-
-use crate::crypto_types::Element;
+use crate::crypto_types::{Element, SigningCommitments};
 
 use super::{
     error::FrostError, node_id::NodeID, signer_group::FrostSignerGroup,
