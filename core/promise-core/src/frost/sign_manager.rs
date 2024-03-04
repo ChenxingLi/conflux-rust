@@ -47,7 +47,7 @@ impl SignManager {
     }
 
     fn generate_nonces(&mut self, required_length: usize) {
-        if self.signing_nonces.len() < required_length {
+        if self.signing_nonces.len() >= required_length {
             return;
         }
         let num_generate_nonces = required_length - self.signing_nonces.len();

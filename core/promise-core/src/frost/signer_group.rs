@@ -18,8 +18,8 @@ pub struct FrostSignerGroup {
 
     valid_nodes: BTreeSet<NodeID>,
 
-    emulated_verifying_shares: BTreeMap<Identifier, VerifyingShare>,
-    emulated_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
+    aggregated_verifying_shares: BTreeMap<Identifier, VerifyingShare>,
+    lagrange_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
 
     cached_total_shares: Option<usize>,
 }
@@ -49,7 +49,7 @@ impl FrostSignerGroup {
 
         Ok(())
 
-        // For insert operation, emulated_verifying_shares is lazily updated by
+        // For insert operation, aggregated_verifying_shares is lazily updated by
         // `FrostEpochState`
     }
 
@@ -66,7 +66,7 @@ impl FrostSignerGroup {
             return Ok(());
         }
 
-        self.update_emulated_verifying_shares()?;
+        self.update_aggregated_verifying_shares()?;
         Ok(())
     }
 
@@ -98,11 +98,11 @@ impl FrostSignerGroup {
         Err(rest_votes)
     }
 
-    pub fn update_emulated_verifying_shares(
+    pub fn update_aggregated_verifying_shares(
         &mut self,
     ) -> Result<(), FrostError> {
-        let mut emulated_verifying_shares = BTreeMap::new();
-        let mut emulated_coefficients = BTreeMap::new();
+        let mut aggregated_verifying_shares = BTreeMap::new();
+        let mut lagrange_coefficients = BTreeMap::new();
 
         let identifier_groups = match self
             .get_exact_size_identifier_groups(self.context.num_signing_shares)
@@ -115,10 +115,6 @@ impl FrostSignerGroup {
             }
         };
 
-        let all_emulated_identifiers = identifier_groups
-            .keys()
-            .map(|node_id| node_id.to_identifier())
-            .collect();
         let all_origin_identifiers = identifier_groups
             .values()
             .map(|x| x.iter().copied())
@@ -147,35 +143,23 @@ impl FrostSignerGroup {
                 )
             }
 
-            let mut emulated_verifying_share: Element = VartimeMultiscalarMul::<
+            lagrange_coefficients.insert(node_id, lambdas.clone());
+
+            let aggregated_verifying_share: Element = VartimeMultiscalarMul::<
                 Secp256K1Sha256,
             >::vartime_multiscalar_mul(
                 lambdas.clone(),
                 origin_verifying_shares,
             );
 
-            emulated_coefficients.insert(node_id, lambdas);
-
-            let emulated_identifier = node_id.to_identifier();
-
-            let emulated_lambda_i = compute_lagrange_coefficient(
-                &all_emulated_identifiers,
-                None,
-                emulated_identifier,
-            )
-            .unwrap();
-
-            let inv_emulated_lambda_i = emulated_lambda_i.invert().unwrap();
-
-            emulated_verifying_share *= inv_emulated_lambda_i;
-
-            emulated_verifying_shares.insert(
-                emulated_identifier,
-                VerifyingShare::new(emulated_verifying_share),
+            aggregated_verifying_shares.insert(
+                node_id.to_identifier(),
+                VerifyingShare::new(aggregated_verifying_share),
             );
         }
-        self.emulated_verifying_shares = emulated_verifying_shares;
-        self.emulated_coefficients = emulated_coefficients;
+
+        self.aggregated_verifying_shares = aggregated_verifying_shares;
+        self.lagrange_coefficients = lagrange_coefficients;
         Ok(())
     }
 
@@ -184,13 +168,13 @@ impl FrostSignerGroup {
         nonce_commitments: &BTreeMap<NodeID, SigningCommitments>,
         message: Vec<u8>,
     ) -> FrostSignTask {
-        // The caller should guarantee that the emulated_verifying_shares is
+        // The caller should guarantee that the aggregated_verifying_shares is
         // ready.
 
         let signing_package = {
             let mut signing_commitments = BTreeMap::new();
             for node_id in self.valid_nodes.iter().filter(|x| {
-                self.emulated_verifying_shares
+                self.aggregated_verifying_shares
                     .contains_key(&x.to_identifier())
             }) {
                 let signing_commitment =
@@ -201,14 +185,14 @@ impl FrostSignerGroup {
             SigningPackage::new(signing_commitments, &message)
         };
         let pubkey_package = PublicKeyPackage::new(
-            self.emulated_verifying_shares.clone(),
+            self.aggregated_verifying_shares.clone(),
             self.context.verifying_key().clone(),
         );
 
         FrostSignTask::new(
             signing_package,
             pubkey_package,
-            self.emulated_coefficients.clone(),
+            self.lagrange_coefficients.clone(),
             nonce_index,
         )
     }

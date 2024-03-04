@@ -35,7 +35,7 @@ impl FrostEpochState {
 
     pub fn start_round(&mut self, round: Round) -> Result<(), FrostError> {
         if self.current_round.is_none() {
-            self.signer_group.update_emulated_verifying_shares()?;
+            self.signer_group.update_aggregated_verifying_shares()?;
         }
         self.current_round = Some(round);
         Ok(())

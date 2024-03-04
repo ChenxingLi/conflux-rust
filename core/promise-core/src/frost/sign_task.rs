@@ -24,14 +24,16 @@ pub struct FrostSignTask {
 
     /// All the valid participants $i$
     all_identifiers: BTreeSet<Identifier>,
-    emulated_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
+    /// Coefficients for aggregating `SigningShare` and `VeryfingShare` per node.
+    lagrange_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
+    /// The position index of pre-committed nonce.
     nonce_index: usize,
 }
 
 impl FrostSignTask {
     pub fn new(
         signing_package: SigningPackage, pubkey_package: PublicKeyPackage,
-        emulated_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
+        lagrange_coefficients: BTreeMap<NodeID, Vec<Scalar>>,
         nonce_index: usize,
     ) -> Self {
         const BINDING_FACTOR_PREFIX: &'static [u8] = b"conflux-promise";
@@ -60,8 +62,7 @@ impl FrostSignTask {
 
         FrostSignTask {
             binding_factor_list,
-            emulated_coefficients,
-            // group_commitment,
+            lagrange_coefficients,
             challenge,
             signing_package,
             pubkey_package,
@@ -105,7 +106,7 @@ impl FrostSignTask {
     ) -> Option<SignatureShare> {
         // Here we remove most checks, since the consistency should be
         // guaranteed by the maintainence of sign_tasks.
-        let coefficients = match self.emulated_coefficients.get(&node_id) {
+        let coefficients = match self.lagrange_coefficients.get(&node_id) {
             None => {
                 return None;
             }
@@ -135,7 +136,7 @@ impl FrostSignTask {
             .unwrap()
             .clone();
 
-        // Emulated signing shares don't need Lagrange coefficient.
+        // Aggregated signing shares don't need Lagrange coefficient.
         let lambda_i = Scalar::ONE;
 
         // Compute the Schnorr signature share.
@@ -182,8 +183,7 @@ impl FrostSignTask {
             .get(identifier)
             .ok_or(FrostError::UnknownSigner)?;
 
-        // Since the signing shares are emulated, we don't need Lagrange
-        // Interplotation here.
+        // Aggregated signing shares don't need Lagrange coefficient.
         let lambda_i = Scalar::ONE;
 
         // ($\rho_i$ in 7.a)
