@@ -7,11 +7,16 @@ version = "2.0.2"
 edition = "2021"
 
 [dependencies]
-cfx-types = { path="../../cfx_types" }
-frost-core = { git="https://github.com/Conflux-chain/frost", rev="760f4442605e6c552af3892e15cf563f47ad4efd", features = ["internals", "serde"] }
-frost-secp256k1 = { git="https://github.com/Conflux-chain/frost", rev="760f4442605e6c552af3892e15cf563f47ad4efd", features = ["serde"] }
+cfx-types = { path = "../../cfx_types" }
+frost-core = { git = "https://github.com/Conflux-chain/frost", rev="84a21f56dfb578ca92dc5391e9eb1e24b808230c", features = ["internals", "serde"] }
+frost-secp256k1 = { git = "https://github.com/Conflux-chain/frost", rev="84a21f56dfb578ca92dc5391e9eb1e24b808230c", features = ["serde"] }
 serde = { version = "1.0.124", features = ["derive"] }
 group = "^0.13"
 tiny-keccak = "^2.0.2"
 rand_core = "0.6.4"
 k256 = { version = "^0.13.3", features = ["serde", "alloc"] }
+rayon = { version = "1.9.0", optional = true }
+
+[features]
+default = ["parallel"]
+parallel = ["rayon"]

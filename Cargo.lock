@@ -2866,7 +2866,7 @@ dependencies = [
 [[package]]
 name = "frost-core"
 version = "1.0.0"
-source = "git+https://github.com/Conflux-chain/frost?rev=760f4442605e6c552af3892e15cf563f47ad4efd#760f4442605e6c552af3892e15cf563f47ad4efd"
+source = "git+https://github.com/Conflux-chain/frost?rev=84a21f56dfb578ca92dc5391e9eb1e24b808230c#84a21f56dfb578ca92dc5391e9eb1e24b808230c"
 dependencies = [
  "byteorder",
  "const-crc32",
@@ -2887,7 +2887,7 @@ dependencies = [
 [[package]]
 name = "frost-rerandomized"
 version = "1.0.0"
-source = "git+https://github.com/Conflux-chain/frost?rev=760f4442605e6c552af3892e15cf563f47ad4efd#760f4442605e6c552af3892e15cf563f47ad4efd"
+source = "git+https://github.com/Conflux-chain/frost?rev=84a21f56dfb578ca92dc5391e9eb1e24b808230c#84a21f56dfb578ca92dc5391e9eb1e24b808230c"
 dependencies = [
  "derive-getters",
  "document-features",
@@ -2898,7 +2898,7 @@ dependencies = [
 [[package]]
 name = "frost-secp256k1"
 version = "1.0.0"
-source = "git+https://github.com/Conflux-chain/frost?rev=760f4442605e6c552af3892e15cf563f47ad4efd#760f4442605e6c552af3892e15cf563f47ad4efd"
+source = "git+https://github.com/Conflux-chain/frost?rev=84a21f56dfb578ca92dc5391e9eb1e24b808230c#84a21f56dfb578ca92dc5391e9eb1e24b808230c"
 dependencies = [
  "document-features",
  "frost-core",
@@ -5625,6 +5625,7 @@ dependencies = [
  "group",
  "k256",
  "rand_core 0.6.4",
+ "rayon",
  "serde",
  "tiny-keccak 2.0.2",
 ]
@@ -5848,9 +5849,9 @@ dependencies = [
 
 [[package]]
 name = "rayon"
-version = "1.7.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d2df5196e37bcc87abebc0053e20787d73847bb33134a69841207dd0a47f03b"
+checksum = "e4963ed1bc86e4f3ee217022bd855b297cef07fb9eac5dfa1f788b220b49b3bd"
 dependencies = [
  "either",
  "rayon-core",
@@ -5858,14 +5859,12 @@ dependencies = [
 
 [[package]]
 name = "rayon-core"
-version = "1.11.0"
+version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b8f95bd6966f5c87776639160a66bd8ab9895d9d4ab01ddba9fc60661aebe8d"
+checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
 dependencies = [
- "crossbeam-channel 0.5.7",
  "crossbeam-deque 0.8.3",
  "crossbeam-utils 0.8.15",
- "num_cpus",
 ]
 
 [[package]]

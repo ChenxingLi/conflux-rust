@@ -1,4 +1,4 @@
-use super::node_id::NodeID;
+use super::converted_id::NodeID;
 
 use std::collections::BTreeMap;
 

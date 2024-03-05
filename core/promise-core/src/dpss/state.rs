@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 
 use crate::{
+    converted_id::{NodeID, VoteID},
     crypto_types::PolynomialCommitment,
-    node_id::{NodeID, VoteID},
 };
 
 pub struct DpssEpochState {
     epoch: u64,
 
-    two_dim_commitments: Vec<PolynomialCommitment>,
+    commitment_matrix: Vec<PolynomialCommitment>,
 
     identifier_groups: BTreeMap<NodeID, Vec<VoteID>>,
 }

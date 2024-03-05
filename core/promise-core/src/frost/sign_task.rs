@@ -1,4 +1,4 @@
-use super::{node_id::NodeID, FrostError};
+use super::{converted_id::NodeID, FrostError};
 use crate::crypto_types::{
     BindingFactorList, Challenge, Identifier, PublicKeyPackage, Scalar,
     Signature, SignatureShare, SigningNonces, SigningPackage, SigningShare,

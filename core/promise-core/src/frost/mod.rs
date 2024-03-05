@@ -8,13 +8,13 @@ mod signer_group;
 mod state;
 
 use context::FrostPubKeyContext;
+use converted_id::NodeID;
 use error::FrostError;
-use node_id::NodeID;
 use sign_task::FrostSignTask;
 use sign_task_manager::SignTaskID;
 use signer_group::FrostSignerGroup;
 
-use super::node_id;
+use super::converted_id;
 
 pub type Round = usize;
 

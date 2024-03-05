@@ -10,7 +10,7 @@ use crate::crypto_types::{
 };
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
-enum VSSPayloadType {
+pub enum VssType {
     DistributedKeyGeneration,
     SecretShareRotation,
 }
@@ -26,7 +26,7 @@ struct VSSDummyProof;
 
 #[derive(Serialize, Deserialize)]
 struct VSSPayload {
-    type_tag: VSSPayloadType,
+    type_tag: VssType,
     id: VSSPayloadID,
     commitment_hash: H256,
 
@@ -52,7 +52,7 @@ impl VSSPayload {
 
         // TODO: secret share validation
 
-        if self.type_tag == VSSPayloadType::SecretShareRotation
+        if self.type_tag == VssType::SecretShareRotation
             && !bool::from(self.commitment[0].is_identity())
         {
             return Err(VSSPayloadError::NotZeroHole);

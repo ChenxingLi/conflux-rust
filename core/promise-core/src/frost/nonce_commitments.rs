@@ -3,7 +3,7 @@ use std::collections::{btree_map::Entry, BTreeMap};
 use crate::crypto_types::{Element, SigningCommitments};
 
 use super::{
-    error::FrostError, node_id::NodeID, signer_group::FrostSignerGroup,
+    converted_id::NodeID, error::FrostError, signer_group::FrostSignerGroup,
 };
 
 pub struct EpochNonceCommitments {
