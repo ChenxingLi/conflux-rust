@@ -4,7 +4,7 @@ pub mod types;
 
 pub use element_matrix::ElementMatrix;
 pub use poly_commitment::{
-    add_commitment, generate_polynomial_commitments,
-    interpolate_and_evaluate_points, validate_verifiable_secret_share,
-    AffinePolynomialCommitment,
+    add_commitment, evaluate_commitment_points,
+    generate_polynomial_commitments, interpolate_and_evaluate_points,
+    validate_verifiable_secret_share, AffinePolynomialCommitment,
 };

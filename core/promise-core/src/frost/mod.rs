@@ -7,7 +7,6 @@ mod sign_task_manager;
 mod signer_group;
 mod state;
 
-use context::FrostPubKeyContext;
 use converted_id::NodeID;
 use error::FrostError;
 use sign_task::FrostSignTask;
@@ -18,5 +17,6 @@ use super::converted_id;
 
 pub type Round = usize;
 
+pub use context::FrostPubKeyContext;
 pub use sign_manager::SignManager;
 pub use state::FrostEpochState;

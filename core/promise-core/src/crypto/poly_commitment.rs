@@ -3,7 +3,10 @@ use std::{
     ops::Deref,
 };
 
-use crate::{cfg_into_iter, cfg_iter, converted_id::VoteID};
+use crate::{
+    cfg_into_iter, cfg_iter,
+    converted_id::{num_to_identifier, VoteID},
+};
 
 use super::types::{
     Affine, CoefficientCommitment, Element, PolynomialCommitment, Projective,
@@ -123,6 +126,20 @@ pub fn generate_polynomial_commitments<R: CryptoRng + RngCore>(
     return (polynomial_commitment, shares);
 }
 
+pub fn evaluate_commitment_points(
+    commitment: &PolynomialCommitment, points: BTreeSet<VoteID>,
+) -> BTreeMap<VoteID, Element> {
+    cfg_iter!(points)
+        .map(|point| {
+            let elem = frost_core::keys::evaluate_vss(
+                point.to_identifier(),
+                commitment,
+            );
+            (*point, elem)
+        })
+        .collect()
+}
+
 pub fn validate_verifiable_secret_share(
     commitment: &PolynomialCommitment, shares: &BTreeMap<VoteID, Scalar>,
 ) -> bool {
@@ -159,7 +176,7 @@ pub fn interpolate_and_evaluate_points(
 
     let input_points: BTreeMap<Identifier, Element> = input_points
         .into_iter()
-        .map(|(x, y)| (cell_to_identifier(x), y))
+        .map(|(x, y)| (num_to_identifier(x), y))
         .collect();
 
     let x_set: BTreeSet<Identifier> =
@@ -170,7 +187,7 @@ pub fn interpolate_and_evaluate_points(
             let ans = interpolate_and_evaluate_points_inner(
                 &x_set,
                 &input_points,
-                cell_to_identifier(evaluate_point),
+                num_to_identifier(evaluate_point),
             );
             (evaluate_point, ans)
         })
@@ -235,8 +252,4 @@ fn compute_lagrange_coefficient_partial(
     assert!(!x_i_found);
 
     (num, den)
-}
-
-fn cell_to_identifier(x: usize) -> Identifier {
-    Identifier::new(Scalar::from(x as u32 + 1)).unwrap()
 }

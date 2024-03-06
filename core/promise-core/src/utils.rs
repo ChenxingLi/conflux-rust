@@ -47,3 +47,25 @@ macro_rules! cfg_into_iter {
         result
     }};
 }
+
+#[macro_export]
+macro_rules! cfg_iter_mut {
+    ($e:expr, $min_len:expr) => {{
+        #[cfg(feature = "parallel")]
+        let result = $e.par_iter_mut().with_min_len($min_len);
+
+        #[cfg(not(feature = "parallel"))]
+        let result = $e.iter_mut();
+
+        result
+    }};
+    ($e:expr) => {{
+        #[cfg(feature = "parallel")]
+        let result = $e.par_iter_mut();
+
+        #[cfg(not(feature = "parallel"))]
+        let result = $e.iter_mut();
+
+        result
+    }};
+}
