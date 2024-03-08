@@ -1,7 +1,5 @@
 pub mod crypto;
-// #[allow(dead_code, unused)]
 pub mod dkg;
-#[allow(dead_code, unused)]
 pub mod dpss;
 pub mod frost;
 
@@ -15,6 +13,6 @@ mod payloads;
 pub use crate::crypto::types as crypto_types;
 
 const TOTAL_VOTES: usize = 300;
-const PROACTIVE_DKG_VOTES: usize = 126;
-const PROACTIVE_RESHARE_VOTES: usize = 126;
+const PROACTIVE_COL_VOTES: usize = 126;
+const PROACTIVE_ROW_VOTES: usize = 126;
 const FROST_SIGN_VOTES: usize = 126;

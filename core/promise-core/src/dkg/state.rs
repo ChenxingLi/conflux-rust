@@ -15,6 +15,15 @@ pub struct DkgState {
 }
 
 impl DkgState {
+    pub fn new() -> Self {
+        Self {
+            num_nodes: 0,
+            num_votes: 0,
+            commitment: PC::new(vec![]),
+            commitment_hashes: BTreeSet::new(),
+        }
+    }
+
     pub fn receive_new_commitment(
         &mut self, node_votes: usize, commitments: AffinePC,
     ) {

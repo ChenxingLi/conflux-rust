@@ -1,40 +1,30 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
-    usize::MIN,
 };
 
 use cfx_types::H256;
 use frost_core::{keys::PublicKeyPackage, VerifyingKey};
-use frost_secp256k1::Identifier;
+
+use super::DpssError;
 
 use crate::{
-    cfg_into_iter,
     converted_id::{num_to_identifier, NodeID, VoteGroup, VoteID},
-    crypto::{evaluate_commitment_points, ElementMatrix},
+    crypto::ElementMatrix,
     crypto_types::{
         AffinePolynomialCommitment as AffinePC, Element,
         PolynomialCommitment as PC, VerifyingShare,
     },
-    dkg::{DkgState, VerifiableSecretShares},
+    dkg::DkgState,
     frost::FrostPubKeyContext,
-    FROST_SIGN_VOTES, PROACTIVE_DKG_VOTES, PROACTIVE_RESHARE_VOTES,
+    FROST_SIGN_VOTES, PROACTIVE_COL_VOTES, PROACTIVE_ROW_VOTES,
 };
-
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
-pub enum DpssError {
-    InvalidReshareCommitment,
-    DkgStageNotComplete,
-    DkgStageHasFinished,
-    EnoughReshareSubmit,
-}
 
 pub struct ReshareState {
     // It is heavy to recover polynomial commitment from the commitment point
     // list, we store the commitment point list instead.
     commitment_points: Vec<Element>,
+    #[allow(unused)]
     accepted_commitments: BTreeSet<H256>,
     valid_submissions: BTreeMap<VoteID, PC>,
     target_votes: usize,
@@ -61,7 +51,7 @@ impl ReshareState {
         ReshareState::new(
             element_list,
             state.commitment_hashes().clone(),
-            PROACTIVE_RESHARE_VOTES,
+            PROACTIVE_COL_VOTES,
         )
     }
 
@@ -110,6 +100,24 @@ pub struct DpssEpochState {
 }
 
 impl DpssEpochState {
+    pub fn new_epoch(
+        last_epoch: &DpssEpochState, vote_groups: &Arc<VoteGroup>,
+    ) -> Result<Self, DpssError> {
+        let epoch = last_epoch.epoch + 1;
+        let last_matrix = if let DpssStage::Complete(matrix) = &last_epoch.stage
+        {
+            matrix.clone()
+        } else {
+            return Err(DpssError::LastEpochNotComplete);
+        };
+        Ok(Self {
+            epoch,
+            stage: DpssStage::DkgStage(DkgState::new(), false),
+            last_matrix,
+            vote_groups: vote_groups.clone(),
+        })
+    }
+
     pub fn receive_reshare_message(
         &mut self, vote_id: VoteID, commitment: PC,
     ) -> Result<(), DpssError> {
@@ -118,7 +126,7 @@ impl DpssEpochState {
                 return Err(DpssError::DkgStageNotComplete);
             }
             DpssStage::DkgStage(ref state, true) => {
-                if !state.has_enough_votes(PROACTIVE_DKG_VOTES) {
+                if !state.has_enough_votes(PROACTIVE_COL_VOTES) {
                     return Err(DpssError::DkgStageNotComplete);
                 }
 
@@ -174,7 +182,7 @@ impl DpssEpochState {
                 (*node_id, identifiers)
             })
             .collect();
-        
+
         FrostPubKeyContext {
             epoch: self.epoch,
             pubkey_package,
@@ -203,7 +211,7 @@ impl DpssEpochState {
 
     pub fn try_finish_dkg_stage(&mut self) -> Result<bool, DpssError> {
         if let DpssStage::DkgStage(ref state, ref mut can_finish) = self.stage {
-            if state.has_enough_votes(PROACTIVE_DKG_VOTES) {
+            if state.has_enough_votes(PROACTIVE_COL_VOTES) {
                 let reshare_state =
                     ReshareState::from_dkg_stage(state, &self.last_matrix);
                 self.stage = DpssStage::ReshareStage(reshare_state);

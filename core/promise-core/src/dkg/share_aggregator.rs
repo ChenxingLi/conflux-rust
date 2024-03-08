@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    iter::zip,
+};
 
 use cfx_types::H256;
 
@@ -33,10 +36,7 @@ impl ShareAggregator {
             return Err(DkgError::IncorrectLength);
         }
 
-        let shares: BTreeMap<VoteID, Scalar> = self
-            .vote_ids
-            .iter()
-            .zip(secret_shares.iter())
+        let shares = zip(&self.vote_ids, &secret_shares)
             .map(|(&x, &y)| (x, y))
             .collect();
 
@@ -64,10 +64,8 @@ impl ShareAggregator {
         self.aggregated_commitment =
             add_commitment(&self.aggregated_commitment, pc);
 
-        for (aggregated, share) in
-            self.aggregated_shares.iter_mut().zip(pc_shares.iter())
-        {
-            *aggregated += *share;
+        for (aggregated, share) in zip(&mut self.aggregated_shares, pc_shares) {
+            *aggregated += share;
         }
 
         Ok(())
@@ -75,14 +73,8 @@ impl ShareAggregator {
 
     pub fn finalize(self) -> Result<VerifiableSecretShares, DkgError> {
         assert_eq!(self.vote_ids.len(), self.secret_shares.len());
-        let mut shares = BTreeMap::new();
-        for (id, share) in self
-            .vote_ids
-            .into_iter()
-            .zip(self.aggregated_shares.into_iter())
-        {
-            shares.insert(id, share);
-        }
+        let shares = zip(self.vote_ids, self.aggregated_shares).collect();
+
         Ok(VerifiableSecretShares {
             commitment: self.aggregated_commitment,
             shares,

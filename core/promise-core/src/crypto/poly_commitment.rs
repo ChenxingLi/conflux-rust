@@ -3,24 +3,16 @@ use std::{
     ops::Deref,
 };
 
-use crate::{
-    cfg_into_iter, cfg_iter,
-    converted_id::{num_to_identifier, VoteID},
-};
+use crate::{cfg_iter, converted_id::VoteID};
 
 use super::types::{
     Affine, CoefficientCommitment, Element, PolynomialCommitment, Projective,
 };
 
 use cfx_types::H256;
-use frost_core::VartimeMultiscalarMul;
-use frost_secp256k1::{Identifier, Secp256K1Sha256};
 use group::{prime::PrimeCurveAffine, GroupEncoding};
 use k256::{
-    elliptic_curve::{
-        ops::{BatchInvert, MulByGenerator},
-        BatchNormalize,
-    },
+    elliptic_curve::{ops::MulByGenerator, BatchNormalize},
     Scalar,
 };
 use rand_core::{CryptoRng, RngCore};
@@ -163,93 +155,4 @@ pub fn validate_verifiable_secret_share(
     }
 
     true
-}
-
-pub fn interpolate_and_evaluate_points(
-    input_points: BTreeMap<usize, Element>,
-    to_evaluate: impl IntoIterator<Item = usize>,
-) -> BTreeMap<usize, Element> {
-    let to_evaluate: Vec<usize> = to_evaluate
-        .into_iter()
-        .filter(|x| !input_points.contains_key(x))
-        .collect();
-
-    let input_points: BTreeMap<Identifier, Element> = input_points
-        .into_iter()
-        .map(|(x, y)| (num_to_identifier(x), y))
-        .collect();
-
-    let x_set: BTreeSet<Identifier> =
-        input_points.iter().map(|(x, _)| x.clone()).collect();
-
-    cfg_into_iter!(to_evaluate)
-        .map(|evaluate_point| {
-            let ans = interpolate_and_evaluate_points_inner(
-                &x_set,
-                &input_points,
-                num_to_identifier(evaluate_point),
-            );
-            (evaluate_point, ans)
-        })
-        .collect()
-}
-
-fn interpolate_and_evaluate_points_inner(
-    x_set: &BTreeSet<Identifier>, input_points: &BTreeMap<Identifier, Element>,
-    evaluate_point: Identifier,
-) -> Element {
-    let mut num_list = vec![];
-    let mut den_list = vec![];
-    let mut elem_list = vec![];
-    for (identifier, element) in input_points {
-        let (num, den) = compute_lagrange_coefficient_partial(
-            x_set,
-            Some(evaluate_point),
-            identifier.clone(),
-        );
-        num_list.push(num);
-        den_list.push(den);
-        elem_list.push(element.clone());
-    }
-
-    let inv_den_list = Scalar::batch_invert(&den_list[..]).unwrap();
-    num_list
-        .iter_mut()
-        .zip(inv_den_list.iter())
-        .for_each(|(num, inv_den_list)| *num *= *inv_den_list);
-
-    VartimeMultiscalarMul::<Secp256K1Sha256>::vartime_multiscalar_mul(
-        num_list, elem_list,
-    )
-}
-
-fn compute_lagrange_coefficient_partial(
-    x_set: &BTreeSet<Identifier>, x: Option<Identifier>, x_i: Identifier,
-) -> (Scalar, Scalar) {
-    assert!(!x_set.is_empty());
-
-    let mut num = Scalar::ONE;
-    let mut den = Scalar::ONE;
-
-    let mut x_i_found = false;
-
-    for x_j in x_set.iter() {
-        if x_i == *x_j {
-            x_i_found = true;
-            continue;
-        }
-
-        if let Some(x) = x {
-            num *= x - *x_j;
-            den *= x_i - *x_j;
-        } else {
-            // Both signs inverted just to avoid requiring Neg (-*xj)
-            num *= *x_j;
-            den *= *x_j - x_i;
-        }
-    }
-
-    assert!(!x_i_found);
-
-    (num, den)
 }

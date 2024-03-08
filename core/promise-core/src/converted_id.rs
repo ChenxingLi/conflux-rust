@@ -10,6 +10,11 @@ use crate::crypto_types::{Identifier, Scalar};
 pub struct NodeID(u16);
 
 impl NodeID {
+    pub fn new(value: usize) -> Self {
+        assert!(value > 0);
+        NodeID(value as u16)
+    }
+
     pub fn to_identifier(&self) -> Identifier {
         Identifier::new(Scalar::from(self.0 as u64)).unwrap()
     }

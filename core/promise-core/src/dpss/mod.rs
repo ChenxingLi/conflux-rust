@@ -1,11 +1,11 @@
+mod error;
+mod share_manager;
 mod state;
 
 pub type DpssID = usize;
 
-use serde::{Deserialize, Serialize};
+pub use error::DpssError;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
-pub enum VssType {
-    DistributedKeyGeneration,
-    SecretShareRotation,
-}
+pub use state::DpssEpochState;
+
+pub use share_manager::HandoffManager;

@@ -6,7 +6,10 @@ use crate::crypto_types::{
 use frost_core::{
     challenge, compute_binding_factor_list, compute_group_commitment,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    iter::zip,
+};
 
 pub struct FrostSignTask {
     /// Received shares $z_i$ for each participant $i$
@@ -128,9 +131,7 @@ impl FrostSignTask {
 
         let signing_share = {
             let mut summation = Scalar::ZERO;
-            for (coeff, signing_share) in
-                coefficients.iter().zip(signing_shares.iter())
-            {
+            for (coeff, signing_share) in zip(coefficients, signing_shares) {
                 summation += coeff * &signing_share.to_scalar();
             }
             SigningShare::new(summation)

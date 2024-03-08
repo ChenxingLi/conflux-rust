@@ -13,6 +13,7 @@ use crate::crypto_types::{
 pub enum VssType {
     DistributedKeyGeneration,
     SecretShareRotation,
+    SecretShareInitialize,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]

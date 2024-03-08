@@ -29,10 +29,6 @@ impl EpochNonceCommitments {
             }
         }
 
-        if nonce_commitments.len() <= 1 {
-            return Err(FrostError::NotEnoughUnusedPreCommit);
-        }
-
         signer_group.remove_nodes(&to_remove_nodes)?;
 
         signer_group.check_enough_shares()?;
