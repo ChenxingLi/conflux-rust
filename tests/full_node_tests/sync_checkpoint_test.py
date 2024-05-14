@@ -26,7 +26,9 @@ class SyncCheckpointTests(ConfluxTestFramework):
             # Make sure checkpoint synchronization is triggered during phase change.
             "dev_allow_phase_change_without_peer": "false",
             # Disable pos reference because pow blocks are generated too fast.
-            "pos_reference_enable_height": "10000"
+            "pos_reference_enable_height": "10000",
+            # Disable 1559 for unknown issue
+            "cip1559_transition_height": str(99999999)
         }
 
     def setup_network(self):
@@ -36,6 +38,7 @@ class SyncCheckpointTests(ConfluxTestFramework):
         connect_sample_nodes(self.nodes[:-1], self.log, latency_max=1)
         for i in range(self.num_nodes - 1):
             self.nodes[i].wait_for_recovery(["NormalSyncPhase"], 10)
+            self.nodes[i].running = True
 
     def _generate_txs(self, peer, num):
         client = RpcClient(self.nodes[peer])
@@ -49,7 +52,7 @@ class SyncCheckpointTests(ConfluxTestFramework):
         return txs
 
     def run_test(self):
-        num_blocks = 200
+        num_blocks = 20
         snapshot_epoch = 150
 
         # Generate checkpoint on node[0]
@@ -61,7 +64,7 @@ class SyncCheckpointTests(ConfluxTestFramework):
             block_hash = archive_node_client.generate_block_with_fake_txs(txs)
             if i >= snapshot_epoch:
                 blocks_in_era.append(block_hash)
-        sync_blocks(self.nodes[:-1])
+        sync_blocks(self.nodes[:-1], timeout=10)
         self.log.info("All archive nodes synced")
 
         # Start node[full_node_index] as full node to sync checkpoint

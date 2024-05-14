@@ -51,6 +51,8 @@ class HardforkTest(ConfluxTestFramework):
         self.conf_parameters["sigma_fix_transition_number"] = 1000000
         self.conf_parameters["tanzanite_transition_height"] = 100
         self.conf_parameters["cip112_transition_height"] = 100
+        # 1559 must be activated later than CIP-43
+        self.conf_parameters["cip112_transition_height"] = 501
         self.rpc_timewait = 6000
 
     def setup_nodes(self):

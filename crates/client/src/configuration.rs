@@ -1400,8 +1400,10 @@ impl Configuration {
             params.transition_heights => { cip130, cip133e }
         );
         // TODO: disable 1559 test during dev
-        params.transition_heights.cip1559 =
-            self.raw_conf.cip1559_transition_height.unwrap_or(u64::MAX);
+        params.transition_heights.cip1559 = self
+            .raw_conf
+            .cip1559_transition_height
+            .unwrap_or(non_genesis_default_transition_time);
     }
 }
 
