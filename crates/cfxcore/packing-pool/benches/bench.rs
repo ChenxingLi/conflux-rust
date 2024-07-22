@@ -33,7 +33,7 @@ fn bench_pool() -> PackingPool<MockTransaction> {
     let mut rand = XorShiftRng::from_entropy();
     let mut pool =
         PackingPool::new(PackingPoolConfig::new(3_000_000.into(), 20, 4));
-    for i in 0..10000 {
+    for i in 0..100_000 {
         let mut gas_limit = 1.001f64.powf(20000.0 + i as f64) as u64;
         gas_limit -= gas_limit / rand.sample(Uniform::new(500, 2000));
         let mut gas_price = 1.001f64.powf(30000.0 - i as f64) as u64;
@@ -63,8 +63,8 @@ fn bench_insert(c: &mut Criterion) {
 }
 
 fn bench_sample(c: &mut Criterion) {
-    c.bench_function("Make sampler", move |b| {
-        let pool = bench_pool();
+    let pool = bench_pool();
+    c.bench_function("Make sampler", |b| {
         let mut rng = XorShiftRng::from_entropy();
         b.iter(|| {
             let block_gas_limit = 1.001f64
@@ -76,8 +76,7 @@ fn bench_sample(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("Random pool sample (all random pick) (100x)", move |b| {
-        let pool = bench_pool();
+    c.bench_function("Random pool sample (all random pick) (100x)", |b| {
         let mut rng = XorShiftRng::from_entropy();
         let block_gas_limit = 1.001f64.powf(27000.0) as u64;
         b.iter(|| {
@@ -90,8 +89,7 @@ fn bench_sample(c: &mut Criterion) {
 
     c.bench_function(
         "Random pool sample (2/3 random pick + 1/3 candidate) (10000x)",
-        move |b| {
-            let pool = bench_pool();
+        |b| {
             let mut rng = XorShiftRng::from_entropy();
             let block_gas_limit = 1.001f64.powf(35299.0) as u64;
             b.iter(|| {
