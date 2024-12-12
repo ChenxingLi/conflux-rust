@@ -291,13 +291,13 @@ impl NoncePool {
             tx.nonce(),
             b,
             Some(balance - cost_elapsed),
-        );
+        )?;
         Some((tx, end_nonce))
     }
 
     pub fn continous_ready_nonce(
         &self, start_nonce: &U256, rest_balance: Option<U256>,
-    ) -> (U256, StopReason) {
+    ) -> Option<(U256, StopReason)> {
         let start_weight = self.map.weight(start_nonce);
         self.map
             .continous_ready_nonce(start_nonce, start_weight, rest_balance)

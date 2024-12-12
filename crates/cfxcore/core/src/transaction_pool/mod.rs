@@ -323,20 +323,17 @@ impl TransactionPool {
             return None;
         }
 
-        let (last_valid_nonce, stop_reason) =
-            self.inner.read().continous_ready_nonce(
-                address,
-                state_nonce,
-                Some(balance - required_balance),
-            );
+        let res = self.inner.read().continous_ready_nonce(
+            address,
+            state_nonce,
+            Some(balance - required_balance),
+        );
 
-        match stop_reason {
-            StopReason::NoMoreTransaction | StopReason::MissingTransaction => {
-                Some(last_valid_nonce + 1)
-            }
-            StopReason::TooManyTransaction | StopReason::NotEnoughBalance => {
-                None
-            }
+        use StopReason::*;
+        match res {
+            None => Some(state_nonce),
+            Some((nonce, MissingNextNonce | ReachRightMost)) => Some(nonce + 1),
+            Some((_, TooManyTransaction | NotEnoughBalance)) => None,
         }
     }
 

@@ -393,11 +393,11 @@ impl DeferredPool {
     fn continous_ready_nonce(
         &self, addr: AddressWithSpace, start_nonce: U256,
         rest_balance: Option<U256>,
-    ) -> (U256, StopReason) {
+    ) -> Option<(U256, StopReason)> {
         let bucket = if let Some(bucket) = self.buckets.get(&addr) {
             bucket
         } else {
-            return (start_nonce, StopReason::NoMoreTransaction);
+            return None;
         };
         bucket.continous_ready_nonce(&start_nonce, rest_balance)
     }
@@ -1002,7 +1002,7 @@ impl TransactionPoolInner {
     pub fn continous_ready_nonce(
         &self, address: &AddressWithSpace, state_nonce: U256,
         rest_balance: Option<U256>,
-    ) -> (U256, StopReason) {
+    ) -> Option<(U256, StopReason)> {
         self.deferred_pool.continous_ready_nonce(
             *address,
             state_nonce,
