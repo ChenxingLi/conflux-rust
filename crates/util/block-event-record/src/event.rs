@@ -35,3 +35,12 @@ impl CustomEvent {
 
     pub fn key(&self) -> String { format!("custom_{}_{}", self.0, self.1) }
 }
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
+pub(crate) struct CustomGauge(&'static str);
+
+impl CustomGauge {
+    pub fn new(name: &'static str) -> Self { CustomGauge(name) }
+
+    pub fn key(&self) -> String { format!("gauge_{}", self.0) }
+}

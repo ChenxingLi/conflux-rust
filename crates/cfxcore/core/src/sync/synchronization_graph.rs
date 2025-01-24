@@ -14,6 +14,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use block_event_record::{record_custom_event, record_custom_gauge};
 use cfx_parameters::consensus_internal::ELASTICITY_MULTIPLIER;
 use futures::executor::block_on;
 use parking_lot::RwLock;
@@ -1110,6 +1111,8 @@ impl SynchronizationGraph {
                             // FIXME: We need to investigate why duplicate hash may send to the consensus worker
                             Ok(hash) => if !reverse_map.contains_key(&hash) {
                                 debug!("Worker thread receive: block = {}", hash);
+                                record_custom_event(&hash, "sync_to_con", 1);
+                                record_custom_gauge(&hash, "con_worker_queue", priority_queue.len() as u64);
                                 let header = data_man.block_header_by_hash(&hash).expect("Header must exist before sending to the consensus worker!");
 
                                 // start pos with an era advance.
@@ -1155,7 +1158,9 @@ impl SynchronizationGraph {
                     }
                     if let Some((_, hash)) = priority_queue.pop() {
                         CONSENSUS_WORKER_QUEUE.dequeue(1);
+                        record_custom_event(&hash, "sync_to_con", 2);
                         let successors = reverse_map.remove(&hash).unwrap();
+                        record_custom_gauge(&hash, "con_worker_successors", successors.len() as u64);
                         for succ in successors {
                             let cnt_tuple = counter_map.get_mut(&succ).unwrap();
                             *cnt_tuple -= 1;
@@ -1167,6 +1172,7 @@ impl SynchronizationGraph {
                                 priority_queue.push((epoch_number, succ));
                             }
                         }
+                        record_custom_event(&hash, "sync_to_con", 3);
                         consensus.on_new_block(
                             &hash,
                         );
@@ -1845,6 +1851,8 @@ impl SynchronizationGraph {
                 );
             }
         }
+
+        record_custom_event(&hash, "sync_to_con", 0);
 
         // If we are locked for catch-up, make sure no new block will enter sync
         // graph.

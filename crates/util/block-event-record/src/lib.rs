@@ -18,6 +18,11 @@ pub fn record_custom_event(hash: &H256, name: &'static str, stage: usize) {
     recorder.record_custom_event(hash, name, stage);
 }
 
+pub fn record_custom_gauge(hash: &H256, name: &'static str, value: u64) {
+    let mut recorder = Recorder::get_instance_mut();
+    recorder.record_custom_gauge(hash, name, value);
+}
+
 pub fn record_event_for_blocks(
     hashes: impl Iterator<Item = H256>, event: Event,
 ) {

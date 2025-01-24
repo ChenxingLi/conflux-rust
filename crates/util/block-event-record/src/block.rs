@@ -1,4 +1,4 @@
-use crate::event::CustomEvent;
+use crate::event::{CustomEvent, CustomGauge};
 
 use super::event::Event;
 
@@ -15,6 +15,7 @@ pub(crate) struct BlockRecord {
     hash_ready_time: SystemTime,
     event_ticks: BTreeMap<Event, u64>,
     custom_event_ticks: BTreeMap<CustomEvent, u64>,
+    custom_gauges: BTreeMap<CustomGauge, u64>,
 }
 
 impl BlockRecord {
@@ -26,6 +27,7 @@ impl BlockRecord {
             hash_ready_instant,
             event_ticks: BTreeMap::new(),
             custom_event_ticks: BTreeMap::new(),
+            custom_gauges: BTreeMap::new(),
         }
     }
 
@@ -47,15 +49,20 @@ impl BlockRecord {
 
     pub(crate) fn record_custom_event(
         &mut self, name: &'static str, stage: usize,
-    ) -> bool {
+    ) {
         let custom_event = CustomEvent::new(name, stage);
         self.custom_event_ticks
             .entry(custom_event)
             .or_insert_with(|| {
                 self.hash_ready_instant.elapsed().as_nanos() as u64
             });
+    }
 
-        self.is_complete()
+    pub(crate) fn record_custom_gauge(
+        &mut self, name: &'static str, value: u64,
+    ) {
+        let custom_gauge = CustomGauge::new(name);
+        self.custom_gauges.entry(custom_gauge).or_insert(value);
     }
 
     pub(crate) fn log(&self, hash: &H256) {
@@ -73,6 +80,9 @@ impl BlockRecord {
         );
         result.extend(self.custom_event_ticks.iter().map(
             |(custom_event, value)| dict_item(&custom_event.key(), value),
+        ));
+        result.extend(self.custom_gauges.iter().map(
+            |(custom_gauge, value)| dict_item(&custom_gauge.key(), value),
         ));
 
         let status = if self.is_complete() {

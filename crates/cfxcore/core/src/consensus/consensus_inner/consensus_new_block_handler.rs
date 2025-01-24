@@ -20,6 +20,7 @@ use crate::{
     statistics::SharedStatistics,
     NodeType, Notifications, SharedTransactionPool,
 };
+use block_event_record::record_custom_event;
 use cfx_parameters::{consensus::*, consensus_internal::*};
 use cfx_storage::{storage_db::SnapshotDbManagerTrait, StateIndex};
 use cfx_types::H256;
@@ -1744,6 +1745,7 @@ impl ConsensusNewBlockHandler {
             "insert new block into consensus: header_only={:?} block={:?}",
             inner.header_only, &block_header
         );
+        record_custom_event(&hash, "sync_to_con", 4);
         block_event_record::record_event(
             &hash,
             block_event_record::Event::ConGraph,
