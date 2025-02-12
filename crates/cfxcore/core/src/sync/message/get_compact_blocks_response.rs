@@ -106,6 +106,21 @@ impl Handleable for GetCompactBlocksResponse {
                     .data_man
                     .find_missing_tx_indices_encoded(&mut cmpct)
             };
+
+            {
+                let block_txns = cmpct.reconstructed_txns.len();
+                let missing = missing.len();
+                let recovery_rate = if block_txns > 0 {
+                    missing * 1000 / block_txns
+                } else {
+                    0
+                };
+                block_event_record::record_custom_gauge(
+                    &cmpct.hash(),
+                    "cmpt_recover_rate",
+                    recovery_rate as u64,
+                );
+            }
             if !missing.is_empty() {
                 debug!("Request {} missing tx in {}", missing.len(), hash);
                 ctx.manager.graph.data_man.insert_compact_block(cmpct);
