@@ -47,6 +47,11 @@ impl Request for GetBlockHashesByEpoch {
         let mut inflight_keys = inflight_keys.write(self.msg_id());
         self.epochs
             .retain(|epoch| inflight_keys.insert(Key::Num(*epoch)));
+        debug!(
+            "[1b1r][p2p] inflight_filter_retained(msg_name={}): epochs = {:?}",
+            self.msg_name(),
+            &self.epochs[..]
+        );
     }
 
     fn is_empty(&self) -> bool { self.epochs.is_empty() }

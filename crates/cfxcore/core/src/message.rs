@@ -6,6 +6,8 @@ pub type RequestId = u64;
 pub type MsgId = u16;
 const MSG_ID_MAX: u16 = 1 << 14;
 
+use std::time::Instant;
+
 pub use cfx_bytes::Bytes;
 pub use priority_send_queue::SendQueuePriority;
 use rlp::{Decodable, Rlp};
@@ -98,6 +100,7 @@ pub trait Message:
         let msg = self.encode();
         let size = msg.len();
 
+        let begin_send = Instant::now();
         if let Err(e) = io.send(
             node_id,
             msg,
@@ -110,10 +113,11 @@ pub trait Message:
         };
 
         debug!(
-            "Send message({}) to peer {}, protocol {:?}",
+            "[1b1r][p2p] send_message(msg_name={}, peer_id={:?}, req_id={:?}): time_ns = {}",
             self.msg_name(),
             node_id,
-            io.get_protocol(),
+            self.get_request_id(),
+            begin_send.elapsed().as_nanos(),
         );
 
         if !io.is_peer_self(node_id) {

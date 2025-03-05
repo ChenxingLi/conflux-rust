@@ -11,7 +11,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     path::{Path, PathBuf},
     str::FromStr,
-    sync::{atomic::Ordering as AtomicOrdering, Arc},
+    sync::{atomic::{AtomicU64, Ordering as AtomicOrdering}, Arc},
     time::{Duration, Instant},
 };
 
@@ -481,6 +481,7 @@ impl DelayedQueue {
 
     fn send_delayed_messages(&self, network_service: &NetworkServiceInner) {
         let context = self.queue.lock().pop().unwrap();
+        debug!("[1b1r][net] packet_dequeue: queue_id = {}", context.id);
         let r = context.session.write().send_packet(
             &context.io,
             Some(context.protocol),
@@ -556,6 +557,7 @@ impl NetworkServiceInner {
         info!("Self pos public key: {:?}", pos_pub_keys);
 
         info!("Self node id: {:?}", *keys.public());
+        debug!("[1b1r][meta] self_node_id = {:?}", *keys.public());
 
         let tcp_listener = TcpListener::bind(&listen_address)?;
         listen_address = SocketAddr::new(
@@ -1886,6 +1888,7 @@ struct DelayMessageContext {
     /// The minimum peer protocol version since which the message is supported.
     min_protocol_version: ProtocolVersion,
     priority: SendQueuePriority,
+    id: u64,
 }
 
 impl DelayMessageContext {
@@ -1894,6 +1897,7 @@ impl DelayMessageContext {
         session: SharedSession, peer: NodeId, msg: Vec<u8>,
         min_protocol_version: ProtocolVersion, priority: SendQueuePriority,
     ) -> Self {
+        static ID: AtomicU64 = AtomicU64::new(0);
         DelayMessageContext {
             ts,
             io,
@@ -1903,6 +1907,7 @@ impl DelayMessageContext {
             msg,
             min_protocol_version,
             priority,
+            id: ID.fetch_add(1, AtomicOrdering::Relaxed),
         }
     }
 }
@@ -2003,7 +2008,7 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
                         self.network_service.delayed_queue.as_ref().unwrap();
                     let mut queue = q.queue.lock();
                     let ts_to_send = Instant::now() + latency;
-                    queue.push(DelayMessageContext::new(
+                    let delayed_context = DelayMessageContext::new(
                         ts_to_send,
                         self.io.clone(),
                         self.protocol,
@@ -2012,7 +2017,9 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
                         msg,
                         min_protocol_version,
                         priority,
-                    ));
+                    );
+                    debug!("[1b1r][net] packet_queued: queue_id = {}, latency_ns = {}", delayed_context.id, latency.as_nanos());
+                    queue.push(delayed_context);
                     self.io.register_timer_once_nocancel(
                         SEND_DELAYED_MESSAGES,
                         latency,

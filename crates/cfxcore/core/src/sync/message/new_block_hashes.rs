@@ -2,9 +2,12 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use crate::sync::{
-    message::{Context, Handleable},
-    Error,
+use crate::{
+    message::Message,
+    sync::{
+        message::{Context, Handleable},
+        Error,
+    },
 };
 use cfx_types::H256;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
@@ -12,6 +15,17 @@ use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 #[derive(Debug, PartialEq)]
 pub struct NewBlockHashes {
     pub block_hashes: Vec<H256>,
+}
+
+impl NewBlockHashes {
+    pub fn xxh3_128(&self) -> u128 {
+        use xxhash_rust::xxh3::Xxh3;
+        let mut hasher = Xxh3::new();
+        for hash in self.block_hashes.iter() {
+            hasher.update(&hash.0);
+        }
+        hasher.digest128()
+    }
 }
 
 impl Encodable for NewBlockHashes {
@@ -29,6 +43,11 @@ impl Decodable for NewBlockHashes {
 
 impl Handleable for NewBlockHashes {
     fn handle(self, ctx: &Context) -> Result<(), Error> {
+        debug!(
+            "[1b1r][p2p] handle_announce(msg_name={}): block_hashes = {:?}",
+            self.msg_name(),
+            &self.block_hashes[..]
+        );
         debug!("on_new_block_hashes, msg={:?}", self);
 
         if ctx.manager.catch_up_mode() {

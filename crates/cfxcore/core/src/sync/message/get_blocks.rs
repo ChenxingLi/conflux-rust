@@ -75,6 +75,11 @@ impl Request for GetBlocks {
     fn with_inflight(&mut self, inflight_keys: &KeyContainer) {
         let mut inflight_keys = inflight_keys.write(self.msg_id());
         self.hashes.retain(|h| inflight_keys.insert(Key::Hash(*h)));
+        debug!(
+            "[1b1r][p2p] inflight_filter_retained(msg_name={}): hashes = {:?}",
+            self.msg_name(),
+            &self.hashes[..]
+        );
     }
 
     fn is_empty(&self) -> bool { self.hashes.is_empty() }

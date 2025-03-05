@@ -1305,10 +1305,17 @@ impl SynchronizationProtocolHandler {
         &self, io: &dyn NetworkContext, need_to_relay: Vec<H256>,
     ) -> Result<(), Error> {
         if !need_to_relay.is_empty() && !self.catch_up_mode() {
-            let new_block_hash_msg: Box<dyn Message> =
-                Box::new(NewBlockHashes {
-                    block_hashes: need_to_relay.clone(),
-                });
+            let new_hashes = NewBlockHashes {
+                block_hashes: need_to_relay.clone(),
+            };
+            debug!(
+                "[1b1r][p2p] broadcast(msg_name={}): block_hashes = {:?}, digest = {}",
+                new_hashes.msg_name(),
+                &new_hashes.block_hashes[..],
+                new_hashes.xxh3_128()
+            );
+            let new_block_hash_msg: Box<dyn Message> = Box::new(new_hashes);
+
             self.broadcast_message(
                 io,
                 &Default::default(),
@@ -1455,6 +1462,12 @@ impl SynchronizationProtocolHandler {
                 key2,
                 short_ids_part.pop().unwrap(),
                 tx_hashes_part.clone(),
+            );
+            debug!(
+                "[1b1r][p2p] announce(msg_name={}, peer_id={:?}): digest = {}",
+                tx_msg.msg_name(),
+                peer_id,
+                tx_msg.xxh3_128(),
             );
             match tx_msg.send(io, &peer_id) {
                 Ok(_) => {

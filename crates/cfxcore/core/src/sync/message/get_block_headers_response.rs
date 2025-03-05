@@ -44,6 +44,14 @@ impl Handleable for GetBlockHeadersResponse {
                 0,
             );
         }
+        let block_hashes: Vec<_> =
+            self.headers.iter().map(|x| x.hash()).collect();
+        debug!(
+            "[1b1r][p2p] handle_response(msg_name={}, req_id={}): block_hashes = {:?}",
+            self.msg_name(),
+            self.request_id,
+            &block_hashes
+        );
 
         if ctx.io.is_peer_self(&ctx.node_id) {
             let requested = self.headers.iter().map(|h| h.hash()).collect();

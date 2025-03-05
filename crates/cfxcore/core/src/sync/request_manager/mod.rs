@@ -7,6 +7,7 @@ use super::{
     synchronization_state::SynchronizationState,
 };
 use crate::{
+    message::Message,
     sync::{
         message::{
             msgid, GetBlockHashesByEpoch, GetBlockHeaders, GetBlockTxn,
@@ -273,6 +274,13 @@ impl RequestManager {
             hashes,
         };
 
+        debug!(
+            "[1b1r][p2p] request(msg_name={}, peer_id={:?}): hashes = {:?}",
+            request.msg_name(),
+            peer_id,
+            &request.hashes[..]
+        );
+
         self.request_with_delay(io, Box::new(request), peer_id, delay);
     }
 
@@ -284,6 +292,12 @@ impl RequestManager {
             request_id: 0,
             epochs,
         };
+        debug!(
+            "[1b1r][p2p] request(msg_name={}, peer_id={:?}): epochs = {:?}",
+            request.msg_name(),
+            peer_id,
+            &request.epochs[..]
+        );
 
         self.request_with_delay(io, Box::new(request), peer_id, delay);
     }
@@ -302,6 +316,12 @@ impl RequestManager {
             hashes,
             preferred_node_type,
         };
+        debug!(
+            "[1b1r][p2p] request(msg_name={}, peer_id={:?}): hashes = {:?}",
+            request.msg_name(),
+            peer_id,
+            &request.hashes[..]
+        );
 
         self.request_with_delay(io, Box::new(request), peer_id, delay);
     }
@@ -430,6 +450,7 @@ impl RequestManager {
             short_ids: short_ids.clone(),
             tx_hashes: tx_hashes.clone(),
         };
+        debug!("[1b1r][p2p] request(msg_name={}, peer_id={:?}): short_ids = {:?}, tx_hashes = {:?}, digest = {}", request.msg_name(), peer_id, &request.short_ids, &request.tx_hashes, transaction_digests.xxh3_128());
 
         if request.is_empty() {
             return;
@@ -509,6 +530,12 @@ impl RequestManager {
             indices,
             tx_hashes: tx_hashes.clone(),
         };
+        debug!(
+            "[1b1r][p2p] request(msg_name={}, peer_id={:?}): tx_hashes = {:?}",
+            request.msg_name(),
+            peer_id,
+            &request.tx_hashes,
+        );
 
         if request.is_empty() {
             return;
@@ -536,6 +563,12 @@ impl RequestManager {
             request_id: 0,
             hashes,
         };
+        debug!(
+            "[1b1r][p2p] request(msg_name={}, peer_id={:?}): hashes = {:?}",
+            request.msg_name(),
+            peer_id,
+            &request.hashes[..]
+        );
 
         self.request_with_delay(io, Box::new(request), peer_id, delay);
     }
@@ -551,6 +584,13 @@ impl RequestManager {
             block_hash: block_hash.clone(),
             index_skips,
         };
+        debug!(
+            "[1b1r][p2p] request(msg_name={}, peer_id={:?}): block_hash = {:?}, index_skips = {:?}",
+            request.msg_name(),
+            peer_id,
+            &request.block_hash,
+            &request.index_skips[..]
+        );
 
         self.request_with_delay(io, Box::new(request), Some(peer_id), delay);
     }
@@ -798,6 +838,13 @@ impl RequestManager {
                 },
                 tx_hashes: HashSet::new(),
             };
+            debug!(
+                "[1b1r][p2p] request(msg_name={}, peer_id={:?}): short_ids = {:?}, tx_hashes = {:?}",
+                tx_request.msg_name(),
+                request.peer_id,
+                &tx_request.short_ids,
+                &tx_request.tx_hashes
+            );
             if self
                 .request_handler
                 .send_request(

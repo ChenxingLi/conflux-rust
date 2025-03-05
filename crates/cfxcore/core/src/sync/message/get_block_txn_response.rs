@@ -3,7 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 use crate::{
-    message::RequestId,
+    message::{Message, RequestId},
     sync::{
         message::{
             metrics::BLOCK_TXN_HANDLE_TIMER, Context, GetBlockTxn, Handleable,
@@ -29,6 +29,18 @@ impl Handleable for GetBlockTxnResponse {
         let _timer = MeterTimer::time_func(BLOCK_TXN_HANDLE_TIMER.as_ref());
 
         debug!("on_get_blocktxn_response, hash={:?}", self.block_hash);
+
+        let tx_hashes: Vec<_> = self
+            .block_txn
+            .iter()
+            .map(|x| x.transaction.signature_hash())
+            .collect();
+        debug!(
+            "[1b1r][p2p] handle_response(msg_name={}, req_id={}): tx_hashes = {:?}",
+            self.msg_name(),
+            self.request_id,
+            &tx_hashes[..]
+        );
 
         let resp_hash = self.block_hash;
         let req = ctx.match_request(self.request_id)?;

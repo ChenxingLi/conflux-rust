@@ -3,7 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 use crate::{
-    message::RequestId,
+    message::{Message, RequestId},
     sync::{
         message::{
             msgid, Context, GetBlocks, GetCompactBlocksResponse, Handleable,
@@ -51,6 +51,11 @@ impl Request for GetCompactBlocks {
     fn with_inflight(&mut self, inflight_keys: &KeyContainer) {
         let mut inflight_keys = inflight_keys.write(msgid::GET_BLOCKS);
         self.hashes.retain(|h| inflight_keys.insert(Key::Hash(*h)));
+        debug!(
+            "[1b1r][p2p] inflight_filter_retained(msg_name={}): hashes = {:?}",
+            self.msg_name(),
+            &self.hashes[..]
+        );
     }
 
     fn is_empty(&self) -> bool { self.hashes.is_empty() }

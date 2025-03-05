@@ -2,6 +2,8 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
+use std::time::Instant;
+
 use super::*;
 use crate::{
     message::{
@@ -331,19 +333,21 @@ pub fn handle_rlp_message(
 fn handle_message<T: Decodable + Handleable + Message>(
     ctx: &Context, rlp: &Rlp,
 ) -> Result<(), Error> {
+    let instant = Instant::now();
     let msg: T = decode_rlp_and_check_deprecation(
         rlp,
         ctx.manager.minimum_supported_version(),
         ctx.io.get_protocol(),
     )?;
+    let rlp_decode_time = instant.elapsed().as_nanos();
 
     let msg_id = msg.msg_id();
     let msg_name = msg.msg_name();
     let req_id = msg.get_request_id();
 
-    trace!(
-        "handle sync protocol message, peer = {}, id = {}, name = {}, request_id = {:?}",
-        ctx.node_id, msg_id, msg_name, req_id,
+    debug!(
+        "[1b1r][p2p] receive_message(msg_name={}, peer_id={:?}, req_id={:?}): decode_time_ns = {}",
+        msg_name, ctx.node_id, req_id, rlp_decode_time
     );
 
     msg.throttle(ctx)?;

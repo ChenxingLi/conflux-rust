@@ -3,7 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 use crate::{
-    message::RequestId,
+    message::{Message, RequestId},
     sync::{
         message::{
             metrics::BLOCK_HANDLE_TIMER, Context, GetBlocks, GetCompactBlocks,
@@ -30,12 +30,18 @@ impl Handleable for GetBlocksResponse {
     fn handle(self, ctx: &Context) -> Result<(), Error> {
         let _timer = MeterTimer::time_func(BLOCK_HANDLE_TIMER.as_ref());
 
+        let block_hashes = self
+            .blocks
+            .iter()
+            .map(|b| b.block_header.hash())
+            .collect::<Vec<H256>>();
+
+        debug!("on_blocks_response, get block hashes {:?}", block_hashes);
         debug!(
-            "on_blocks_response, get block hashes {:?}",
-            self.blocks
-                .iter()
-                .map(|b| b.block_header.hash())
-                .collect::<Vec<H256>>()
+            "[1b1r][p2p] handle_response(msg_name={}, req_id={}): block_hashes = {:?}",
+            self.msg_name(),
+            self.request_id,
+            &block_hashes[..]
         );
 
         // TODO Check block size in advance to avoid attacks causing OOM.
@@ -88,12 +94,20 @@ pub struct GetBlocksWithPublicResponse {
 
 impl Handleable for GetBlocksWithPublicResponse {
     fn handle(self, ctx: &Context) -> Result<(), Error> {
+        let block_hashes = self
+            .blocks
+            .iter()
+            .map(|b| b.block_header.hash())
+            .collect::<Vec<H256>>();
         debug!(
             "on_blocks_with_public_response, get block hashes {:?}",
-            self.blocks
-                .iter()
-                .map(|b| b.block_header.hash())
-                .collect::<Vec<H256>>()
+            block_hashes
+        );
+        debug!(
+            "[1b1r][p2p] handle_response(msg_name={}, req_id={}): block_hashes = {:?}",
+            self.msg_name(),
+            self.request_id,
+            &block_hashes[..]
         );
         let req = ctx.match_request(self.request_id)?;
         let delay = req.delay;

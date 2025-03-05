@@ -17,6 +17,7 @@ use crate::{
     },
 };
 use cfx_types::H256;
+use itertools::Itertools;
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use metrics::MeterTimer;
 use network::service::ProtocolVersion;
@@ -124,9 +125,26 @@ pub struct TransactionDigests {
     pub tx_hashes: Vec<H256>, // SHA-3 hash
 }
 
+impl TransactionDigests {
+    pub fn xxh3_128(&self) -> u128 {
+        use xxhash_rust::xxh3::Xxh3;
+        let mut hasher = Xxh3::new();
+        hasher.update(&self.window_index.to_ne_bytes());
+        hasher.update(&self.key1.to_ne_bytes());
+        hasher.update(&self.key2.to_ne_bytes());
+        hasher.update(&self.short_ids);
+        for hash in self.tx_hashes.iter() {
+            hasher.update(&hash.0);
+        }
+        hasher.digest128()
+    }
+}
+
 impl Handleable for TransactionDigests {
     fn handle(self, ctx: &Context) -> Result<(), Error> {
         {
+            debug!("[1b1r][p2p] handle_announce(msg_name={}): short_ids = {:?}, tx_hashes = {:?}, digest = {}", self.msg_name(), &self.short_ids[..], &self.tx_hashes[..], self.xxh3_128());
+
             let peer_info = ctx.manager.syn.get_peer_info(&ctx.node_id)?;
 
             let mut peer_info = peer_info.write();
@@ -584,6 +602,16 @@ impl Handleable for GetTransactionsResponse {
             ctx.node_id
         );
 
+        let hashes_of_full_tx =
+            self.transactions.iter().map(|x| x.hash()).collect_vec();
+        debug!(
+            "[1b1r][p2p] handle_response(msg_name={}, req_id={}): tx_bodies = {:?}, tx_hashes = {:?}",
+            self.msg_name(),
+            self.request_id,
+            &hashes_of_full_tx[..],
+            &self.tx_hashes
+        );
+
         // The transaction pool will rely on the execution state information to
         // verify transaction validity. It may incorrectly accept/reject
         // transactions when in the catch up mode because the state is still
@@ -609,6 +637,13 @@ impl Handleable for GetTransactionsResponse {
                     trace!("Transaction {} is rejected by the transaction pool: error = {}", tx, e);
                 }
             }
+            let fail_tx_hashes =
+                signed_trans.iter().map(|x| x.hash()).collect_vec();
+            debug!(
+                "[1b1r][p2p] fail_tx(req_id={}): tx_hashes = {:?}",
+                self.request_id,
+                &fail_tx_hashes[..]
+            );
             ctx.manager
                 .request_manager
                 .transactions_received_from_digests(ctx.io, &req, signed_trans);
@@ -663,6 +698,18 @@ impl Handleable for GetTransactionsFromTxHashesResponse {
             ctx.node_id
         );
 
+        let tx_hashes = self
+            .transactions
+            .iter()
+            .map(|x| x.hash())
+            .collect::<Vec<_>>();
+        debug!(
+            "[1b1r][p2p] handle_response(msg_name={}, req_id={}): tx_hashes = {:?}",
+            self.msg_name(),
+            self.request_id,
+            &tx_hashes[..]
+        );
+
         // The transaction pool will rely on the execution state information to
         // verify transaction validity. It may incorrectly accept/reject
         // transactions when in the catch up mode because the state is still
@@ -688,6 +735,13 @@ impl Handleable for GetTransactionsFromTxHashesResponse {
                     trace!("Transaction {} is rejected by the transaction pool: error = {}", tx, e);
                 }
             }
+            let fail_tx_hashes =
+                signed_trans.iter().map(|x| x.hash()).collect_vec();
+            debug!(
+                "[1b1r][p2p] fail_tx(req_id={}): tx_hashes = {:?}",
+                self.request_id,
+                &fail_tx_hashes[..]
+            );
             ctx.manager
                 .request_manager
                 .transactions_received_from_tx_hashes(&req, signed_trans);

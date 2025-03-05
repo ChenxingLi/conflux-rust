@@ -144,6 +144,7 @@ cfx-rpc-utils = { workspace = true }
 cfx-util-macros = { workspace = true }
 parity-util-mem = { workspace = true, default-features = false }
 block-event-record = { workspace = true }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [dev-dependencies]
 criterion = "0.3"

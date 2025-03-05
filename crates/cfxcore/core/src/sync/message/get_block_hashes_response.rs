@@ -3,7 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 use crate::{
-    message::RequestId,
+    message::{Message, RequestId},
     sync::{
         message::{Context, GetBlockHashesByEpoch, Handleable},
         Error,
@@ -21,6 +21,12 @@ pub struct GetBlockHashesResponse {
 impl Handleable for GetBlockHashesResponse {
     fn handle(self, ctx: &Context) -> Result<(), Error> {
         debug!("on_block_hashes_response, msg={:?}", self);
+        debug!(
+            "[1b1r][p2p] handle_response(msg_name={}, req_id={}): hashes = {:?}",
+            self.msg_name(),
+            self.request_id,
+            &self.hashes[..]
+        );
 
         let req = ctx.match_request(self.request_id)?;
         let delay = req.delay;

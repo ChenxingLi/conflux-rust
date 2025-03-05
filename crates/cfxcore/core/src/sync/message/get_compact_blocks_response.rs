@@ -3,7 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 use crate::{
-    message::RequestId,
+    message::{Message, RequestId},
     sync::{
         message::{
             metrics::{CMPCT_BLOCK_HANDLE_TIMER, CMPCT_BLOCK_RECOVER_TIMER},
@@ -42,6 +42,17 @@ impl Handleable for GetCompactBlocksResponse {
             self.request_id,
             self.compact_blocks.len(),
             self.blocks.len()
+        );
+        let compat_hashes: Vec<_> =
+            self.compact_blocks.iter().map(|x| x.hash()).collect();
+        let block_hashes: Vec<_> =
+            self.blocks.iter().map(|x| x.hash()).collect();
+        debug!(
+            "[1b1r][p2p] handle_response(msg_name={}, req_id={}): compact_hashes = {:?}, block_hashes = {:?}",
+            self.msg_name(),
+            self.request_id,
+            &compat_hashes[..],
+            &block_hashes[..]
         );
 
         if ctx.manager.is_block_queue_full() {

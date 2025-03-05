@@ -21,7 +21,7 @@ use std::{
     io::{self, Read, Write},
     net::SocketAddr,
     sync::{
-        atomic::{AtomicBool, Ordering as AtomicOrdering},
+        atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering},
         Arc,
     },
     time::Instant,
@@ -108,6 +108,7 @@ pub trait PacketAssembler: Send + Sync {
 /// packets counter.
 
 struct Packet {
+    id: u64,
     // data to write to socket
     data: Vec<u8>,
     // current data position to write to socket.
@@ -119,6 +120,7 @@ struct Packet {
 
 impl Packet {
     fn new(data: Vec<u8>, priority: SendQueuePriority) -> Result<Self, Error> {
+        static ID: AtomicU64 = AtomicU64::new(0);
         // update throttling
         let throttling_size = data.len();
         THROTTLING_SERVICE
@@ -133,6 +135,7 @@ impl Packet {
             original_is_high_priority: is_high_priority,
             throttling_size,
             creation_time: Instant::now(),
+            id: ID.fetch_add(1, AtomicOrdering::Relaxed),
         })
     }
 
@@ -284,6 +287,7 @@ impl<Socket: GenericSocket> GenericConnection<Socket> {
                 packet.data.len()
             );
 
+            debug!("[1b1r][net] packet_sending: id = {}", packet.id);
             self.sending_packet = Some(packet);
         }
 
@@ -307,6 +311,7 @@ impl<Socket: GenericSocket> GenericConnection<Socket> {
         WRITABLE_COUNTER.mark(1);
         if packet.is_send_completed() {
             trace!("Packet sent, token = {}", self.token);
+            debug!("[1b1r][net] packet_sent: id = {}", packet.id);
             self.sending_packet = None;
 
             WRITABLE_PACKET_COUNTER.mark(1);
@@ -345,6 +350,8 @@ impl<Socket: GenericSocket> GenericConnection<Socket> {
             trace!("Sending packet, token = {}, size = {}", self.token, size);
 
             let packet = Packet::new(data, priority)?;
+            debug!("[1b1r][net] packet_construct: id = {}", packet.id);
+
             self.send_queue.push_back(packet, priority);
 
             SEND_METER.mark(size);

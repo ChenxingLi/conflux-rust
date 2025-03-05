@@ -15,6 +15,7 @@ use crate::{
 use cfx_parameters::sync::FAILED_REQUEST_RESEND_WAIT;
 use malloc_size_of::MallocSizeOf;
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
+use metrics::{Gauge, GaugeUsize};
 use network::{
     node_table::NodeId, Error as NetworkError, NetworkContext,
     UpdateNodeOperation,
@@ -32,6 +33,14 @@ use std::{
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+lazy_static! {
+    static ref REQUEST_QUEUE_SIZE: Arc<dyn Gauge<usize>> =
+        GaugeUsize::register_with_group(
+            "system_metrics",
+            "net_request_queue_size"
+        );
+}
 
 #[derive(DeriveMallocSizeOf)]
 pub struct RequestHandler {
@@ -340,6 +349,7 @@ impl RequestContainer {
             timed_req.clone(),
         );
         requests_queue.push(timed_req);
+        REQUEST_QUEUE_SIZE.update(requests_queue.len());
     }
 
     // Error from send_message():
