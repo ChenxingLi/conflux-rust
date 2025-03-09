@@ -3,10 +3,9 @@
 // See http://www.gnu.org/licenses/
 
 pub type RequestId = u64;
+pub type ResponseId = u64;
 pub type MsgId = u16;
 const MSG_ID_MAX: u16 = 1 << 14;
-
-use std::time::Instant;
 
 pub use cfx_bytes::Bytes;
 pub use priority_send_queue::SendQueuePriority;
@@ -36,6 +35,10 @@ macro_rules! build_msgid {
 // TODO: Throttled. Conceptually this class isn't part of Message.
 pub trait GetMaybeRequestId {
     fn get_request_id(&self) -> Option<RequestId> { None }
+    fn get_response_id(&self) -> Option<ResponseId> { None }
+    fn get_session_id(&self) -> Option<u64> {
+        self.get_request_id().or(self.get_response_id())
+    }
 }
 
 pub trait SetRequestId: GetMaybeRequestId {
@@ -100,7 +103,12 @@ pub trait Message:
         let msg = self.encode();
         let size = msg.len();
 
-        let begin_send = Instant::now();
+        debug!(
+            "[1b1r][p2p] send_message(msg_name={}, peer_id={:?}, req_id={:?})",
+            self.msg_name(),
+            node_id,
+            self.get_session_id()
+        );
         if let Err(e) = io.send(
             node_id,
             msg,
@@ -111,14 +119,6 @@ pub trait Message:
             debug!("Error sending message: {:?}", e);
             return Err(e);
         };
-
-        debug!(
-            "[1b1r][p2p] send_message(msg_name={}, peer_id={:?}, req_id={:?}): time_ns = {}",
-            self.msg_name(),
-            node_id,
-            self.get_request_id(),
-            begin_send.elapsed().as_nanos(),
-        );
 
         if !io.is_peer_self(node_id) {
             metric_message(self.msg_id(), size);
@@ -227,6 +227,16 @@ macro_rules! impl_request_id_methods {
     };
 }
 
+macro_rules! impl_response_id_methods {
+    ($name:ty) => {
+        impl GetMaybeRequestId for $name {
+            fn get_response_id(&self) -> Option<ResponseId> {
+                Some(self.request_id)
+            }
+        }
+    };
+}
+
 macro_rules! build_msg_with_request_id_impl {
     (
         $name:ident,
@@ -237,6 +247,19 @@ macro_rules! build_msg_with_request_id_impl {
     ) => {
         build_msg_basic!($name, $msg, $name_str, $msg_ver, $msg_valid_till_ver);
         impl_request_id_methods!($name);
+    };
+}
+
+macro_rules! build_msg_with_response_id_impl {
+    (
+        $name:ident,
+        $msg:expr,
+        $name_str:literal,
+        $msg_ver:expr,
+        $msg_valid_till_ver:expr
+    ) => {
+        build_msg_basic!($name, $msg, $name_str, $msg_ver, $msg_valid_till_ver);
+        impl_response_id_methods!($name);
     };
 }
 

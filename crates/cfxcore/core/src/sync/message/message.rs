@@ -8,7 +8,8 @@ use super::*;
 use crate::{
     message::{
         decode_rlp_and_check_deprecation, GetMaybeRequestId, Message,
-        MessageProtocolVersionBound, MsgId, RequestId, SetRequestId,
+        MessageProtocolVersionBound, MsgId, RequestId, ResponseId,
+        SetRequestId,
     },
     sync::{
         message::throttling::Throttle, Error, SYNC_PROTO_V1, SYNC_PROTO_V2,
@@ -75,19 +76,21 @@ build_msg_impl! { StatusV3, msgid::STATUS_V3, "StatusV3", SYNC_PROTO_V3, SYNC_PR
 build_msg_impl! { Heartbeat, msgid::HEARTBEAT, "Heartbeat", SYNC_PROTO_V3, SYNC_PROTO_V3 }
 build_msg_impl! { NewBlockHashes, msgid::NEW_BLOCK_HASHES, "NewBlockHashes", SYNC_PROTO_V1, SYNC_PROTO_V3 }
 build_msg_with_request_id_impl! { GetBlockHeaders, msgid::GET_BLOCK_HEADERS, "GetBlockHeaders", SYNC_PROTO_V1, SYNC_PROTO_V3 }
-build_msg_impl! { GetBlockHeadersResponse, msgid::GET_BLOCK_HEADERS_RESPONSE, "GetBlockHeadersResponse", SYNC_PROTO_V1, SYNC_PROTO_V3 }
+build_msg_with_response_id_impl! { GetBlockHeadersResponse, msgid::GET_BLOCK_HEADERS_RESPONSE, "GetBlockHeadersResponse", SYNC_PROTO_V1, SYNC_PROTO_V3 }
 build_msg_impl! { NewBlock, msgid::NEW_BLOCK, "NewBlock", SYNC_PROTO_V1, SYNC_PROTO_V3 }
-build_msg_impl! { GetTerminalBlockHashesResponse, msgid::GET_TERMINAL_BLOCK_HASHES_RESPONSE, "GetTerminalBlockHashesResponse", SYNC_PROTO_V1, SYNC_PROTO_V3 }
+build_msg_with_response_id_impl! { GetTerminalBlockHashesResponse, msgid::GET_TERMINAL_BLOCK_HASHES_RESPONSE, "GetTerminalBlockHashesResponse", SYNC_PROTO_V1, SYNC_PROTO_V3 }
 build_msg_with_request_id_impl! { GetTerminalBlockHashes, msgid::GET_TERMINAL_BLOCK_HASHES, "GetTerminalBlockHashes", SYNC_PROTO_V1, SYNC_PROTO_V3 }
 build_msg_with_request_id_impl! { GetBlocks, msgid::GET_BLOCKS, "GetBlocks", SYNC_PROTO_V1, SYNC_PROTO_V3 }
 build_msg_with_request_id_impl! { GetCompactBlocks, msgid::GET_CMPCT_BLOCKS, "GetCompactBlocks", SYNC_PROTO_V1, SYNC_PROTO_V3 }
-build_msg_impl! { GetCompactBlocksResponse, msgid::GET_CMPCT_BLOCKS_RESPONSE, "GetCompactBlocksResponse", SYNC_PROTO_V1, SYNC_PROTO_V3 }
+build_msg_with_response_id_impl! { GetCompactBlocksResponse, msgid::GET_CMPCT_BLOCKS_RESPONSE, "GetCompactBlocksResponse", SYNC_PROTO_V1, SYNC_PROTO_V3 }
 build_msg_with_request_id_impl! { GetBlockTxn, msgid::GET_BLOCK_TXN, "GetBlockTxn", SYNC_PROTO_V1, SYNC_PROTO_V3 }
 build_msg_impl! { DynamicCapabilityChange, msgid::DYNAMIC_CAPABILITY_CHANGE, "DynamicCapabilityChange", SYNC_PROTO_V1, SYNC_PROTO_V3 }
 build_msg_with_request_id_impl! { GetBlockHashesByEpoch, msgid::GET_BLOCK_HASHES_BY_EPOCH, "GetBlockHashesByEpoch", SYNC_PROTO_V1, SYNC_PROTO_V3 }
 build_msg_impl! { Throttled, msgid::THROTTLED, "Throttled", SYNC_PROTO_V1, SYNC_PROTO_V3 }
 
-impl GetMaybeRequestId for GetBlockHashesResponse {}
+impl GetMaybeRequestId for GetBlockHashesResponse {
+    fn get_response_id(&self) -> Option<u64> { Some(self.request_id) }
+}
 mark_msg_version_bound!(GetBlockHashesResponse, SYNC_PROTO_V1, SYNC_PROTO_V3);
 impl Message for GetBlockHashesResponse {
     fn msg_id(&self) -> MsgId { msgid::GET_BLOCK_HASHES_RESPONSE }
@@ -120,7 +123,9 @@ impl Message for Transactions {
     }
 }
 
-impl GetMaybeRequestId for GetBlocksResponse {}
+impl GetMaybeRequestId for GetBlocksResponse {
+    fn get_response_id(&self) -> Option<u64> { Some(self.request_id) }
+}
 mark_msg_version_bound!(GetBlocksResponse, SYNC_PROTO_V1, SYNC_PROTO_V3);
 impl Message for GetBlocksResponse {
     fn is_size_sensitive(&self) -> bool { self.blocks.len() > 0 }
@@ -136,7 +141,9 @@ impl Message for GetBlocksResponse {
     }
 }
 
-impl GetMaybeRequestId for GetBlocksWithPublicResponse {}
+impl GetMaybeRequestId for GetBlocksWithPublicResponse {
+    fn get_response_id(&self) -> Option<u64> { Some(self.request_id) }
+}
 mark_msg_version_bound!(
     GetBlocksWithPublicResponse,
     SYNC_PROTO_V1,
@@ -156,7 +163,9 @@ impl Message for GetBlocksWithPublicResponse {
     }
 }
 
-impl GetMaybeRequestId for GetBlockTxnResponse {}
+impl GetMaybeRequestId for GetBlockTxnResponse {
+    fn get_response_id(&self) -> Option<u64> { Some(self.request_id) }
+}
 mark_msg_version_bound!(GetBlockTxnResponse, SYNC_PROTO_V1, SYNC_PROTO_V3);
 impl Message for GetBlockTxnResponse {
     fn is_size_sensitive(&self) -> bool { self.block_txn.len() > 1 }
@@ -190,7 +199,9 @@ impl Message for TransactionDigests {
     }
 }
 
-impl GetMaybeRequestId for GetTransactionsResponse {}
+impl GetMaybeRequestId for GetTransactionsResponse {
+    fn get_response_id(&self) -> Option<u64> { Some(self.request_id) }
+}
 mark_msg_version_bound!(GetTransactionsResponse, SYNC_PROTO_V1, SYNC_PROTO_V3);
 impl Message for GetTransactionsResponse {
     fn is_size_sensitive(&self) -> bool { self.transactions.len() > 0 }
@@ -207,7 +218,9 @@ impl Message for GetTransactionsResponse {
         encoded
     }
 }
-impl GetMaybeRequestId for GetTransactionsFromTxHashesResponse {}
+impl GetMaybeRequestId for GetTransactionsFromTxHashesResponse {
+    fn get_response_id(&self) -> Option<u64> { Some(self.request_id) }
+}
 mark_msg_version_bound!(
     GetTransactionsFromTxHashesResponse,
     SYNC_PROTO_V1,
@@ -343,7 +356,7 @@ fn handle_message<T: Decodable + Handleable + Message>(
 
     let msg_id = msg.msg_id();
     let msg_name = msg.msg_name();
-    let req_id = msg.get_request_id();
+    let req_id = msg.get_session_id();
 
     debug!(
         "[1b1r][p2p] receive_message(msg_name={}, peer_id={:?}, req_id={:?}): decode_time_ns = {}",

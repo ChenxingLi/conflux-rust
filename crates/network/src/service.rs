@@ -11,7 +11,10 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     path::{Path, PathBuf},
     str::FromStr,
-    sync::{atomic::{AtomicU64, Ordering as AtomicOrdering}, Arc},
+    sync::{
+        atomic::{AtomicU64, Ordering as AtomicOrdering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -481,7 +484,7 @@ impl DelayedQueue {
 
     fn send_delayed_messages(&self, network_service: &NetworkServiceInner) {
         let context = self.queue.lock().pop().unwrap();
-        debug!("[1b1r][net] packet_dequeue: queue_id = {}", context.id);
+        debug!("[1b1r][net] message_ready: delay_id = {}", context.id);
         let r = context.session.write().send_packet(
             &context.io,
             Some(context.protocol),
@@ -2018,7 +2021,7 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
                         min_protocol_version,
                         priority,
                     );
-                    debug!("[1b1r][net] packet_queued: queue_id = {}, latency_ns = {}", delayed_context.id, latency.as_nanos());
+                    debug!("[1b1r][net] message_delayed: delay_id = {}, delay_ns = {}", delayed_context.id, latency.as_nanos());
                     queue.push(delayed_context);
                     self.io.register_timer_once_nocancel(
                         SEND_DELAYED_MESSAGES,
