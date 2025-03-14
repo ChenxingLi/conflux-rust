@@ -4,7 +4,8 @@ use cfx_internal_common::debug::ComputeEpochDebugRecord;
 use cfx_statedb::{Result as DbResult, StateDb, StateDbExt};
 use cfx_types::AddressWithSpace;
 use primitives::{
-    Account, CodeInfo, DepositList, StorageKey, StorageValue, VoteStakeList,
+    storage::WriteCacheItem, Account, CodeInfo, DepositList, StorageKey,
+    StorageValue, VoteStakeList,
 };
 
 use super::OverlayAccount;
@@ -113,13 +114,8 @@ impl OverlayAccount {
         let mut storage_write_cache = self.storage_write_cache.write();
         let mut storage_commit_cache = self.storage_committed_cache.write();
 
-        if storage_commit_cache.is_empty() {
-            std::mem::swap(
-                &mut *storage_commit_cache,
-                &mut *storage_write_cache,
-            );
-        } else {
-            for (key, value) in storage_write_cache.drain() {
+        for (key, value) in storage_write_cache.drain() {
+            if let WriteCacheItem::Write(value) = value {
                 storage_commit_cache.insert(key, value);
             }
         }

@@ -117,7 +117,7 @@ pub fn gas_required_for(
     let data_gas: u64 = data.iter().map(byte_gas).sum();
     let data_word = (data.len() as u64 + 31) / 32;
 
-    let initcode_gas = if spec.cip645 {
+    let initcode_gas = if spec.cip645 && is_create {
         data_word * spec.init_code_word_gas as u64
     } else {
         0
