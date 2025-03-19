@@ -5,7 +5,9 @@
 use crate::sync::message::TransactionDigests;
 use cfx_types::H256;
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
-use metrics::{register_meter_with_group, Meter, MeterTimer};
+use metrics::{
+    register_meter_with_group, Gauge, GaugeUsize, Meter, MeterTimer,
+};
 use network::node_table::NodeId;
 use primitives::{block::CompactBlock, SignedTransaction, TxPropagateId};
 use std::{
@@ -31,6 +33,11 @@ lazy_static! {
         register_meter_with_group(
             "timer",
             "request_manager::request_pending_inflight_tx"
+        );
+    static ref INFLIGHT_PENDING_POOL_GAUGE: Arc<dyn Gauge<usize>> =
+        GaugeUsize::register_with_group(
+            "tx_propagation",
+            "inflight_pending_pool_size"
         );
 }
 
@@ -401,6 +408,7 @@ impl InflightPendingTransactionContainer {
                                 .insert(item.fixed_byte_part);
                             // Remove `item` from `set`
                             set.remove(requests.last().expect("Just pushed"));
+                            INFLIGHT_PENDING_POOL_GAUGE.sub(1);
                         }
                         if set.len() == 0 {
                             self.inner.txid_hashmap.remove(&fixed_bytes_part);
@@ -424,10 +432,12 @@ impl InflightPendingTransactionContainer {
                 .txid_hashmap
                 .entry(key)
                 .and_modify(|s| {
+                    INFLIGHT_PENDING_POOL_GAUGE.add(1);
                     s.insert(inflight_pending_item.clone());
                 })
                 .or_insert_with(|| {
                     let mut set = HashSet::new();
+                    INFLIGHT_PENDING_POOL_GAUGE.add(1);
                     set.insert(inflight_pending_item.clone());
                     set
                 }); //if occupied, append, else, insert.
@@ -451,6 +461,7 @@ impl InflightPendingTransactionContainer {
                     } else {
                         set.remove(item);
                     }
+                    INFLIGHT_PENDING_POOL_GAUGE.sub(1);
                 }
             }
         }

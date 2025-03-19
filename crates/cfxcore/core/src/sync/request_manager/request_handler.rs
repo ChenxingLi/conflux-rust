@@ -20,6 +20,7 @@ use network::{
     node_table::NodeId, Error as NetworkError, NetworkContext,
     UpdateNodeOperation,
 };
+use p2p_message_metrics::P2P_REQUEST_TIME;
 use parking_lot::Mutex;
 use std::{
     any::Any,
@@ -391,6 +392,11 @@ impl RequestContainer {
                 .timed_req
                 .removed
                 .store(true, AtomicOrdering::Relaxed);
+
+            P2P_REQUEST_TIME.mark(
+                removed_req.message.request.msg_id(),
+                removed_req.timed_req.sent_time.elapsed().as_nanos() as u64,
+            );
             Ok(removed_req.message)
         } else {
             bail!(Error::RequestNotFound)
@@ -517,6 +523,7 @@ impl RequestMessage {
 #[derive(Debug, DeriveMallocSizeOf)]
 pub struct TimedSyncRequests {
     pub peer_id: NodeId,
+    pub sent_time: Instant,
     pub timeout_time: Instant,
     pub request_id: u64,
     pub removed: AtomicBool,
@@ -526,9 +533,11 @@ impl TimedSyncRequests {
     pub fn new(
         peer_id: NodeId, timeout: Duration, request_id: u64,
     ) -> TimedSyncRequests {
+        let now = Instant::now();
         TimedSyncRequests {
             peer_id,
-            timeout_time: Instant::now() + timeout,
+            sent_time: now,
+            timeout_time: now + timeout,
             request_id,
             removed: AtomicBool::new(false),
         }

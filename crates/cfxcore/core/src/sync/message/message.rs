@@ -17,6 +17,10 @@ use crate::{
     },
 };
 use network::{service::ProtocolVersion, NetworkProtocolHandler};
+use p2p_message_metrics::{
+    P2P_RECEIVE_BYTES, P2P_RECEIVE_CNT, P2P_RECEIVE_DECODE_TIME,
+    P2P_RECEIVE_PROCESS_TIME,
+};
 pub use priority_send_queue::SendQueuePriority;
 use rlp::{Decodable, Encodable, Rlp};
 
@@ -346,13 +350,13 @@ pub fn handle_rlp_message(
 fn handle_message<T: Decodable + Handleable + Message>(
     ctx: &Context, rlp: &Rlp,
 ) -> Result<(), Error> {
-    let instant = Instant::now();
+    let decode_instant = Instant::now();
     let msg: T = decode_rlp_and_check_deprecation(
         rlp,
         ctx.manager.minimum_supported_version(),
         ctx.io.get_protocol(),
     )?;
-    let rlp_decode_time = instant.elapsed().as_nanos();
+    let rlp_decode_time = decode_instant.elapsed().as_nanos();
 
     let msg_id = msg.msg_id();
     let msg_name = msg.msg_name();
@@ -362,8 +366,13 @@ fn handle_message<T: Decodable + Handleable + Message>(
         "[1b1r][p2p] receive_message(msg_name={}, peer_id={:?}, req_id={:?}): decode_time_ns = {}",
         msg_name, ctx.node_id, req_id, rlp_decode_time
     );
+    P2P_RECEIVE_BYTES.mark(msg_id, 1);
+    P2P_RECEIVE_CNT.mark(msg_id, 1);
+    P2P_RECEIVE_DECODE_TIME.mark(msg_id, rlp_decode_time as u64);
 
     msg.throttle(ctx)?;
+
+    let handle_instant = Instant::now();
 
     if let Err(e) = msg.handle(ctx) {
         debug!(
@@ -373,6 +382,8 @@ fn handle_message<T: Decodable + Handleable + Message>(
 
         return Err(e);
     }
+    P2P_RECEIVE_PROCESS_TIME
+        .mark(msg_id, handle_instant.elapsed().as_nanos() as u64);
 
     Ok(())
 }

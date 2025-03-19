@@ -43,6 +43,7 @@ members = [
     "crates/util/malloc_size_of_derive",
     "crates/util/memory-cache",
     "crates/util/metrics",
+    "crates/util/p2p-message-metrics",
     "crates/util/priority-send-queue",
     "crates/util/random_crash",
     "crates/util/runtime",
@@ -117,6 +118,7 @@ log-device = { path = "./crates/util/log_device" }
 solidity-abi-derive = { path = "./crates/util/solidity-abi-derive" }
 io = { path = "./crates/util/io" }
 metrics = { path = "./crates/util/metrics" }
+p2p-message-metrics = { path = "./crates/util/p2p-message-metrics" }
 cfx-bytes = { path = "./crates/cfx_bytes" }
 primitives = { path = "./crates/primitives" }
 cfx-types = { path = "./crates/cfx_types" }

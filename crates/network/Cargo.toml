@@ -40,3 +40,4 @@ diem-crypto = { path = "../cfxcore/core/src/pos/crypto/crypto" }
 diem-types = { path = "../cfxcore/core/src/pos/types" }
 cfx-util-macros = { workspace = true }
 thiserror = { workspace = true }
+p2p-message-metrics = { workspace = true }

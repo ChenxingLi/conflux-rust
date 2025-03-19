@@ -1756,6 +1756,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "once_cell",
+ "p2p-message-metrics",
  "parity-crypto",
  "parity-util-mem",
  "parking_lot 0.11.2",
@@ -5711,6 +5712,7 @@ dependencies = [
  "metrics",
  "mio 0.6.23",
  "natpmp",
+ "p2p-message-metrics",
  "parity-path",
  "parking_lot 0.11.2",
  "priority-send-queue",
@@ -6000,6 +6002,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7940cf2ca942593318d07fcf2596cdca60a85c9e7fab408a5e21a4f9dcd40d87"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "p2p-message-metrics"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "metrics",
+ "once_cell",
 ]
 
 [[package]]

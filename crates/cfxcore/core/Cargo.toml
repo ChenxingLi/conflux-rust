@@ -52,6 +52,7 @@ memmap = "0.6"
 memoffset = "0.5.1"
 memory-cache = { workspace = true }
 metrics = { workspace = true }
+p2p-message-metrics = { workspace = true }
 network = { workspace = true }
 num = "0.2"
 num-traits = { version = "0.2.8", default-features = false }

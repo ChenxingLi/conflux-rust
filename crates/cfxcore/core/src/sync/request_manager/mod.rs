@@ -22,7 +22,7 @@ use crate::{
     NodeType,
 };
 use cfx_parameters::sync::REQUEST_START_WAITING_TIME;
-use cfx_types::H256;
+use cfx_types::{H256, H512};
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use metrics::{
@@ -36,7 +36,7 @@ pub use request_handler::{
 };
 use std::{
     cmp::Ordering,
-    collections::{binary_heap::BinaryHeap, HashSet},
+    collections::{binary_heap::BinaryHeap, HashMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -825,38 +825,55 @@ impl RequestManager {
             return;
         }
         REQUEST_TX_FROM_INFLIGHT_PENDING_POOL_METER.mark(requests.len());
-        for request in requests {
+
+        // 使用 HashMap 按 (peer_id, window_index) 对请求进行分组
+        let mut grouped_requests: HashMap<(H512, usize), Vec<_>> =
+            HashMap::new();
+        for request in &requests {
+            grouped_requests
+                .entry((request.peer_id, request.window_index))
+                .or_insert_with(Vec::new)
+                .push(request);
+        }
+
+        // 为每组创建并发送一个合并后的请求
+        for ((peer_id, window_index), group) in grouped_requests {
+            let mut short_ids = HashSet::new();
+            let mut indices = Vec::new();
+
+            // 收集每组中所有请求的 short_ids 和 indices
+            for request in group.iter() {
+                short_ids.insert(request.fixed_byte_part);
+                indices.push(request.index);
+            }
+
             let tx_request = GetTransactions {
                 request_id: 0,
-                window_index: request.window_index,
-                indices: vec![request.index],
+                window_index,
+                indices,
                 tx_hashes_indices: vec![],
-                short_ids: {
-                    let mut set = HashSet::new();
-                    set.insert(request.fixed_byte_part);
-                    set
-                },
+                short_ids,
                 tx_hashes: HashSet::new(),
             };
+
             debug!(
                 "[1b1r][p2p] request(msg_name={}, peer_id={:?}): short_ids = {:?}, tx_hashes = {:?}",
                 tx_request.msg_name(),
-                request.peer_id,
+                peer_id,
                 &tx_request.short_ids,
                 &tx_request.tx_hashes
             );
+
             if self
                 .request_handler
-                .send_request(
-                    io,
-                    Some(request.peer_id),
-                    Box::new(tx_request),
-                    None,
-                )
+                .send_request(io, Some(peer_id), Box::new(tx_request), None)
                 .is_err()
             {
-                short_id_inflight_keys
-                    .remove(&Key::Id(request.fixed_byte_part));
+                // 如果请求发送失败，移除所有相关的 short_id_inflight_keys
+                for request in group {
+                    short_id_inflight_keys
+                        .remove(&Key::Id(request.fixed_byte_part));
+                }
             }
         }
     }

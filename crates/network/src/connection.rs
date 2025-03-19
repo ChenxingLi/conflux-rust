@@ -4,6 +4,7 @@
 
 use crate::{
     iolib::{IoContext, StreamToken},
+    parse_msg_id_leb128_2_bytes_at_most,
     throttling::THROTTLING_SERVICE,
     Error,
 };
@@ -14,6 +15,7 @@ use metrics::{
     register_meter_with_group, Gauge, GaugeUsize, Histogram, Meter, Sample,
 };
 use mio::{tcp::*, *};
+use p2p_message_metrics::{P2P_QUEUE_WAIT_TIME, P2P_SEND_WAIT_TIME};
 use priority_send_queue::{PrioritySendQueue, SendQueuePriority};
 use serde::Deserialize;
 use serde_derive::Serialize;
@@ -158,6 +160,11 @@ impl Drop for Packet {
             .write()
             .on_dequeue(self.throttling_size, self.original_is_high_priority);
 
+        let msg_id = parse_msg_id_leb128_2_bytes_at_most(&mut &self.data[..]);
+
+        P2P_SEND_WAIT_TIME
+            .mark(msg_id, self.creation_time.elapsed().as_nanos() as u64);
+
         if self.original_is_high_priority {
             HIGH_PACKET_SEND_TO_WRITE_ELAPSED_TIME
                 .update_since(self.creation_time);
@@ -288,6 +295,10 @@ impl<Socket: GenericSocket> GenericConnection<Socket> {
             );
 
             debug!("[1b1r][net] packet_sending: id = {}", packet.id);
+            let msg_id =
+                parse_msg_id_leb128_2_bytes_at_most(&mut &packet.data[..]);
+            P2P_QUEUE_WAIT_TIME
+                .mark(msg_id, packet.creation_time.elapsed().as_nanos() as u64);
             self.sending_packet = Some(packet);
         }
 

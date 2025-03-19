@@ -11,7 +11,7 @@ pub use cfx_bytes::Bytes;
 pub use priority_send_queue::SendQueuePriority;
 use rlp::{Decodable, Rlp};
 
-use crate::sync::msg_sender::metric_message;
+use crate::sync::msg_sender::metric_message_v2;
 use network::{
     node_table::NodeId, parse_msg_id_leb128_2_bytes_at_most,
     service::ProtocolVersion, ProtocolId,
@@ -121,7 +121,7 @@ pub trait Message:
         };
 
         if !io.is_peer_self(node_id) {
-            metric_message(self.msg_id(), size);
+            metric_message_v2(self.msg_id(), size);
         }
 
         Ok(())

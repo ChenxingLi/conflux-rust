@@ -11,6 +11,8 @@ use std::sync::{atomic::AtomicUsize, Arc};
 pub trait Gauge<T: Default>: Send + Sync {
     fn value(&self) -> T { T::default() }
     fn update(&self, _value: T) {}
+    fn add(&self, _value: T) {}
+    fn sub(&self, _value: T) {}
 }
 
 struct NoopGauge;
@@ -60,6 +62,10 @@ macro_rules! construct_gauge {
             fn value(&self) -> usize { self.value.load(ORDER) }
 
             fn update(&self, value: usize) { self.value.store(value, ORDER); }
+
+            fn add(&self, value: usize) { self.value.fetch_add(value, ORDER); }
+
+            fn sub(&self, value: usize) { self.value.fetch_sub(value, ORDER); }
         }
 
         impl Metric for $name {

@@ -70,6 +70,7 @@ pub mod msg_sender {
     use super::message::msgid;
     use crate::message::MsgId;
     use metrics::{register_meter_with_group, Meter};
+    use p2p_message_metrics::{P2P_SEND_BYTES, P2P_SEND_CNT};
     use std::sync::Arc;
 
     pub const NULL: usize = !0;
@@ -316,6 +317,7 @@ pub mod msg_sender {
             );
     }
 
+    #[allow(dead_code)]
     pub fn metric_message(msg_id: MsgId, size: usize) {
         match msg_id {
             msgid::STATUS_V2 => ON_STATUS_METER.mark(size),
@@ -405,5 +407,11 @@ pub mod msg_sender {
                 OTHER_HIGH_COUNTER.mark(1);
             }
         }
+    }
+
+    pub fn metric_message_v2(msg_id: MsgId, size: usize) {
+        P2P_SEND_BYTES.mark(msg_id, size as u64);
+        P2P_SEND_CNT.mark(msg_id, 1);
+        return;
     }
 }
