@@ -6,6 +6,7 @@ use crate::{
     ewma::EWMA,
     metrics::{is_enabled, Metric, ORDER},
     registry::{DEFAULT_GROUPING_REGISTRY, DEFAULT_REGISTRY},
+    Histogram, Sample,
 };
 use chrono::Duration;
 use lazy_static::lazy_static;
@@ -229,5 +230,53 @@ impl Drop for MeterTimer {
     fn drop(&mut self) {
         self.meter
             .mark((Instant::now() - self.start).as_nanos() as usize)
+    }
+}
+
+pub struct AdvancedTimer {
+    meter: Arc<dyn Meter>,
+    histo: Arc<dyn Histogram>,
+}
+
+impl AdvancedTimer {
+    pub fn as_ref(&self) -> &Self { self }
+}
+
+/// A struct used to measure time in metrics.
+pub struct MeterTimer2 {
+    timer: &'static AdvancedTimer,
+    start: Instant,
+}
+
+impl MeterTimer2 {
+    /// Call this to measure the time to run to the end of the current scope.
+    /// It will add the time from the function called till the returned
+    /// instance is dropped to `meter`.
+    pub fn time_func(timer: &'static AdvancedTimer) -> Self {
+        Self {
+            timer,
+            start: Instant::now(),
+        }
+    }
+}
+
+impl Drop for MeterTimer2 {
+    fn drop(&mut self) {
+        let nano_seconds = (Instant::now() - self.start).as_nanos();
+        self.timer.meter.mark(nano_seconds as usize);
+        self.timer.histo.update(nano_seconds as u64);
+    }
+}
+
+pub fn register_adv_timer_with_group(
+    group: &str, name: &str, reservoir_size: usize,
+) -> AdvancedTimer {
+    AdvancedTimer {
+        meter: register_meter_with_group(group, name),
+        histo: Sample::ExpDecay(0.015).register_with_group(
+            group,
+            &format!("{name}.histo"),
+            reservoir_size,
+        ),
     }
 }

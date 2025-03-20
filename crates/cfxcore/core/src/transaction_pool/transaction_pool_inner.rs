@@ -22,7 +22,8 @@ use cfx_types::{
 };
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use metrics::{
-    register_meter_with_group, Counter, CounterUsize, Meter, MeterTimer,
+    register_adv_timer_with_group, register_meter_with_group, AdvancedTimer,
+    Counter, CounterUsize, Meter, MeterTimer2,
 };
 use primitives::{
     block_header::compute_next_price, Account, Action, SignedTransaction,
@@ -44,18 +45,27 @@ lazy_static! {
 const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 2000;
 
 lazy_static! {
-    static ref TX_POOL_RECALCULATE: Arc<dyn Meter> =
-        register_meter_with_group("timer", "tx_pool::recalculate");
-    static ref TX_POOL_INNER_INSERT_TIMER: Arc<dyn Meter> =
-        register_meter_with_group("timer", "tx_pool::inner_insert");
-    static ref DEFERRED_POOL_INNER_INSERT: Arc<dyn Meter> =
-        register_meter_with_group("timer", "deferred_pool::inner_insert");
-    pub static ref TX_POOL_GET_STATE_TIMER: Arc<dyn Meter> =
-        register_meter_with_group("timer", "tx_pool::get_nonce_and_storage");
-    static ref TX_POOL_INNER_WITHOUTCHECK_INSERT_TIMER: Arc<dyn Meter> =
-        register_meter_with_group(
+    static ref TX_POOL_RECALCULATE: AdvancedTimer =
+        register_adv_timer_with_group("timer", "tx_pool::recalculate", 65_536);
+    static ref TX_POOL_INNER_INSERT_TIMER: AdvancedTimer =
+        register_adv_timer_with_group("timer", "tx_pool::inner_insert", 65_536);
+    static ref DEFERRED_POOL_INNER_INSERT: AdvancedTimer =
+        register_adv_timer_with_group(
             "timer",
-            "tx_pool::inner_without_check_inert"
+            "deferred_pool::inner_insert",
+            65_536
+        );
+    pub static ref TX_POOL_GET_STATE_TIMER: AdvancedTimer =
+        register_adv_timer_with_group(
+            "timer",
+            "tx_pool::get_nonce_and_storage",
+            65_536
+        );
+    static ref TX_POOL_INNER_WITHOUTCHECK_INSERT_TIMER: AdvancedTimer =
+        register_adv_timer_with_group(
+            "timer",
+            "tx_pool::inner_without_check_inert",
+            65_536
         );
     static ref GC_UNEXECUTED_COUNTER: Arc<dyn Counter<usize>> =
         CounterUsize::register_with_group("txpool", "gc_unexecuted");
@@ -811,7 +821,7 @@ impl TransactionPoolInner {
         force: bool, state_nonce_and_balance: (U256, U256),
         (sponsored_gas, sponsored_storage): (U256, u64),
     ) -> InsertResult {
-        let _timer = MeterTimer::time_func(
+        let _timer = MeterTimer2::time_func(
             TX_POOL_INNER_WITHOUTCHECK_INSERT_TIMER.as_ref(),
         );
         if !self.deferred_pool.check_sender_and_nonce_exists(
@@ -825,7 +835,7 @@ impl TransactionPoolInner {
         }
         let result = {
             let _timer =
-                MeterTimer::time_func(DEFERRED_POOL_INNER_INSERT.as_ref());
+                MeterTimer2::time_func(DEFERRED_POOL_INNER_INSERT.as_ref());
             self.deferred_pool.insert(
                 TxWithReadyInfo::new(
                     transaction.clone(),
@@ -1030,7 +1040,7 @@ impl TransactionPoolInner {
     fn recalculate_readiness_with_state(
         &mut self, addr: &AddressWithSpace, account_cache: &AccountCache,
     ) -> StateDbResult<()> {
-        let _timer = MeterTimer::time_func(TX_POOL_RECALCULATE.as_ref());
+        let _timer = MeterTimer2::time_func(TX_POOL_RECALCULATE.as_ref());
         let (nonce, balance) = self
             .get_and_update_nonce_and_balance_from_storage(
                 addr,
@@ -1349,7 +1359,8 @@ impl TransactionPoolInner {
         &mut self, account_cache: &AccountCache,
         transaction: Arc<SignedTransaction>, packed: bool, force: bool,
     ) -> Result<(), TransactionPoolError> {
-        let _timer = MeterTimer::time_func(TX_POOL_INNER_INSERT_TIMER.as_ref());
+        let _timer =
+            MeterTimer2::time_func(TX_POOL_INNER_INSERT_TIMER.as_ref());
         let (sponsored_gas, sponsored_storage) =
             self.get_sponsored_gas_and_storage(account_cache, &transaction)?;
 

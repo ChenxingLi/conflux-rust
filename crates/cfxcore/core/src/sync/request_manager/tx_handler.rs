@@ -432,8 +432,10 @@ impl InflightPendingTransactionContainer {
                 .txid_hashmap
                 .entry(key)
                 .and_modify(|s| {
-                    INFLIGHT_PENDING_POOL_GAUGE.add(1);
-                    s.insert(inflight_pending_item.clone());
+                    let new_item = s.insert(inflight_pending_item.clone());
+                    if new_item {
+                        INFLIGHT_PENDING_POOL_GAUGE.add(1);
+                    }
                 })
                 .or_insert_with(|| {
                     let mut set = HashSet::new();

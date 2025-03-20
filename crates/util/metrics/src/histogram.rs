@@ -4,8 +4,11 @@
 
 use crate::{
     metrics::{is_enabled, Metric},
+    register_meter_with_group,
     registry::{DEFAULT_GROUPING_REGISTRY, DEFAULT_REGISTRY},
+    Meter, MeterTimer,
 };
+use lazy_static::lazy_static;
 use parking_lot::RwLock;
 use rand::{thread_rng, Rng};
 use std::{
@@ -14,6 +17,11 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+lazy_static! {
+    static ref HISTOGRAM_TIMER: Arc<dyn Meter> =
+        register_meter_with_group("metrics", "histogram_timer");
+}
 
 pub trait Histogram: Send + Sync {
     fn count(&self) -> usize { 0 }
@@ -311,6 +319,8 @@ impl Histogram for ExpDecaySample {
     }
 
     fn update(&self, v: u64) {
+        let _histo_timer = MeterTimer::time_func(HISTOGRAM_TIMER.as_ref());
+
         let mut data = self.data.write();
 
         data.count += 1;

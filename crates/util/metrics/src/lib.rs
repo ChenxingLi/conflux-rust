@@ -20,7 +20,11 @@ pub use self::{
     gauge::{Gauge, GaugeUsize},
     histogram::{Histogram, Sample},
     lock::{Lock, MutexExtensions, RwLockExtensions},
-    meter::{register_meter, register_meter_with_group, Meter, MeterTimer},
+    meter::{
+        register_adv_timer_with_group, register_meter,
+        register_meter_with_group, AdvancedTimer, Meter, MeterTimer,
+        MeterTimer2,
+    },
     metrics::{initialize, is_enabled, Metric, MetricsConfiguration},
     queue::{register_queue, register_queue_with_group, Queue},
     registry::{

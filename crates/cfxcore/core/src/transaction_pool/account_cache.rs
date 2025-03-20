@@ -2,7 +2,7 @@ use crate::transaction_pool::transaction_pool_inner::TX_POOL_GET_STATE_TIMER;
 use cfx_executor::state::State;
 use cfx_statedb::Result as DbResult;
 use cfx_types::{Address, AddressWithSpace, U256};
-use metrics::MeterTimer;
+use metrics::MeterTimer2;
 use primitives::SponsorInfo;
 use std::sync::Arc;
 
@@ -17,7 +17,7 @@ impl AccountCache {
     pub fn get_nonce_and_balance(
         &self, address: &AddressWithSpace,
     ) -> DbResult<(U256, U256)> {
-        let _timer = MeterTimer::time_func(TX_POOL_GET_STATE_TIMER.as_ref());
+        let _timer = MeterTimer2::time_func(TX_POOL_GET_STATE_TIMER.as_ref());
         Ok((self.state.nonce(address)?, self.state.balance(address)?))
     }
 

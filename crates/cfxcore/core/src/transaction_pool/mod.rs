@@ -41,8 +41,8 @@ use cfx_vm_types::Spec;
 pub use error::TransactionPoolError;
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use metrics::{
-    register_meter_with_group, Gauge, GaugeUsize, Lock, Meter, MeterTimer,
-    RwLockExtensions,
+    register_adv_timer_with_group, register_meter_with_group, AdvancedTimer,
+    Gauge, GaugeUsize, Lock, Meter, MeterTimer2, RwLockExtensions,
 };
 use parking_lot::{Mutex, RwLock};
 use primitives::{
@@ -77,12 +77,16 @@ lazy_static! {
         register_meter_with_group("txpool", "insert_txs_success_tps");
     static ref INSERT_TXS_FAILURE_TPS: Arc<dyn Meter> =
         register_meter_with_group("txpool", "insert_txs_failure_tps");
-    static ref TX_POOL_INSERT_TIMER: Arc<dyn Meter> =
-        register_meter_with_group("timer", "tx_pool::insert_new_tx");
-    static ref TX_POOL_VERIFY_TIMER: Arc<dyn Meter> =
-        register_meter_with_group("timer", "tx_pool::verify");
-    static ref TX_POOL_GET_STATE_TIMER: Arc<dyn Meter> =
-        register_meter_with_group("timer", "tx_pool::get_state");
+    static ref TX_POOL_INSERT_TIMER: AdvancedTimer =
+        register_adv_timer_with_group(
+            "timer",
+            "tx_pool::insert_new_tx",
+            65_536
+        );
+    static ref TX_POOL_VERIFY_TIMER: AdvancedTimer =
+        register_adv_timer_with_group("timer", "tx_pool::verify", 65_536);
+    static ref TX_POOL_GET_STATE_TIMER: AdvancedTimer =
+        register_adv_timer_with_group("timer", "tx_pool::get_state", 65_536);
     static ref INSERT_TXS_QUOTA_LOCK: Lock =
         Lock::register("txpool_insert_txs_quota_lock");
     static ref INSERT_TXS_ENQUEUE_LOCK: Lock =
@@ -455,7 +459,7 @@ impl TransactionPool {
     ) {
         INSERT_TPS.mark(1);
         INSERT_TXS_TPS.mark(transactions.len());
-        let _timer = MeterTimer::time_func(TX_POOL_INSERT_TIMER.as_ref());
+        let _timer = MeterTimer2::time_func(TX_POOL_INSERT_TIMER.as_ref());
 
         let mut passed_transactions = Vec::new();
         let mut failure = HashMap::new();
@@ -574,7 +578,7 @@ impl TransactionPool {
     ) {
         INSERT_TPS.mark(1);
         INSERT_TXS_TPS.mark(signed_transactions.len());
-        let _timer = MeterTimer::time_func(TX_POOL_INSERT_TIMER.as_ref());
+        let _timer = MeterTimer2::time_func(TX_POOL_INSERT_TIMER.as_ref());
 
         let mut passed_transactions = Vec::new();
         let mut failure = HashMap::new();
@@ -681,7 +685,7 @@ impl TransactionPool {
         chain_id: AllChainID, best_height: u64,
         transitions: &TransitionsEpochHeight, spec: &Spec,
     ) -> Result<(), TransactionPoolError> {
-        let _timer = MeterTimer::time_func(TX_POOL_VERIFY_TIMER.as_ref());
+        let _timer = MeterTimer2::time_func(TX_POOL_VERIFY_TIMER.as_ref());
         let mode = VerifyTxMode::Local(VerifyTxLocalMode::MaybeLater, spec);
 
         if basic_check {
@@ -1226,7 +1230,7 @@ impl TransactionPool {
     }
 
     fn get_best_state_account_cache(&self) -> AccountCache {
-        let _timer = MeterTimer::time_func(TX_POOL_GET_STATE_TIMER.as_ref());
+        let _timer = MeterTimer2::time_func(TX_POOL_GET_STATE_TIMER.as_ref());
         AccountCache::new((&*self.best_executed_state.lock()).clone())
     }
 

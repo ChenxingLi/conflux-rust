@@ -366,7 +366,7 @@ fn handle_message<T: Decodable + Handleable + Message>(
         "[1b1r][p2p] receive_message(msg_name={}, peer_id={:?}, req_id={:?}): decode_time_ns = {}",
         msg_name, ctx.node_id, req_id, rlp_decode_time
     );
-    P2P_RECEIVE_BYTES.mark(msg_id, 1);
+    P2P_RECEIVE_BYTES.mark(msg_id, rlp.as_raw().len() as u64);
     P2P_RECEIVE_CNT.mark(msg_id, 1);
     P2P_RECEIVE_DECODE_TIME.mark(msg_id, rlp_decode_time as u64);
 
