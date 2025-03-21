@@ -78,15 +78,11 @@ lazy_static! {
     static ref INSERT_TXS_FAILURE_TPS: Arc<dyn Meter> =
         register_meter_with_group("txpool", "insert_txs_failure_tps");
     static ref TX_POOL_INSERT_TIMER: AdvancedTimer =
-        register_adv_timer_with_group(
-            "timer",
-            "tx_pool::insert_new_tx",
-            65_536
-        );
+        register_adv_timer_with_group("timer", "tx_pool::insert_new_tx");
     static ref TX_POOL_VERIFY_TIMER: AdvancedTimer =
-        register_adv_timer_with_group("timer", "tx_pool::verify", 65_536);
+        register_adv_timer_with_group("timer", "tx_pool::verify");
     static ref TX_POOL_GET_STATE_TIMER: AdvancedTimer =
-        register_adv_timer_with_group("timer", "tx_pool::get_state", 65_536);
+        register_adv_timer_with_group("timer", "tx_pool::get_state");
     static ref INSERT_TXS_QUOTA_LOCK: Lock =
         Lock::register("txpool_insert_txs_quota_lock");
     static ref INSERT_TXS_ENQUEUE_LOCK: Lock =

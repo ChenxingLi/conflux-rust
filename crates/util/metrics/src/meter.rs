@@ -228,8 +228,9 @@ impl MeterTimer {
 
 impl Drop for MeterTimer {
     fn drop(&mut self) {
-        self.meter
-            .mark((Instant::now() - self.start).as_nanos() as usize)
+        let nano_seconds = (Instant::now() - self.start).as_nanos() as usize;
+
+        self.meter.mark(std::cmp::min(nano_seconds, 1_000_000_000))
     }
 }
 
@@ -263,20 +264,20 @@ impl MeterTimer2 {
 impl Drop for MeterTimer2 {
     fn drop(&mut self) {
         let nano_seconds = (Instant::now() - self.start).as_nanos();
-        self.timer.meter.mark(nano_seconds as usize);
+        self.timer
+            .meter
+            .mark(std::cmp::min(nano_seconds as usize, 1_000_000_000));
         self.timer.histo.update(nano_seconds as u64);
     }
 }
 
-pub fn register_adv_timer_with_group(
-    group: &str, name: &str, reservoir_size: usize,
-) -> AdvancedTimer {
+pub fn register_adv_timer_with_group(group: &str, name: &str) -> AdvancedTimer {
     AdvancedTimer {
         meter: register_meter_with_group(group, name),
         histo: Sample::ExpDecay(0.015).register_with_group(
             group,
             &format!("{name}.histo"),
-            reservoir_size,
+            1024,
         ),
     }
 }

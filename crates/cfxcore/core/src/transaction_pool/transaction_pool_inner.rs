@@ -46,26 +46,20 @@ const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 2000;
 
 lazy_static! {
     static ref TX_POOL_RECALCULATE: AdvancedTimer =
-        register_adv_timer_with_group("timer", "tx_pool::recalculate", 65_536);
+        register_adv_timer_with_group("timer", "tx_pool::recalculate");
     static ref TX_POOL_INNER_INSERT_TIMER: AdvancedTimer =
-        register_adv_timer_with_group("timer", "tx_pool::inner_insert", 65_536);
+        register_adv_timer_with_group("timer", "tx_pool::inner_insert");
     static ref DEFERRED_POOL_INNER_INSERT: AdvancedTimer =
-        register_adv_timer_with_group(
-            "timer",
-            "deferred_pool::inner_insert",
-            65_536
-        );
+        register_adv_timer_with_group("timer", "deferred_pool::inner_insert");
     pub static ref TX_POOL_GET_STATE_TIMER: AdvancedTimer =
         register_adv_timer_with_group(
             "timer",
-            "tx_pool::get_nonce_and_storage",
-            65_536
+            "tx_pool::get_nonce_and_storage"
         );
     static ref TX_POOL_INNER_WITHOUTCHECK_INSERT_TIMER: AdvancedTimer =
         register_adv_timer_with_group(
             "timer",
-            "tx_pool::inner_without_check_inert",
-            65_536
+            "tx_pool::inner_without_check_inert"
         );
     static ref GC_UNEXECUTED_COUNTER: Arc<dyn Counter<usize>> =
         CounterUsize::register_with_group("txpool", "gc_unexecuted");
