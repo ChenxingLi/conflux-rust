@@ -131,7 +131,7 @@ jobs:
           cargo nextest run --no-fail-fast -p cfx-addr --no-default-features
 
   build-documentation:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-20250316.1
     steps:
       - uses: actions/checkout@v4
 
