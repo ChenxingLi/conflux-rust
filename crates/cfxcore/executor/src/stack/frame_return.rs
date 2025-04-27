@@ -18,8 +18,15 @@ pub(super) fn process_return<'a>(
     let apply_state = frame_result.as_ref().map_or(false, |r| r.apply_state);
 
     if apply_state {
+        eprintln!("<< Return {:?}", frame_result.as_ref().unwrap().gas_left);
         resources.state.discard_checkpoint();
     } else {
+        if let Err(e) = frame_result.as_ref() {
+            eprintln!("<< Error {:?}", e);
+        } else {
+            eprintln!("<< Revert");
+        }
+
         resources.state.revert_to_checkpoint();
     }
 

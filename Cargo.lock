@@ -1248,6 +1248,7 @@ dependencies = [
  "cfxkey",
  "derive_more",
  "diem-types",
+ "hex",
  "hex-literal",
  "impl-tools",
  "impl-trait-for-tuples 0.2.2",

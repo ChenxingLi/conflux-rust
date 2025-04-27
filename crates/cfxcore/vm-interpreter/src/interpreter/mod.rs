@@ -624,6 +624,27 @@ impl<Cost: CostType, const CANCUN: bool> Interpreter<Cost, CANCUN> {
         if let Err(e) = gasometer.verify_gas(&requirements.gas_cost) {
             return Err(InterpreterResult::Done(Err(e)));
         }
+        #[allow(unreachable_code)]
+        if false {
+            let pc = self.reader.position - 1;
+            let op = instruction as u8;
+            let cost = requirements.gas_cost;
+            let gas = gasometer.current_gas;
+
+            let stack = self
+                .stack
+                .peek_top(self.stack.size())
+                .iter()
+                .map(|item| format!(r#""0x{:x}""#, item))
+                .collect::<Vec<_>>()
+                .join(",");
+            let depth = context.depth() + 1;
+            let mem_size = self.mem.len();
+            eprintln!(
+                r#"{{"pc":{pc},"op":{op},"gas":"0x{gas:x?}","gasCost":"0x{cost:x?}","stack":[{stack}],"depth":{depth},"returnData":"0x","refund":"0x0","memSize":"0x{mem_size:x?}","opName":"{instruction:?}"}}"#
+            );
+        }
+
         self.mem.expand(requirements.memory_required_size);
         gasometer.current_mem_gas = requirements.memory_total_gas;
         gasometer.current_gas -= requirements.gas_cost;
@@ -652,6 +673,10 @@ impl<Cost: CostType, const CANCUN: bool> Interpreter<Cost, CANCUN> {
             }
             Ok(x) => x,
         };
+
+        if let InstructionResult::JumpToPosition(pos) = result {
+            eprintln!("[Jump] {pos:x}");
+        }
 
         evm_debug!({ self.informant.after_instruction(instruction) });
 

@@ -40,6 +40,7 @@ macro_rules! overflowing {
     }};
 }
 
+#[derive(Debug)]
 enum Request<Cost: CostType> {
     Gas(Cost),
     GasMem(Cost, Cost),
@@ -142,8 +143,10 @@ impl<Gas: CostType> Gasometer<Gas> {
         let cost = match instruction {
             instructions::JUMPDEST => Request::Gas(Gas::from(1)),
             instructions::SSTORE => {
+                eprintln!("[SSTORE] key: {:x}", stack.peek(0));
                 let (to_charge_gas, to_refund_gas) =
                     calc_sstore_gas(context, stack, self.current_gas)?;
+                eprintln!("\tcharge: {to_charge_gas}, refund {to_refund_gas}");
                 gas_refund += to_refund_gas;
                 Request::Gas(Gas::from(to_charge_gas))
             }
@@ -554,6 +557,14 @@ fn calc_sstore_gas<Gas: CostType>(
 
     let is_noop = new_val == cur_val;
     let is_clean = ori_val == cur_val;
+    let is_reset = new_val == ori_val;
+    eprintln!("\twarm: {warm_val}, noop: {is_noop}, clean: {is_clean}, reset: {is_reset}");
+    eprintln!(
+        "\tzero status: ori {}, cur {}, new {}",
+        ori_val.is_zero(),
+        cur_val.is_zero(),
+        new_val.is_zero()
+    );
 
     // CIP-645(d, f): EIP-2200 + EIP-2929
     let charge_gas = if is_noop {

@@ -39,6 +39,23 @@ impl<'a> FreshFrame<'a> {
             env,
             parent_static_flag,
         );
+        if is_create {
+            eprintln!(">> Create {:?} gas {}", params.address, params.gas);
+        } else {
+            eprintln!(
+                ">> {:?} {:?}({:?})gas {}",
+                params.call_type,
+                params.address,
+                params.code_address,
+                params.gas
+            );
+        }
+        // if let Some(code) = params.code.as_ref() {
+        //     eprintln!("\tCode: 0x{}", hex::encode(&code[..]));
+        // }
+        // if let Some(data) = params.data.as_ref() {
+        //     eprintln!("\tData: 0x{}", hex::encode(&data[..]));
+        // }
 
         let static_flag =
             parent_static_flag || params.call_type == CallType::StaticCall;
