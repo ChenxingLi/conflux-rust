@@ -399,14 +399,23 @@
 <a href="#399" id="399">399</a>
 <a href="#400" id="400">400</a>
 <a href="#401" id="401">401</a>
+<a href="#402" id="402">402</a>
+<a href="#403" id="403">403</a>
+<a href="#404" id="404">404</a>
+<a href="#405" id="405">405</a>
+<a href="#406" id="406">406</a>
+<a href="#407" id="407">407</a>
+<a href="#408" id="408">408</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::trace::{
     Action <span class="kw">as </span>RpcCfxAction, LocalizedTrace <span class="kw">as </span>RpcCfxLocalizedTrace,
 };
-<span class="kw">use </span>cfx_parity_trace_types::Outcome;
+<span class="kw">use </span>cfx_parity_trace_types::{
+    Outcome, SetAuth <span class="kw">as </span>VmSetAuth, SetAuthOutcome <span class="kw">as </span>VmSetAuthOutcome,
+};
 <span class="kw">use </span>cfx_rpc_primitives::Bytes;
-<span class="kw">use </span>cfx_types::{H160, H256, U256};
+<span class="kw">use </span>cfx_types::{Address, H256, U256};
 <span class="kw">use </span>cfx_util_macros::bail;
-<span class="kw">use </span>cfx_vm_types::{CallType <span class="kw">as </span>CfxCallType, CreateType <span class="kw">as </span>CfxCreateType};
+<span class="kw">use </span>cfx_vm_types::{CallType, CreateType};
 <span class="kw">use </span>jsonrpc_core::Error <span class="kw">as </span>JsonRpcError;
 <span class="kw">use </span>serde::{ser::SerializeStruct, Serialize, Serializer};
 <span class="kw">use </span>std::{
@@ -419,7 +428,7 @@
 #[serde(rename_all = <span class="string">"camelCase"</span>)]
 </span><span class="kw">pub struct </span>Create {
     <span class="doccomment">/// Sender
-    </span>from: H160,
+    </span>from: Address,
     <span class="doccomment">/// Value
     </span>value: U256,
     <span class="doccomment">/// Gas
@@ -430,64 +439,14 @@
     </span>create_type: CreateType,
 }
 
-<span class="doccomment">/// The type of the create-like instruction.
-</span><span class="attr">#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = <span class="string">"lowercase"</span>)]
-</span><span class="kw">pub enum </span>CreateType {
-    <span class="doccomment">/// Not a create
-    </span><span class="prelude-val">None</span>,
-    <span class="doccomment">/// CREATE
-    </span>CREATE,
-    <span class="doccomment">/// CREATE2
-    </span>CREATE2,
-}
-
-<span class="kw">impl </span>From&lt;CfxCreateType&gt; <span class="kw">for </span>CreateType {
-    <span class="kw">fn </span>from(cfx_create_type: CfxCreateType) -&gt; <span class="self">Self </span>{
-        <span class="kw">match </span>cfx_create_type {
-            CfxCreateType::None =&gt; CreateType::None,
-            CfxCreateType::CREATE =&gt; CreateType::CREATE,
-            CfxCreateType::CREATE2 =&gt; CreateType::CREATE2,
-        }
-    }
-}
-
-<span class="doccomment">/// Call type.
-</span><span class="attr">#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = <span class="string">"lowercase"</span>)]
-</span><span class="kw">pub enum </span>CallType {
-    <span class="doccomment">/// None
-    </span><span class="prelude-val">None</span>,
-    <span class="doccomment">/// Call
-    </span>Call,
-    <span class="doccomment">/// Call code
-    </span>CallCode,
-    <span class="doccomment">/// Delegate call
-    </span>DelegateCall,
-    <span class="doccomment">/// Static call
-    </span>StaticCall,
-}
-
-<span class="kw">impl </span>From&lt;CfxCallType&gt; <span class="kw">for </span>CallType {
-    <span class="kw">fn </span>from(cfx_call_type: CfxCallType) -&gt; <span class="self">Self </span>{
-        <span class="kw">match </span>cfx_call_type {
-            CfxCallType::None =&gt; CallType::None,
-            CfxCallType::Call =&gt; CallType::Call,
-            CfxCallType::CallCode =&gt; CallType::CallCode,
-            CfxCallType::DelegateCall =&gt; CallType::DelegateCall,
-            CfxCallType::StaticCall =&gt; CallType::StaticCall,
-        }
-    }
-}
-
 <span class="doccomment">/// Call response
 </span><span class="attr">#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = <span class="string">"camelCase"</span>)]
 </span><span class="kw">pub struct </span>Call {
     <span class="doccomment">/// Sender
-    </span>from: H160,
+    </span>from: Address,
     <span class="doccomment">/// Recipient
-    </span>to: H160,
+    </span>to: Address,
     <span class="doccomment">/// Transfered Value
     </span>value: U256,
     <span class="doccomment">/// Gas
@@ -520,14 +479,14 @@
                 value: call.value,
                 gas: call.gas,
                 input: call.input,
-                call_type: call.call_type.into(),
+                call_type: call.call_type,
             })),
             RpcCfxAction::Create(create) =&gt; <span class="prelude-val">Ok</span>(Action::Create(Create {
                 from: create.from.hex_address,
                 value: create.value,
                 gas: create.gas,
                 init: create.init,
-                create_type: create.create_type.into(),
+                create_type: create.create_type,
             })),
             action =&gt; {
                 <span class="macro">bail!</span>(<span class="string">"unsupported action in eth space: {:?}"</span>, action);
@@ -555,7 +514,7 @@
     <span class="doccomment">/// Code
     </span>code: Bytes,
     <span class="doccomment">/// Assigned address
-    </span>address: H160,
+    </span>address: Address,
 }
 
 <span class="doccomment">/// Response
@@ -585,9 +544,9 @@
     <span class="doccomment">/// Subtraces
     </span><span class="kw">pub </span>subtraces: usize,
     <span class="doccomment">/// Transaction position
-    </span><span class="kw">pub </span>transaction_position: <span class="prelude-ty">Option</span>&lt;usize&gt;,
+    </span><span class="kw">pub </span>transaction_position: usize,
     <span class="doccomment">/// Transaction hash
-    </span><span class="kw">pub </span>transaction_hash: <span class="prelude-ty">Option</span>&lt;H256&gt;,
+    </span><span class="kw">pub </span>transaction_hash: H256,
     <span class="doccomment">/// Block Number
     </span><span class="kw">pub </span>block_number: u64,
     <span class="doccomment">/// Block Hash
@@ -646,6 +605,13 @@
     <span class="kw">type </span>Error = String;
 
     <span class="kw">fn </span>try_from(cfx_trace: RpcCfxLocalizedTrace) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, String&gt; {
+        <span class="kw">let </span>transaction_position = cfx_trace
+            .transaction_position
+            .map(|pos| pos.as_usize())
+            .ok_or_else(|| <span class="string">"transaction position should exist"</span>.to_string())<span class="question-mark">?</span>;
+        <span class="kw">let </span>transaction_hash = cfx_trace
+            .transaction_hash
+            .ok_or_else(|| <span class="string">"transaction hash should exist"</span>.to_string())<span class="question-mark">?</span>;
         <span class="prelude-val">Ok</span>(<span class="self">Self </span>{
             action: cfx_trace.action.try_into()<span class="question-mark">?</span>,
             result: Res::None,
@@ -653,10 +619,8 @@
             subtraces: <span class="number">0</span>,
             <span class="comment">// note: `as_usize` will panic on overflow,
             // however, this should not happen for tx position
-            </span>transaction_position: cfx_trace
-                .transaction_position
-                .map(|x| x.as_usize()),
-            transaction_hash: cfx_trace.transaction_hash,
+            </span>transaction_position,
+            transaction_hash,
             block_number: cfx_trace
                 .epoch_number
                 .map(|en| en.as_u64())
@@ -798,6 +762,56 @@
             </span>}
         };
         message.fmt(f)
+    }
+}
+
+<span class="attr">#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = <span class="string">"camelCase"</span>)]
+</span><span class="kw">pub struct </span>SetAuth {
+    <span class="doccomment">/// The address of the impl.
+    </span><span class="kw">pub </span>address: Address,
+    <span class="kw">pub </span>chain_id: U256,
+    <span class="kw">pub </span>nonce: U256,
+    <span class="kw">pub </span>author: <span class="prelude-ty">Option</span>&lt;Address&gt;,
+}
+
+<span class="doccomment">/// Trace
+</span><span class="attr">#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = <span class="string">"camelCase"</span>)]
+</span><span class="kw">pub struct </span>LocalizedSetAuthTrace {
+    <span class="doccomment">/// Action
+    </span><span class="kw">pub </span>action: SetAuth,
+    <span class="doccomment">/// Result
+    </span><span class="kw">pub </span>result: VmSetAuthOutcome,
+    <span class="doccomment">/// Transaction position
+    </span><span class="kw">pub </span>transaction_position: usize,
+    <span class="doccomment">/// Transaction hash
+    </span><span class="kw">pub </span>transaction_hash: H256,
+    <span class="doccomment">/// Block Number
+    </span><span class="kw">pub </span>block_number: u64,
+    <span class="doccomment">/// Block Hash
+    </span><span class="kw">pub </span>block_hash: H256,
+}
+
+<span class="kw">impl </span>LocalizedSetAuthTrace {
+    <span class="kw">pub fn </span>new(
+        vm_action: <span class="kw-2">&amp;</span>VmSetAuth, transaction_position: usize,
+        transaction_hash: H256, block_number: u64, block_hash: H256,
+    ) -&gt; <span class="self">Self </span>{
+        <span class="kw">let </span>action = SetAuth {
+            address: vm_action.address,
+            chain_id: vm_action.chain_id,
+            nonce: vm_action.nonce,
+            author: vm_action.author,
+        };
+        <span class="self">Self </span>{
+            action,
+            result: vm_action.outcome,
+            transaction_position,
+            transaction_hash,
+            block_number,
+            block_hash,
+        }
     }
 }
 </code></pre></div></section></main></body></html>

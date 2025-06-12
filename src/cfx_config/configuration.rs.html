@@ -1619,7 +1619,6 @@
 <a href="#1619" id="1619">1619</a>
 <a href="#1620" id="1620">1620</a>
 <a href="#1621" id="1621">1621</a>
-<a href="#1622" id="1622">1622</a>
 </pre></div><pre class="rust"><code><span class="comment">// Copyright 2019 Conflux Foundation. All rights reserved.
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
@@ -2044,15 +2043,7 @@
         <span class="comment">// Development related section.
         </span>(
             log_level, (LevelFilter), LevelFilter::Info, |l| {
-                <span class="kw">match </span>l {
-                    <span class="string">"off" </span>=&gt; <span class="prelude-val">Ok</span>(LevelFilter::Off),
-                    <span class="string">"error" </span>=&gt; <span class="prelude-val">Ok</span>(LevelFilter::Error),
-                    <span class="string">"warn" </span>=&gt; <span class="prelude-val">Ok</span>(LevelFilter::Warn),
-                    <span class="string">"info" </span>=&gt; <span class="prelude-val">Ok</span>(LevelFilter::Info),
-                    <span class="string">"debug" </span>=&gt; <span class="prelude-val">Ok</span>(LevelFilter::Debug),
-                    <span class="string">"trace" </span>=&gt; <span class="prelude-val">Ok</span>(LevelFilter::Trace),
-                    <span class="kw">_ </span>=&gt; <span class="prelude-val">Err</span>(<span class="string">"Invalid log_level"</span>.to_owned()),
-                }
+                LevelFilter::from_str(l).map_err(|e| e.to_string())
             }
         )
 
@@ -2071,15 +2062,12 @@
         (public_rpc_apis, (ApiSet), ApiSet::Safe, ApiSet::from_str)
         (public_evm_rpc_apis, (EthApiSet), EthApiSet::Evm, EthApiSet::from_str)
         (public_evm_rpc_async_apis, (RpcModuleSelection), RpcModuleSelection::Evm, RpcModuleSelection::from_str)
-        (single_mpt_space, (<span class="prelude-ty">Option</span>&lt;Space&gt;), <span class="prelude-val">None</span>, |s| <span class="kw">match </span>s {
-            <span class="string">"native" </span>=&gt; <span class="prelude-val">Ok</span>(Space::Native),
-            <span class="string">"evm" </span>=&gt; <span class="prelude-val">Ok</span>(Space::Ethereum),
-            <span class="kw">_ </span>=&gt;  <span class="prelude-val">Err</span>(<span class="string">"Invalid single_mpt_space"</span>.to_owned()),
-        })
+        (single_mpt_space, (<span class="prelude-ty">Option</span>&lt;Space&gt;), <span class="prelude-val">None</span>, Space::from_str)
     }
 }
 
-<span class="kw">pub struct </span>Configuration {
+<span class="attr">#[derive(Debug)]
+</span><span class="kw">pub struct </span>Configuration {
     <span class="kw">pub </span>raw_conf: RawConfiguration,
 }
 
@@ -2096,11 +2084,11 @@
         <span class="kw">let </span><span class="kw-2">mut </span>config = Configuration::default();
         config.raw_conf = RawConfiguration::parse(matches)<span class="question-mark">?</span>;
 
-        <span class="kw">if </span>matches.is_present(<span class="string">"archive"</span>) {
+        <span class="kw">if </span>matches.get_flag(<span class="string">"archive"</span>) {
             config.raw_conf.node_type = <span class="prelude-val">Some</span>(NodeType::Archive);
-        } <span class="kw">else if </span>matches.is_present(<span class="string">"full"</span>) {
+        } <span class="kw">else if </span>matches.get_flag(<span class="string">"full"</span>) {
             config.raw_conf.node_type = <span class="prelude-val">Some</span>(NodeType::Full);
-        } <span class="kw">else if </span>matches.is_present(<span class="string">"light"</span>) {
+        } <span class="kw">else if </span>matches.get_flag(<span class="string">"light"</span>) {
             config.raw_conf.node_type = <span class="prelude-val">Some</span>(NodeType::Light);
         }
 
@@ -2109,6 +2097,12 @@
             .expect(<span class="string">"called once"</span>);
 
         <span class="prelude-val">Ok</span>(config)
+    }
+
+    <span class="kw">pub fn </span>from_file(config_path: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;Configuration, String&gt; {
+        <span class="prelude-val">Ok</span>(Configuration {
+            raw_conf: RawConfiguration::from_file(config_path)<span class="question-mark">?</span>,
+        })
     }
 
     <span class="kw">fn </span>network_id(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; u64 {
@@ -2243,7 +2237,7 @@
                     <span class="kw">let </span>chain_id = <span class="self">self
                         </span>.raw_conf
                         .chain_id
-                        .unwrap_or_else(|| rand::thread_rng().gen());
+                        .unwrap_or_else(|| rand::rng().random());
                     <span class="kw">let </span>evm_chain_id =
                         <span class="self">self</span>.raw_conf.evm_chain_id.unwrap_or(chain_id);
                     <span class="kw-2">*</span>to_init = <span class="prelude-val">Some</span>(ChainIdParamsInner::new_simple(
@@ -3105,10 +3099,6 @@
             <span class="self">self</span>.raw_conf.base_fee_burn_transition_height.unwrap_or(default_transition_time);
             params.transition_heights =&gt; { cip130, cip133e }
         );
-        params.transition_heights.cip_c2_fix = <span class="self">self
-            </span>.raw_conf
-            .c2_fix_transition_height
-            .unwrap_or(default_transition_time);
         <span class="comment">// TODO: disable 1559 test during dev
         </span>params.transition_heights.cip1559 = <span class="self">self
             </span>.raw_conf
@@ -3128,7 +3118,15 @@
         }
 
         <span class="comment">//
-        // 7702 hardfork (V2.5)
+        // hardfork (V2.5)
+        //
+        </span>params.transition_heights.cip_c2_fix = <span class="self">self
+            </span>.raw_conf
+            .c2_fix_transition_height
+            .unwrap_or(default_transition_time);
+
+        <span class="comment">//
+        // 7702 hardfork (V2.6)
         //
         </span><span class="macro">set_conf!</span>(
             <span class="self">self</span>.raw_conf.eoa_code_transition_height.unwrap_or(default_transition_time);
