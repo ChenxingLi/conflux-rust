@@ -202,6 +202,7 @@ pub struct Spec {
     pub eip2935: bool,
     /// EIP-7623: Increase calldata cost
     pub eip7623: bool,
+    pub cipda: bool,
     pub align_evm: bool,
     pub cip_c2_fix: bool,
 }
@@ -414,6 +415,7 @@ impl Spec {
             eip2935: false,
             eip7623: false,
             cip_c2_fix: false,
+            cipda: false,
             align_evm: false,
         }
     }

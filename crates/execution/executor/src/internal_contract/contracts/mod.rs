@@ -5,6 +5,7 @@
 mod admin;
 mod context;
 pub(super) mod cross_space;
+mod da;
 mod future;
 pub(super) mod params_control;
 pub(super) mod pos;
@@ -56,7 +57,7 @@ pub fn all_internal_contracts() -> Vec<Box<dyn super::InternalContractTrait>> {
         Box::new(cross_space::CrossSpaceCall::instance()),
         Box::new(params_control::ParamsControl::instance()),
         Box::new(system_storage::SystemStorage::instance()),
-        Box::new(future::Reserved3::instance()),
+        Box::new(da::DataAvail::instance()),
         Box::new(future::Reserved8::instance()),
         Box::new(future::Reserved9::instance()),
         Box::new(future::Reserved11::instance()),

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use cfx_types::{Address, AddressWithSpace, Space};
+use cfx_parameters::internal_contract_addresses::DA_CONTRACT_ADDRESS;
+use cfx_types::{Address, AddressSpaceUtil, AddressWithSpace, Space};
 use cfx_vm_types::Spec;
 use primitives::BlockNumber;
 
@@ -72,7 +73,10 @@ impl InternalContractMap {
     pub fn contract(
         &self, address: &AddressWithSpace, spec: &Spec,
     ) -> Option<&Box<dyn InternalContractTrait>> {
-        if address.space != Space::Native {
+        // An ad-hoc implementation
+        if address.space != Space::Native
+            && address != &DA_CONTRACT_ADDRESS.with_evm_space()
+        {
             return None;
         }
         self.builtin
