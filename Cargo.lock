@@ -954,6 +954,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 name = "blockgen"
 version = "0.1.0"
 dependencies = [
+ "block-event-record",
  "cfx-parameters",
  "cfx-stratum",
  "cfx-types",

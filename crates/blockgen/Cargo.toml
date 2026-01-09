@@ -25,3 +25,4 @@ rand = { workspace = true }
 secret-store = { workspace = true }
 toml = { workspace = true }
 txgen = { workspace = true }
+block-event-record = { workspace = true }

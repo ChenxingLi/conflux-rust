@@ -21,7 +21,7 @@ use cfxcore::{
 };
 use lazy_static::lazy_static;
 use log::{debug, trace, warn};
-use metrics::{Gauge, GaugeUsize};
+use metrics::{AdvancedTimer, Gauge, GaugeUsize};
 use parking_lot::{Mutex, RwLock};
 use primitives::{pos::PosBlockId, *};
 use std::{
@@ -35,9 +35,22 @@ use std::{
 };
 use time::{Duration, SystemTime, UNIX_EPOCH};
 use txgen::SharedTransactionGenerator;
+
+use metrics::{register_adv_timer_with_group, MeterTimer2};
+
 lazy_static! {
     static ref PACKED_ACCOUNT_SIZE: Arc<dyn Gauge<usize>> =
         GaugeUsize::register_with_group("txpool", "packed_account_size");
+    static ref GENERATE_ONE_BLOCK: AdvancedTimer =
+            register_adv_timer_with_group("blockgen", "generate");
+    static ref PACK_TRANSACTION: AdvancedTimer =
+            register_adv_timer_with_group("blockgen", "pack_transaction");
+    static ref GET_BLAME: AdvancedTimer =
+            register_adv_timer_with_group("blockgen", "get_blame");
+    static ref ASSEMBLE_BLOCK: AdvancedTimer =
+            register_adv_timer_with_group("blockgen", "assemble_block");
+    static ref RESOLVE_PUZZLE: AdvancedTimer =
+            register_adv_timer_with_group("blockgen", "resolve_puzzle");
 }
 
 /// This determined the frequency of checking a new PoW problem.
@@ -371,12 +384,14 @@ impl BlockGenerator {
     ) -> Block {
         let consensus_graph = self.consensus_graph();
 
+        let _timer = MeterTimer2::time_func(&PACK_TRANSACTION);
         let (best_info, block_gas_limit, transactions, maybe_base_price) =
             self.txpool.get_best_info_with_packed_transactions(
                 num_txs,
                 block_size_limit,
                 additional_transactions,
             );
+        std::mem::drop(_timer);
 
         let mut sender_accounts = HashSet::new();
         for tx in &transactions {
@@ -388,11 +403,14 @@ impl BlockGenerator {
         }
         PACKED_ACCOUNT_SIZE.update(sender_accounts.len());
 
+        let _timer = MeterTimer2::time_func(&GET_BLAME);
         let state_blame_info = consensus_graph
             .get_blame_and_deferred_state_for_generation(
                 &best_info.best_block_hash,
             )
             .unwrap();
+        std::mem::drop(_timer);
+
 
         let best_block_hash = best_info.best_block_hash.clone();
         let mut referee = best_info.bounded_terminal_block_hashes.clone();
@@ -409,6 +427,7 @@ impl BlockGenerator {
         };
         referee.retain(|r| *r != best_block_hash);
 
+        let _timer = MeterTimer2::time_func(&ASSEMBLE_BLOCK);
         self.assemble_new_block_impl(
             best_block_hash,
             referee,
@@ -531,12 +550,13 @@ impl BlockGenerator {
     /// Generate a block with transactions in the pool
     pub fn generate_block(
         &self, num_txs: usize, block_size_limit: usize,
-        additional_transactions: Vec<Arc<SignedTransaction>>,
+        additional_transactions: Vec<Arc<SignedTransaction>>
     ) -> H256 {
+        let _timer = MeterTimer2::time_func(&GENERATE_ONE_BLOCK);
         let block = self.assemble_new_block(
             num_txs,
             block_size_limit,
-            additional_transactions,
+            additional_transactions
         );
         self.generate_block_impl(block)
     }
@@ -710,6 +730,7 @@ impl BlockGenerator {
     }
 
     fn generate_block_impl(&self, block_init: Block) -> H256 {
+        let _timer = MeterTimer2::time_func(&RESOLVE_PUZZLE);
         let mut block = block_init;
         let difficulty = block.block_header.difficulty();
         let problem = ProofOfWorkProblem::new(
