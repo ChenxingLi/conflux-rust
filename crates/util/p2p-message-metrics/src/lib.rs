@@ -3,7 +3,7 @@ extern crate metrics;
 extern crate once_cell;
 
 use lazy_static::lazy_static;
-use metrics::{register_meter_with_group, Histogram, Meter, Sample};
+use metrics::{Histogram, Meter, Sample, register_meter_with_group};
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 

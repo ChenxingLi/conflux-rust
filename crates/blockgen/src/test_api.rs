@@ -4,6 +4,8 @@ use cfx_types::{H256, U256};
 use cfxcore::pow::{ProofOfWorkProblem, ProofOfWorkSolution};
 use log::debug;
 
+use crate::metrics::*;
+use metrics::MeterTimer2;
 use primitives::*;
 use std::{ops::Deref, sync::Arc, thread, time::Duration};
 
@@ -52,6 +54,7 @@ impl BlockGeneratorTestApi {
         &self, num_txs: usize, block_size_limit: usize,
         additional_transactions: Vec<Arc<SignedTransaction>>,
     ) -> H256 {
+        let _timer = MeterTimer2::time_func(&GENERATE_ONE_BLOCK);
         let block = self.assembler.assemble_new_block(
             num_txs,
             block_size_limit,
@@ -124,6 +127,8 @@ impl BlockGeneratorTestApi {
     }
 
     fn generate_block_impl(&self, block_init: Block) -> H256 {
+        let _timer = MeterTimer2::time_func(&RESOLVE_PUZZLE);
+
         let mut block = block_init;
         let difficulty = block.block_header.difficulty();
         let problem = ProofOfWorkProblem::new(
@@ -158,6 +163,8 @@ impl BlockGeneratorTestApi {
         // Ensure that when `generate**` function returns, the block has been
         // handled by Consensus This order is assumed by some tests, and
         // this function is also only used in tests.
+
+        let _timer2 = MeterTimer2::time_func(&WAIT_GENERATION);
         self.consensus.wait_for_generation(&hash);
         debug!("generate_block finished wait_for_generation()");
 

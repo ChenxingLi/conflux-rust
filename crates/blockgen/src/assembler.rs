@@ -1,3 +1,4 @@
+use crate::metrics::*;
 use cfx_parameters::{
     block::MAX_TRANSACTION_COUNT_PER_BLOCK, consensus::GENESIS_GAS_LIMIT,
     consensus_internal::ELASTICITY_MULTIPLIER,
@@ -10,7 +11,7 @@ use cfxcore::{
 };
 use lazy_static::lazy_static;
 use log::{debug, trace};
-use metrics::{Gauge, GaugeUsize};
+use metrics::{Gauge, GaugeUsize, MeterTimer2};
 use primitives::{pos::PosBlockId, *};
 use std::{cmp::max, collections::HashSet, sync::Arc, time};
 use time::{SystemTime, UNIX_EPOCH};
@@ -230,12 +231,14 @@ impl BlockAssembler {
     ) -> Block {
         let consensus_graph = self.consensus_graph();
 
+        let _timer = MeterTimer2::time_func(&PACK_TRANSACTION);
         let (best_info, block_gas_limit, transactions, maybe_base_price) =
             self.txpool.get_best_info_with_packed_transactions(
                 num_txs,
                 block_size_limit,
                 additional_transactions,
             );
+        std::mem::drop(_timer);
 
         let mut sender_accounts = HashSet::new();
         for tx in &transactions {
@@ -247,11 +250,13 @@ impl BlockAssembler {
         }
         PACKED_ACCOUNT_SIZE.update(sender_accounts.len());
 
+        let _timer = MeterTimer2::time_func(&GET_BLAME);
         let state_blame_info = consensus_graph
             .get_blame_and_deferred_state_for_generation(
                 &best_info.best_block_hash,
             )
             .unwrap();
+        std::mem::drop(_timer);
 
         let best_block_hash = best_info.best_block_hash.clone();
         let mut referee = best_info.bounded_terminal_block_hashes.clone();
@@ -268,6 +273,7 @@ impl BlockAssembler {
         };
         referee.retain(|r| *r != best_block_hash);
 
+        let _timer = MeterTimer2::time_func(&ASSEMBLE_BLOCK);
         self.assemble_new_block_impl(
             best_block_hash,
             referee,

@@ -6,6 +6,7 @@ use super::{
 use crate::verification::PackingCheckResult;
 use cfx_packing_pool::{PackingPool, PackingPoolConfig};
 
+use super::nonce_pool::StopReason;
 use cfx_rpc_cfx_types::PendingReason;
 use cfx_types::{AddressWithSpace, Space, SpaceMap, H256, U256};
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
@@ -16,7 +17,6 @@ use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use super::nonce_pool::StopReason;
 
 #[cfg(test)]
 mod tests;
@@ -615,7 +615,6 @@ impl DeferredPool {
         };
         bucket.continous_ready_nonce(&start_nonce, rest_balance)
     }
-
 
     pub fn ready_transaction_hashes(
         &self, space: Space,

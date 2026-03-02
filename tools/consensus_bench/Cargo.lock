@@ -1100,6 +1100,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-event-record"
+version = "0.1.0"
+dependencies = [
+ "cfx-types",
+ "chrono",
+ "lazy_static",
+ "log",
+ "lru_time_cache 0.11.11",
+ "parking_lot 0.12.3",
+]
+
+[[package]]
 name = "block-modes"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1441,6 +1453,7 @@ dependencies = [
  "keccak-hash",
  "lazy_static",
  "log",
+ "metrics",
  "num",
  "once_cell",
  "parking_lot 0.12.3",
@@ -1626,7 +1639,9 @@ dependencies = [
  "cfx-types",
  "cfx-util-macros",
  "hashbrown 0.7.2",
+ "lazy_static",
  "log",
+ "metrics",
  "parking_lot 0.12.3",
  "primitives",
  "rlp 0.4.6",
@@ -1747,6 +1762,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bcs",
+ "block-event-record",
  "bls-signatures",
  "bounded-executor",
  "byteorder",
@@ -1802,7 +1818,7 @@ dependencies = [
  "link-cut-tree",
  "log",
  "log4rs",
- "lru_time_cache",
+ "lru_time_cache 0.9.0",
  "malloc_size_of",
  "malloc_size_of_derive",
  "metrics",
@@ -1812,6 +1828,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "once_cell",
+ "p2p-message-metrics",
  "parking_lot 0.12.3",
  "pos-ledger-db",
  "pow-types",
@@ -1851,6 +1868,7 @@ dependencies = [
  "toml 0.8.19",
  "treap-map",
  "unexpected",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -4615,6 +4633,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab44e08e5b5110188be64dc8f0865635206ad7386fe672903bef195df3cc8960"
 
 [[package]]
+name = "lru_time_cache"
+version = "0.11.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9106e1d747ffd48e6be5bb2d97fa706ed25b144fbee4d5c02eae110cd8d6badd"
+
+[[package]]
 name = "lz4-sys"
 version = "1.8.3"
 source = "git+https://github.com/busyjay/lz4-rs.git?branch=adjust-build#5a8afe4010c67899fc7af876a58d67fd6269bf81"
@@ -4848,6 +4872,7 @@ dependencies = [
  "metrics",
  "mio",
  "natpmp",
+ "p2p-message-metrics",
  "parity-path",
  "parking_lot 0.12.3",
  "priority-send-queue",
@@ -5116,6 +5141,15 @@ dependencies = [
  "elliptic-curve",
  "primeorder",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "p2p-message-metrics"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "metrics",
+ "once_cell",
 ]
 
 [[package]]
@@ -8399,6 +8433,12 @@ checksum = "d7d8a75eaf6557bb84a65ace8609883db44a29951042ada9b393151532e41fcb"
 dependencies = [
  "xml-rs",
 ]
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "yaml_serde"

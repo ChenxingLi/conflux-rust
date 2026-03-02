@@ -2,6 +2,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 mod assembler;
+mod metrics;
 mod mine_session;
 mod miner;
 mod test_api;
