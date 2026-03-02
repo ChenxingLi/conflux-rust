@@ -24,6 +24,7 @@ use unexpected::{Mismatch, OutOfBounds};
 
 use cfx_executor::machine::Machine;
 use cfx_types::{H256, U256};
+use cfxcore_errors::ProviderBlockError;
 use dag::{Graph, RichDAG, RichTreeGraph, TreeGraph, DAG};
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
@@ -45,7 +46,7 @@ use crate::{
     statistics::SharedStatistics,
     sync::synchronization_protocol_handler::FutureBlockContainer,
     verification::*,
-    ConsensusGraph, Notifications,
+    Notifications,
 };
 
 lazy_static! {
@@ -1016,11 +1017,7 @@ impl MallocSizeOf for SynchronizationGraph {
 
         // TODO: Add statistics for consortium.
         if !self.is_consortium() {
-            let consensus_graph = self
-                .consensus
-                .as_any()
-                .downcast_ref::<ConsensusGraph>()
-                .expect("downcast should succeed");
+            let consensus_graph = &*self.consensus;
             malloc_size += consensus_graph.size_of(ops);
         }
         // Does not count size_of machine.
@@ -1033,13 +1030,12 @@ pub type SharedSynchronizationGraph = Arc<SynchronizationGraph>;
 
 impl SynchronizationGraph {
     pub fn new(
-        consensus: SharedConsensusGraph,
-        verification_config: VerificationConfig, pow_config: ProofOfWorkConfig,
-        pow: Arc<PowComputer>, sync_config: SyncGraphConfig,
-        notifications: Arc<Notifications>, machine: Arc<Machine>,
-        pos_verifier: Arc<PosVerifier>,
+        consensus: SharedConsensusGraph, data_man: Arc<BlockDataManager>,
+        statistics: SharedStatistics, verification_config: VerificationConfig,
+        pow_config: ProofOfWorkConfig, pow: Arc<PowComputer>,
+        sync_config: SyncGraphConfig, notifications: Arc<Notifications>,
+        machine: Arc<Machine>, pos_verifier: Arc<PosVerifier>,
     ) -> Self {
-        let data_man = consensus.get_data_manager().clone();
         let genesis_hash = data_man.get_cur_consensus_era_genesis_hash();
         let genesis_block_header = data_man
             .block_header_by_hash(&genesis_hash)
@@ -1070,7 +1066,7 @@ impl SynchronizationGraph {
             verification_config,
             sync_config,
             consensus: consensus.clone(),
-            statistics: consensus.get_statistics().clone(),
+            statistics: statistics.clone(),
             consensus_unprocessed_count: consensus_unprocessed_count.clone(),
             new_block_hashes: notifications.new_block_hashes.clone(),
             machine,
@@ -1116,8 +1112,8 @@ impl SynchronizationGraph {
                                 let header = data_man.block_header_by_hash(&hash).expect("Header must exist before sending to the consensus worker!");
 
                                 // start pos with an era advance.
-                                if !pos_started && pos_verifier.is_enabled_at_height(header.height() + consensus.get_config().inner_conf.era_epoch_count) {
-                                    if let Err(e) = pos_verifier.initialize(consensus.clone().to_arc_consensus()) {
+                                if !pos_started && pos_verifier.is_enabled_at_height(header.height() + consensus.config().inner_conf.era_epoch_count) {
+                                    if let Err(e) = pos_verifier.initialize(consensus.clone()) {
                                         info!("PoS cannot be started at the expected height: e={}", e);
                                     } else {
                                         pos_started = true;
@@ -1203,16 +1199,14 @@ impl SynchronizationGraph {
     pub fn get_to_propagate_trans(
         &self,
     ) -> HashMap<H256, Arc<SignedTransaction>> {
-        self.consensus
-            .get_tx_pool()
-            .get_to_be_propagated_transactions()
+        self.consensus.tx_pool().get_to_be_propagated_transactions()
     }
 
     pub fn set_to_propagate_trans(
         &self, transactions: HashMap<H256, Arc<SignedTransaction>>,
     ) {
         self.consensus
-            .get_tx_pool()
+            .tx_pool()
             .set_to_be_propagated_transactions(transactions);
     }
 
@@ -1901,7 +1895,7 @@ impl SynchronizationGraph {
 
     pub fn get_all_block_hashes_by_epoch(
         &self, epoch_number: u64,
-    ) -> Result<Vec<H256>, String> {
+    ) -> Result<Vec<H256>, ProviderBlockError> {
         let mut res = self.consensus.get_skipped_block_hashes_by_epoch(
             EpochNumber::Number(epoch_number.into()),
         )?;

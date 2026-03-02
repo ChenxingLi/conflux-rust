@@ -3,8 +3,9 @@
 // See http://www.gnu.org/licenses/
 
 use crate::rpc::types::{
-    EpochNumber, EpochTrace, LocalizedBlockTrace, LocalizedTrace, TraceFilter,
+    EpochNumber, LocalizedBlockTrace, LocalizedTrace, TraceFilter,
 };
+use cfx_rpc_eth_types::trace::EpochTrace;
 use cfx_types::H256;
 use jsonrpc_core::Result as JsonRpcResult;
 use jsonrpc_derive::rpc;
@@ -32,5 +33,7 @@ pub trait Trace {
 
     /// Return all traces of both spaces in an epoch.
     #[rpc(name = "trace_epoch")]
-    fn epoch_traces(&self, epoch: EpochNumber) -> JsonRpcResult<EpochTrace>;
+    fn epoch_traces(
+        &self, epoch: EpochNumber,
+    ) -> JsonRpcResult<Option<EpochTrace>>;
 }

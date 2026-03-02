@@ -46,7 +46,6 @@ use cfx_parameters::light::{
 };
 use cfx_types::H256;
 use diem_types::validator_config::{ConsensusPublicKey, ConsensusVRFPublicKey};
-use io::TimerToken;
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use network::{
     node_table::NodeId, service::ProtocolVersion,
@@ -64,6 +63,8 @@ use std::{
     time::{Duration, Instant},
 };
 use throttling::token_bucket::{ThrottleResult, TokenBucketManager};
+
+type TimerToken = usize;
 
 const CHECK_PEER_HEARTBEAT_TIMER: TimerToken = 0;
 
@@ -212,7 +213,7 @@ impl Provider {
 
     #[inline]
     fn tx_by_hash(&self, hash: H256) -> Option<SignedTransaction> {
-        if let Some(info) = self.consensus.get_transaction_info_by_hash(&hash) {
+        if let Some(info) = self.consensus.get_signed_tx_and_tx_info(&hash) {
             return Some(info.0);
         };
 
@@ -226,7 +227,7 @@ impl Provider {
     #[inline]
     fn tx_info_by_hash(&self, hash: H256) -> Result<TxInfo> {
         let (tx, tx_index, receipt) =
-            match self.consensus.get_transaction_info_by_hash(&hash) {
+            match self.consensus.get_signed_tx_and_tx_info(&hash) {
                 None => {
                     bail!(Error::UnableToProduceTxInfo {
                         reason: format!("Unable to get tx info for {:?}", hash)
@@ -438,7 +439,7 @@ impl Provider {
         validate_chain_id(
             &self
                 .consensus
-                .get_config()
+                .config()
                 .chain_id
                 .read()
                 .to_native_space_params(),
@@ -928,7 +929,7 @@ impl Provider {
                 "Apply throttling for broadcast, total: {}, allowed: {}",
                 total, allowed
             );
-            peers.shuffle(&mut rand::thread_rng());
+            peers.shuffle(&mut rand::rng());
             peers.truncate(allowed);
         }
 

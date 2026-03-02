@@ -243,6 +243,7 @@ impl StorageManager {
                     storage_conf.use_isolated_db_for_mpt_table,
                     storage_conf.use_isolated_db_for_mpt_table_height,
                     storage_conf.consensus_param.era_epoch_count,
+                    storage_conf.backup_mpt_snapshot,
                 )?,
             }),
             delta_mpts_id_gen: Default::default(),
@@ -321,7 +322,9 @@ impl StorageManager {
         &self, snapshot_epoch_id: &EpochId, try_open: bool,
         open_mpt_snapshot: bool,
     ) -> Result<
-        Option<GuardedValue<RwLockReadGuard<Vec<SnapshotInfo>>, SnapshotDb>>,
+        Option<
+            GuardedValue<RwLockReadGuard<'_, Vec<SnapshotInfo>>, SnapshotDb>,
+        >,
     > {
         // Make sure that the snapshot info is ready at the same time of the
         // snapshot db. This variable is used for the whole scope

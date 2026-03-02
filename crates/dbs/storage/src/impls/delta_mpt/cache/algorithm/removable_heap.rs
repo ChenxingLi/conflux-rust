@@ -25,8 +25,10 @@ impl<PosT: PrimitiveNum> HeapHandle<PosT> {
     pub fn get_pos(&self) -> PosT { self.pos }
 
     // Update heap handle for value being moved in heap.
+    #[allow(dead_code)]
     pub fn set_handle(&mut self, pos: PosT) { self.pos = pos; }
 
+    #[allow(dead_code)]
     pub fn set_removed(&mut self) { self.pos = PosT::from(Self::NULL_POS); }
 }
 
@@ -40,6 +42,7 @@ impl<PosT: PrimitiveNum> Default for HeapHandle<PosT> {
 
 pub struct TrivialValueWithHeapHandle<ValueType, PosT: PrimitiveNum> {
     pub value: ValueType,
+    #[allow(dead_code)]
     handle: HeapHandle<PosT>,
 }
 
@@ -55,15 +58,18 @@ impl<ValueType, PosT: PrimitiveNum>
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_handle_mut(&mut self) -> &mut HeapHandle<PosT> {
         &mut self.handle
     }
 
     // Update heap handle for value being moved in heap.
+    #[allow(dead_code)]
     pub fn set_handle(&mut self, pos: PosT) {
         self.get_handle_mut().set_handle(pos);
     }
 
+    #[allow(dead_code)]
     pub fn set_removed(&mut self) { self.get_handle_mut().set_removed(); }
 }
 
@@ -102,7 +108,7 @@ pub trait HeapValueUtil<ValueType, PosT: PrimitiveNum> {
 
     fn get_key_for_comparison<'a>(
         &'a self, value: &'a ValueType,
-    ) -> &Self::KeyType;
+    ) -> &'a Self::KeyType;
 }
 
 /// A demo of heap value util for heap which directly maintains value where the
@@ -157,7 +163,7 @@ impl<PosT: PrimitiveNum, ValueType: Ord + Clone>
 
     fn get_key_for_comparison<'a>(
         &'a self, value: &'a TrivialValueWithHeapHandle<ValueType, PosT>,
-    ) -> &ValueType {
+    ) -> &'a ValueType {
         value.as_ref()
     }
 }

@@ -399,7 +399,9 @@ impl<'trie, 'db: 'trie> SubTrieVisitor<'trie, 'db> {
 
                             Ok((value, node_ref_changed, node_cow.into_child()))
                         },
-                        _ => unsafe { unreachable_unchecked() },
+                        _ => {
+                            unreachable!()
+                        }
                     }
                 } else {
                     Ok((value, false, node_cow.into_child()))
@@ -544,7 +546,9 @@ impl<'trie, 'db: 'trie> SubTrieVisitor<'trie, 'db> {
                                 node_cow.into_child(),
                             ));
                         },
-                        _ => unsafe { unreachable_unchecked() },
+                        _ => {
+                            unreachable!()
+                        }
                     }
                 } else {
                     return Ok((value, false, node_cow.into_child()));
@@ -627,6 +631,77 @@ impl<'trie, 'db: 'trie> SubTrieVisitor<'trie, 'db> {
             &mut *self.db.get_mut().to_owned_read()?,
         )?;
         Ok(Some(values))
+    }
+
+    /// return all key/value pairs given the prefix
+    pub fn traversal_with_callback(
+        mut self, key: KeyPart, key_remaining: KeyPart,
+        callback: &mut dyn FnMut(MptKeyValue), is_delta_mpt: bool,
+        only_account_key: bool,
+    ) -> Result<()> {
+        let node_memory_manager = self.node_memory_manager();
+        let allocator = node_memory_manager.get_allocator();
+        let mut node_cow = self.root.take();
+
+        let trie_node_ref = node_cow.get_trie_node(
+            node_memory_manager,
+            &allocator,
+            &mut *self.db.get_mut().to_owned_read()?,
+        )?;
+
+        let key_prefix: CompressedPathRaw;
+        match trie_node_ref.walk::<access_mode::Write>(key_remaining) {
+            WalkStop::ChildNotFound { .. } => return Ok(()),
+            WalkStop::Arrived => {
+                // To enumerate the subtree.
+                key_prefix = key.into();
+            }
+            WalkStop::PathDiverted {
+                key_child_index,
+                unmatched_child_index,
+                unmatched_path_remaining,
+                ..
+            } => {
+                if key_child_index.is_some() {
+                    return Ok(());
+                }
+                // To enumerate the subtree.
+                key_prefix = CompressedPathRaw::join_connected_paths(
+                    &key,
+                    unmatched_child_index,
+                    &unmatched_path_remaining,
+                );
+            }
+            WalkStop::Descent {
+                key_remaining,
+                child_node,
+                ..
+            } => {
+                drop(trie_node_ref);
+                self.new_visitor_for_subtree(child_node.clone().into())
+                    .traversal_with_callback(
+                        key,
+                        key_remaining,
+                        callback,
+                        is_delta_mpt,
+                        only_account_key,
+                    )?;
+                return Ok(());
+            }
+        }
+
+        let trie_node = GuardedValue::take(trie_node_ref);
+        node_cow.iterate_internal_with_callback(
+            self.owned_node_set.get_ref(),
+            self.get_trie_ref(),
+            trie_node,
+            key_prefix,
+            &mut *self.db.get_mut().to_owned_read()?,
+            callback,
+            is_delta_mpt,
+            only_account_key,
+        )?;
+        Ok(())
     }
 
     // In a method we visit node one or 2 times but borrow-checker prevent
@@ -854,4 +929,4 @@ use super::{
 };
 use parking_lot::MutexGuard;
 use primitives::{MerkleHash, MptValue, MERKLE_NULL_NODE};
-use std::{hint::unreachable_unchecked, marker::PhantomData};
+use std::marker::PhantomData;

@@ -6,12 +6,16 @@ use cfx_rpc_eth_types::Error as EthRpcError;
 pub use cfx_rpc_utils::error::error_codes::EXCEPTION_ERROR;
 use cfx_statedb::Error as StateDbError;
 use cfx_storage::Error as StorageError;
+use cfxcore_errors::ProviderBlockError;
 use jsonrpc_core::{futures::future, Error as JsonRpcError, ErrorCode};
 use jsonrpsee::types::ErrorObjectOwned;
 use primitives::{account::AccountError, filter::FilterError};
 use rlp::DecoderError;
 use serde_json::Value;
-use std::fmt::{Debug, Display};
+use std::{
+    fmt::{Debug, Display},
+    pin::Pin,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -38,7 +42,7 @@ pub enum Error {
     Msg(String),
 }
 
-pub type BoxFuture<T> = Box<dyn future::Future<Item = T, Error = Error> + Send>;
+pub type BoxFuture<T> = Pin<Box<dyn future::Future<Output = Result<T>> + Send>>;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -85,6 +89,10 @@ impl From<&str> for Error {
 
 impl From<String> for Error {
     fn from(s: String) -> Error { Error::Msg(s) }
+}
+
+impl From<ProviderBlockError> for Error {
+    fn from(e: ProviderBlockError) -> Error { Error::from(e.to_string()) }
 }
 
 impl From<EthRpcError> for Error {

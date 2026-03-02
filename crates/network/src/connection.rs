@@ -14,7 +14,7 @@ use log::{debug, trace};
 use metrics::{
     register_meter_with_group, Gauge, GaugeUsize, Histogram, Meter, Sample,
 };
-use mio::{tcp::*, *};
+use mio::{net::TcpStream, Interest, Registry, Token};
 use p2p_message_metrics::{P2P_QUEUE_WAIT_TIME, P2P_SEND_WAIT_TIME};
 use priority_send_queue::{PrioritySendQueue, SendQueuePriority};
 use serde::Deserialize;
@@ -193,7 +193,7 @@ pub struct GenericConnection<Socket: GenericSocket> {
     /// Sending packet.
     sending_packet: Option<Packet>,
     /// Event flags this connection interested
-    interest: Ready,
+    interest: Interest,
     /// Registered flag
     registered: AtomicBool,
     /// Assemble packet with extra information before sending out.
@@ -340,7 +340,10 @@ impl<Socket: GenericSocket> GenericConnection<Socket> {
         let status = self.write_next_from_queue()?;
 
         if self.sending_packet.is_none() && self.send_queue.is_empty() {
-            self.interest.remove(Ready::writable());
+            self.interest = self
+                .interest
+                .remove(Interest::WRITABLE)
+                .expect("Interest::WRITABLE should not be empty");
         }
         NETWORK_SEND_QUEUE_SIZE.update(self.send_queue.len());
         io.update_registration(self.token)?;
@@ -379,7 +382,7 @@ impl<Socket: GenericSocket> GenericConnection<Socket> {
             }
 
             if !self.interest.is_writable() {
-                self.interest.insert(Ready::writable());
+                self.interest = self.interest.add(Interest::WRITABLE);
             }
             io.update_registration(self.token).ok();
         }
@@ -402,7 +405,7 @@ impl Connection {
             recv_buf: BytesMut::new(),
             send_queue: PrioritySendQueue::default(),
             sending_packet: None,
-            interest: Ready::hup() | Ready::readable(),
+            interest: Interest::READABLE,
             registered: AtomicBool::new(false),
             assembler: Box::new(PacketWithLenAssembler::default()),
         }
@@ -410,7 +413,7 @@ impl Connection {
 
     /// Register this connection with the IO event loop.
     pub fn register_socket(
-        &self, reg: Token, event_loop: &Poll,
+        &mut self, reg: Token, poll_registry: &Registry,
     ) -> io::Result<()> {
         if self.registered.load(AtomicOrdering::SeqCst) {
             return Ok(());
@@ -420,12 +423,9 @@ impl Connection {
             self.token,
             reg
         );
-        if let Err(e) = event_loop.register(
-            &self.socket,
-            reg,
-            self.interest,
-            PollOpt::edge(),
-        ) {
+        if let Err(e) =
+            poll_registry.register(&mut self.socket, reg, self.interest)
+        {
             trace!(
                 "Failed to register socket, token = {}, reg = {:?}, err = {:?}",
                 self.token,
@@ -440,7 +440,7 @@ impl Connection {
     /// Update connection registration. Should be called at the end of the IO
     /// handler.
     pub fn update_socket(
-        &self, reg: Token, event_loop: &Poll,
+        &mut self, reg: Token, poll_registry: &Registry,
     ) -> io::Result<()> {
         trace!(
             "Connection reregister, token = {}, reg = {:?}",
@@ -448,10 +448,10 @@ impl Connection {
             reg
         );
         if !self.registered.load(AtomicOrdering::SeqCst) {
-            self.register_socket(reg, event_loop)
+            self.register_socket(reg, poll_registry)
         } else {
-            event_loop
-                .reregister(&self.socket, reg, self.interest, PollOpt::edge())
+            poll_registry
+                .reregister(&mut self.socket, reg, self.interest)
                 .unwrap_or_else(|e| {
                     trace!("Failed to reregister socket, token = {}, reg = {:?}, err = {:?}", self.token, reg, e);
                 });
@@ -461,9 +461,11 @@ impl Connection {
 
     /// Delete connection registration. Should be called at the end of the IO
     /// handler.
-    pub fn deregister_socket(&self, event_loop: &Poll) -> io::Result<()> {
+    pub fn deregister_socket(
+        &mut self, poll_registry: &Registry,
+    ) -> io::Result<()> {
         trace!("Connection deregister, token = {}", self.token);
-        event_loop.deregister(&self.socket).ok();
+        poll_registry.deregister(&mut self.socket).ok();
         Ok(())
     }
 
@@ -608,8 +610,8 @@ impl PacketAssembler for PacketWithLenAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::iolib::*;
-    use mio::Ready;
+    use crate::iolib::IoChannel;
+    use mio::Interest;
     use std::{
         cmp,
         io::{Read, Result, Write},
@@ -690,7 +692,7 @@ mod tests {
                 send_queue: PrioritySendQueue::default(),
                 sending_packet: None,
                 recv_buf: BytesMut::new(),
-                interest: Ready::hup() | Ready::readable(),
+                interest: Interest::READABLE,
                 registered: AtomicBool::new(false),
                 assembler: Box::new(PacketWithLenAssembler::new(1, None)),
             }
