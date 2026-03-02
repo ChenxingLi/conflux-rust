@@ -9,7 +9,6 @@ use crate::{
     access_path::Path,
     diem_timestamp::DiemTimestampResource,
     on_chain_config::{ConfigurationResource, OnChainConfig, ValidatorSet},
-    validator_config::ValidatorConfigResource,
 };
 use anyhow::Result;
 use move_core_types::move_resource::MoveResource;
@@ -30,12 +29,6 @@ impl AccountState {
         &self,
     ) -> Result<Option<DiemTimestampResource>> {
         self.get_resource::<DiemTimestampResource>()
-    }
-
-    pub fn get_validator_config_resource(
-        &self,
-    ) -> Result<Option<ValidatorConfigResource>> {
-        self.get_resource::<ValidatorConfigResource>()
     }
 
     pub fn get_validator_set(&self) -> Result<Option<ValidatorSet>> {
@@ -96,11 +89,6 @@ impl fmt::Debug for AccountState {
             .map(|diem_timestamp_opt| format!("{:#?}", diem_timestamp_opt))
             .unwrap_or_else(|e| format!("parse: {:#?}", e));
 
-        let validator_config_str = self
-            .get_validator_config_resource()
-            .map(|validator_config_opt| format!("{:#?}", validator_config_opt))
-            .unwrap_or_else(|e| format!("parse error: {:#?}", e));
-
         let validator_set_str = self
             .get_validator_set()
             .map(|validator_set_opt| format!("{:#?}", validator_set_opt))
@@ -110,10 +98,9 @@ impl fmt::Debug for AccountState {
             f,
             "{{ \n \
              DiemTimestamp {{ {} }} \n \
-             ValidatorConfig {{ {} }} \n \
              ValidatorSet {{ {} }} \n \
              }}",
-            diem_timestamp_str, validator_config_str, validator_set_str,
+            diem_timestamp_str, validator_set_str,
         )
     }
 }
