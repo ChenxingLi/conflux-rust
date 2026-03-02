@@ -13,7 +13,7 @@ use crate::{
         LIGHT_PROTOCOL_ID, LIGHT_PROTOCOL_VERSION,
     },
     sync::SynchronizationGraph,
-    ConsensusGraph, Notifications,
+    Notifications,
 };
 use cfx_addr::Network;
 use cfx_executor::state::COMMISSION_PRIVILEGE_SPECIAL_KEY;
@@ -34,7 +34,7 @@ use cfx_types::{
 };
 use futures::{
     future::{self, Either},
-    stream, try_join, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
+    stream, try_join, StreamExt, TryStreamExt,
 };
 use network::{service::ProtocolVersion, NetworkContext, NetworkService};
 use primitives::{
@@ -46,6 +46,7 @@ use primitives::{
 };
 use rlp::Rlp;
 use std::{collections::BTreeSet, future::Future, sync::Arc, time::Duration};
+use tokio::time::timeout;
 
 pub struct TxInfo {
     pub tx: SignedTransaction,
@@ -57,23 +58,11 @@ pub struct TxInfo {
     pub prior_gas_used: U256,
 }
 
-// As of now, the jsonrpc crate uses legacy futures (futures@0.1 and tokio@0.1).
-// Because of this, our RPC runtime cannot handle tokio@0.2 timing primitives.
-// As a temporary workaround, we use the old `tokio_timer::Timeout` instead.
 async fn with_timeout<T>(
     d: Duration, msg: String,
     fut: impl Future<Output = Result<T, LightError>> + Send + Sync,
 ) -> Result<T, LightError> {
-    // convert `fut` into futures@0.1
-    let fut = fut.unit_error().boxed().compat();
-
-    // set timeout
-    let with_timeout = tokio_timer::Timeout::new(fut, d);
-
-    // convert back to std::future
-    use futures::compat::Future01CompatExt;
-    let with_timeout = with_timeout.compat();
-
+    let with_timeout = timeout(d, fut);
     // set error message
     with_timeout
         .await
@@ -239,16 +228,14 @@ impl QueryService {
     pub async fn retrieve_block(
         &self, hash: H256,
     ) -> Result<Option<Block>, LightError> {
-        let genesis = self.consensus.get_data_manager().true_genesis.clone();
+        let genesis = self.consensus.data_manager().true_genesis.clone();
 
         if hash == genesis.hash() {
             return Ok(Some((*genesis).clone()));
         }
 
-        let maybe_block_header = self
-            .consensus
-            .get_data_manager()
-            .block_header_by_hash(&hash);
+        let maybe_block_header =
+            self.consensus.data_manager().block_header_by_hash(&hash);
 
         let block_header = match maybe_block_header {
             None => return Ok(None),
@@ -285,20 +272,17 @@ impl QueryService {
         let mut total_transaction_count_in_processed_blocks = 0;
         let mut processed_block_count = 0;
 
-        let inner = self
-            .consensus
-            .as_any()
-            .downcast_ref::<ConsensusGraph>()
-            .expect("downcast should succeed")
-            .inner
-            .clone();
+        let inner = self.consensus.inner.clone();
 
         loop {
             if hashes.len() >= GAS_PRICE_BLOCK_SAMPLE_SIZE || epoch == 0 {
                 break;
             }
 
-            let mut epoch_hashes = inner.read().block_hashes_by_epoch(epoch)?;
+            let mut epoch_hashes = inner
+                .read()
+                .block_hashes_by_epoch(epoch)
+                .map_err(|e| e.to_string())?;
             epoch_hashes.reverse();
 
             let missing = GAS_PRICE_BLOCK_SAMPLE_SIZE - hashes.len();
@@ -700,9 +684,9 @@ impl QueryService {
     /// NOTE: `log.transaction_hash` is not known at this point,
     /// so this field has to be filled later on.
     fn filter_receipt_logs(
-        epoch: u64, block_hash: H256, transaction_index: usize,
-        num_logs_remaining: &mut usize, mut logs: Vec<LogEntry>,
-        filter: LogFilter,
+        epoch: u64, block_hash: H256, block_timestamp: Option<u64>,
+        transaction_index: usize, num_logs_remaining: &mut usize,
+        mut logs: Vec<LogEntry>, filter: LogFilter,
     ) -> impl Iterator<Item = LocalizedLogEntry> {
         let num_logs = logs.len();
 
@@ -718,6 +702,7 @@ impl QueryService {
             .map(move |(ii, entry)| LocalizedLogEntry {
                 block_hash,
                 epoch_number: epoch,
+                block_timestamp,
                 entry,
                 log_index: log_base_index - ii - 1,
                 transaction_hash: KECCAK_EMPTY_BLOOM, // will fill in later
@@ -728,8 +713,8 @@ impl QueryService {
 
     /// Apply filter to all receipts within a block.
     fn filter_block_receipts(
-        epoch: u64, hash: H256, block_receipts: BlockReceipts,
-        filter: LogFilter,
+        epoch: u64, hash: H256, block_timestamp: Option<u64>,
+        block_receipts: BlockReceipts, filter: LogFilter,
     ) -> impl Iterator<Item = LocalizedLogEntry> {
         let mut receipts = block_receipts.receipts;
         // number of receipts in this block
@@ -747,6 +732,7 @@ impl QueryService {
                 Self::filter_receipt_logs(
                     epoch,
                     hash,
+                    block_timestamp,
                     num_receipts - ii - 1,
                     &mut remaining,
                     logs,
@@ -766,16 +752,30 @@ impl QueryService {
             .block_hashes_in(epoch)
             .map_err(|e| format!("{}", e))?;
 
-        // process epoch receipts in reverse order
         receipts.reverse();
         hashes.reverse();
 
-        let matching = receipts.into_iter().zip(hashes).flat_map(
-            move |(receipts, hash)| {
+        let timestamps = hashes
+            .iter()
+            .map(|h| self.ledger.header(*h))
+            .filter(|s| s.is_ok())
+            .map(|h| h.unwrap().timestamp())
+            .collect::<Vec<_>>();
+
+        if timestamps.len() != hashes.len() {
+            return Err(format!(
+                "Unable to retrieve all block headers in epoch {:?} for log filtering",
+                epoch
+            ));
+        }
+
+        let matching = itertools::izip!(receipts, hashes, timestamps).flat_map(
+            move |(receipts, hash, timestamp)| {
                 trace!("block_hash {:?} receipts = {:?}", hash, receipts);
                 Self::filter_block_receipts(
                     epoch,
                     hash,
+                    Some(timestamp),
                     receipts,
                     filter.clone(),
                 )
@@ -791,7 +791,7 @@ impl QueryService {
         let epoch_number = self.get_latest_verifiable_epoch_number()?;
         Ok(self
             .consensus
-            .get_config()
+            .config()
             .chain_id
             .read()
             .get_chain_id(epoch_number))
@@ -1025,7 +1025,7 @@ impl QueryService {
                 log
             })
             // Limit logs can return
-            .take(self.consensus.get_config().get_logs_filter_max_limit.unwrap_or(::std::usize::MAX - 1) + 1)
+            .take(self.consensus.config().get_logs_filter_max_limit.unwrap_or(::std::usize::MAX - 1) + 1)
             .try_collect();
         // --> TryFuture<Vec<LocalizedLogEntry>>
 

@@ -9,7 +9,9 @@ use cfx_parity_trace_types::{
     Call as VmCall, CallResult as VmCallResult, Create as VmCreate,
     CreateResult as VmCreateResult, ExecTrace,
     InternalTransferAction as VmInternalTransferAction,
-    LocalizedTrace as PrimitiveLocalizedTrace, Outcome, TransactionExecTraces,
+    LocalizedTrace as PrimitiveLocalizedTrace, Outcome,
+    SelfDestructAction as VmSelfDestruction, SetAuth as VmSetAuth,
+    SetAuthOutcome, TransactionExecTraces,
 };
 use cfx_rpc_primitives::Bytes;
 use cfx_types::{Space, H256, U256, U64};
@@ -29,6 +31,8 @@ pub enum Action {
     CallResult(CallResult),
     CreateResult(CreateResult),
     InternalTransferAction(InternalTransferAction),
+    SetAuth(SetAuth),
+    SelfDestruct(SelfDestructAction),
 }
 
 impl Action {
@@ -49,6 +53,12 @@ impl Action {
                     InternalTransferAction::try_from(x, network)?,
                 )
             }
+            VmAction::SetAuth(action) => {
+                Action::SetAuth(SetAuth::try_from(action, network)?)
+            }
+            VmAction::SelfDestruct(selfdestruct) => Action::SelfDestruct(
+                SelfDestructAction::try_from(selfdestruct, network)?,
+            ),
         })
     }
 }
@@ -63,6 +73,8 @@ impl Into<VmActionType> for ActionType {
             Self::InternalTransferAction => {
                 VmActionType::InternalTransferAction
             }
+            Self::SetAuth => VmActionType::SetAuth,
+            Self::SelfDestruct => VmActionType::SelfDestruct,
         }
     }
 }
@@ -191,6 +203,77 @@ impl InternalTransferAction {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAuth {
+    pub space: Space,
+    /// The address of the impl.
+    pub address: RpcAddress,
+    pub chain_id: U256,
+    pub nonce: U256,
+    /// The outcome of the create
+    pub outcome: SetAuthOutcome,
+    /// The address of the author.
+    pub author: Option<RpcAddress>,
+}
+
+impl SetAuth {
+    fn try_from(action: VmSetAuth, network: Network) -> Result<Self, String> {
+        let VmSetAuth {
+            space,
+            address,
+            chain_id,
+            nonce,
+            outcome,
+            author,
+        } = action;
+        Ok(Self {
+            space,
+            address: RpcAddress::try_from_h160(address, network)?,
+            chain_id,
+            nonce,
+            outcome,
+            author: match author {
+                Some(a) => Some(RpcAddress::try_from_h160(a, network)?),
+                None => None,
+            },
+        })
+    }
+}
+
+/// Represents a _selfdestruct_ action fka `suicide`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfDestructAction {
+    // / The space of the contract.
+    pub space: Space,
+    /// destroyed/suicided address.
+    pub address: RpcAddress,
+    /// Balance of the contract just before it was destroyed.
+    pub balance: U256,
+    /// destroyed contract heir.
+    pub refund_address: RpcAddress,
+}
+
+impl SelfDestructAction {
+    fn try_from(
+        action: VmSelfDestruction, network: Network,
+    ) -> Result<Self, String> {
+        let VmSelfDestruction {
+            space,
+            address,
+            balance,
+            refund_address,
+        } = action;
+        Ok(Self {
+            space,
+            address: RpcAddress::try_from_h160(address, network)?,
+            refund_address: RpcAddress::try_from_h160(refund_address, network)?,
+            balance,
+        })
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalizedBlockTrace {
@@ -206,7 +289,7 @@ pub struct LocalizedBlockTrace {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalizedTransactionTrace {
-    pub traces: Vec<LocalizedTrace>,
+    pub traces: Vec<Trace>,
     /// Transaction position.
     pub transaction_position: U64,
     /// Signed transaction hash.
@@ -214,22 +297,12 @@ pub struct LocalizedTransactionTrace {
 }
 
 #[derive(Debug)]
-pub struct LocalizedTrace {
+pub struct Trace {
     pub action: Action,
     pub valid: bool,
-    /// Epoch hash.
-    pub epoch_hash: Option<H256>,
-    /// Epoch number.
-    pub epoch_number: Option<U256>,
-    /// Block hash.
-    pub block_hash: Option<H256>,
-    /// Transaction position.
-    pub transaction_position: Option<U64>,
-    /// Signed transaction hash.
-    pub transaction_hash: Option<H256>,
 }
 
-impl Serialize for LocalizedTrace {
+impl Serialize for Trace {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
         let mut struc = serializer.serialize_struct("LocalizedTrace", 8)?;
@@ -255,35 +328,36 @@ impl Serialize for LocalizedTrace {
                 struc.serialize_field("type", "internal_transfer_action")?;
                 struc.serialize_field("action", internal_action)?;
             }
+            Action::SetAuth(ref set_auth) => {
+                struc.serialize_field("type", "set_auth")?;
+                struc.serialize_field("action", set_auth)?;
+            }
+            Action::SelfDestruct(ref selfdestruct) => {
+                struc.serialize_field("type", "suicide")?;
+                struc.serialize_field("action", selfdestruct)?;
+            }
         }
 
         struc.serialize_field("valid", &self.valid)?;
-
-        if self.epoch_hash.is_some() {
-            struc.serialize_field("epochHash", &self.epoch_hash.unwrap())?;
-        }
-        if self.epoch_number.is_some() {
-            struc
-                .serialize_field("epochNumber", &self.epoch_number.unwrap())?;
-        }
-        if self.block_hash.is_some() {
-            struc.serialize_field("blockHash", &self.block_hash.unwrap())?;
-        }
-        if self.transaction_position.is_some() {
-            struc.serialize_field(
-                "transactionPosition",
-                &self.transaction_position.unwrap(),
-            )?;
-        }
-        if self.transaction_hash.is_some() {
-            struc.serialize_field(
-                "transactionHash",
-                &self.transaction_hash.unwrap(),
-            )?;
-        }
-
         struc.end()
     }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalizedTrace {
+    #[serde(flatten)]
+    pub trace: Trace,
+    /// Epoch hash.
+    pub epoch_hash: H256,
+    /// Epoch number.
+    pub epoch_number: U256,
+    /// Block hash.
+    pub block_hash: H256,
+    /// Transaction position.
+    pub transaction_position: U64,
+    /// Signed transaction hash.
+    pub transaction_hash: H256,
 }
 
 impl LocalizedTrace {
@@ -291,13 +365,15 @@ impl LocalizedTrace {
         trace: PrimitiveLocalizedTrace, network: Network,
     ) -> Result<Self, String> {
         Ok(LocalizedTrace {
-            action: Action::try_from(trace.action, network)?,
-            epoch_number: Some(trace.epoch_number),
-            epoch_hash: Some(trace.epoch_hash),
-            block_hash: Some(trace.block_hash),
-            transaction_position: Some(trace.transaction_position),
-            transaction_hash: Some(trace.transaction_hash),
-            valid: trace.valid,
+            trace: Trace {
+                action: Action::try_from(trace.action, network)?,
+                valid: trace.valid,
+            },
+            epoch_number: trace.epoch_number,
+            epoch_hash: trace.epoch_hash,
+            block_hash: trace.block_hash,
+            transaction_position: trace.transaction_position,
+            transaction_hash: trace.transaction_hash,
         })
     }
 }
@@ -314,20 +390,8 @@ impl LocalizedTransactionTrace {
                 .into_iter()
                 .map(|t| {
                     let valid = t.valid;
-                    Action::try_from(t.action, network).map(|action| {
-                        LocalizedTrace {
-                            action,
-                            valid,
-                            // Set to None because the information has been
-                            // included in the outer
-                            // structs
-                            epoch_hash: None,
-                            epoch_number: None,
-                            block_hash: None,
-                            transaction_position: None,
-                            transaction_hash: None,
-                        }
-                    })
+                    Action::try_from(t.action, network)
+                        .map(|action| Trace { action, valid })
                 })
                 .collect::<Result<_, _>>()?,
             transaction_position: transaction_position.into(),
@@ -365,5 +429,57 @@ impl LocalizedBlockTrace {
             epoch_number: epoch_number.into(),
             block_hash,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cfx_addr::Network;
+
+    #[test]
+    fn test_localized_trace_serialization() {
+        let localized_trace = LocalizedTrace {
+            trace: Trace {
+                action: Action::Call(Call {
+                    space: Space::Native,
+                    from: RpcAddress::null(Network::Main).unwrap(),
+                    to: RpcAddress::null(Network::Main).unwrap(),
+                    value: U256::from(1000u64),
+                    gas: U256::from(21000u64),
+                    input: Bytes::from(vec![0x60, 0x60, 0x60, 0x40]),
+                    call_type: CallType::Call,
+                }),
+                valid: true,
+            },
+            epoch_hash: Default::default(),
+            epoch_number: Default::default(),
+            block_hash: Default::default(),
+            transaction_position: U64::from(0),
+            transaction_hash: Default::default(),
+        };
+
+        let serialized =
+            serde_json::to_string_pretty(&localized_trace).unwrap();
+
+        let expected = r#"{
+  "type": "call",
+  "action": {
+    "space": "native",
+    "from": "CFX:TYPE.NULL:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA0SFBNJM2",
+    "to": "CFX:TYPE.NULL:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA0SFBNJM2",
+    "value": "0x3e8",
+    "gas": "0x5208",
+    "input": "0x60606040",
+    "callType": "call"
+  },
+  "valid": true,
+  "epochHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "epochNumber": "0x0",
+  "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "transactionPosition": "0x0",
+  "transactionHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+}"#;
+        assert_eq!(serialized, expected,);
     }
 }

@@ -6,6 +6,10 @@ mod blame_verifier;
 pub mod confirmation_meter;
 pub mod consensus_executor;
 pub mod consensus_new_block_handler;
+use cfxcore_errors::ProviderBlockError;
+use cfxcore_pow as pow;
+
+use pow::{PowComputer, ProofOfWorkConfig};
 
 use crate::{
     block_data_manager::{
@@ -16,10 +20,9 @@ use crate::{
         anticone_cache::AnticoneCache,
         consensus_inner::consensus_executor::ConsensusExecutor,
         debug_recompute::log_invalid_state_root, pastset_cache::PastSetCache,
-        pos_handler::PosVerifier, MaybeExecutedTxExtraInfo, TransactionInfo,
+        pos_handler::PosVerifier,
     },
     pos::pow_handler::POS_TERM_EPOCHS,
-    pow::{target_difficulty, PowComputer, ProofOfWorkConfig},
     state_exposer::{ConsensusGraphBlockExecutionState, STATE_EXPOSER},
     verification::VerificationConfig,
 };
@@ -1995,17 +1998,11 @@ impl ConsensusGraphInner {
             if last_period_upper != parent_epoch {
                 self.arena[parent_arena_index].difficulty
             } else {
-                target_difficulty(
-                    &self.data_man,
+                self.data_man.target_difficulty_manager.target_difficulty(
+                    self,
+                    // &self.data_man.target_difficulty_manager,
                     &self.pow_config,
                     &self.arena[parent_arena_index].hash,
-                    |h| {
-                        let index = self.hash_to_arena_indices.get(h).unwrap();
-                        let parent = self.arena[*index].parent;
-                        (self.arena[*index].past_num_blocks
-                            - self.arena[parent].past_num_blocks)
-                            as usize
-                    },
                 )
             }
         }
@@ -2030,18 +2027,11 @@ impl ConsensusGraphInner {
                 / self.pow_config.difficulty_adjustment_epoch_period(epoch))
                 * self.pow_config.difficulty_adjustment_epoch_period(epoch)
         {
-            self.current_difficulty = target_difficulty(
-                &self.data_man,
-                &self.pow_config,
-                &new_best_hash,
-                |h| {
-                    let index = self.hash_to_arena_indices.get(h).unwrap();
-                    let parent = self.arena[*index].parent;
-                    (self.arena[*index].past_num_blocks
-                        - self.arena[parent].past_num_blocks)
-                        as usize
-                },
-            );
+            let this: &ConsensusGraphInner = self;
+            self.current_difficulty = self
+                .data_man
+                .target_difficulty_manager
+                .target_difficulty(this, &self.pow_config, &new_best_hash);
         } else {
             self.current_difficulty = new_best_difficulty;
         }
@@ -2142,7 +2132,7 @@ impl ConsensusGraphInner {
     /// out of the current era.
     pub fn get_pivot_hash_from_epoch_number(
         &self, epoch_number: u64,
-    ) -> Result<EpochId, String> {
+    ) -> Result<EpochId, ProviderBlockError> {
         let height = epoch_number;
         if height >= self.cur_era_genesis_height {
             let pivot_index = (height - self.cur_era_genesis_height) as usize;
@@ -2172,7 +2162,7 @@ impl ConsensusGraphInner {
 
     pub fn block_hashes_by_epoch(
         &self, epoch_number: u64,
-    ) -> Result<Vec<H256>, String> {
+    ) -> Result<Vec<H256>, ProviderBlockError> {
         debug!(
             "block_hashes_by_epoch epoch_number={:?} pivot_chain.len={:?}",
             epoch_number,
@@ -2210,7 +2200,7 @@ impl ConsensusGraphInner {
 
     pub fn skipped_block_hashes_by_epoch(
         &self, epoch_number: u64,
-    ) -> Result<Vec<H256>, String> {
+    ) -> Result<Vec<H256>, ProviderBlockError> {
         debug!(
             "skipped_block_hashes_by_epoch epoch_number={:?} pivot_chain.len={:?}",
             epoch_number,
@@ -2360,61 +2350,13 @@ impl ConsensusGraphInner {
             .and_then(|index| Some(self.arena[*index].data.pending))
     }
 
-    pub fn get_transaction_info(
-        &self, tx_hash: &H256,
-    ) -> Option<TransactionInfo> {
-        trace!("Get receipt with tx_hash {}", tx_hash);
-        let tx_index = self.data_man.transaction_index_by_hash(
-            tx_hash, false, /* update_cache */
-        )?;
-        // receipts should never be None if transaction index isn't none.
-        let maybe_executed_extra_info = self
-            .block_execution_results_by_hash(
-                &tx_index.block_hash,
-                false, /* update_cache */
-            )
-            .map(|receipt| {
-                let block_receipts = receipt.1.block_receipts;
-
-                let prior_gas_used = if tx_index.real_index == 0 {
-                    U256::zero()
-                } else {
-                    block_receipts.receipts[tx_index.real_index - 1]
-                        .accumulated_gas_used
-                };
-                let tx_exec_error_msg = block_receipts
-                    .tx_execution_error_messages[tx_index.real_index]
-                    .clone();
-
-                MaybeExecutedTxExtraInfo {
-                    receipt: block_receipts
-                        .receipts
-                        .get(tx_index.real_index)
-                        .expect("Error: can't get receipt by tx_index ")
-                        .clone(),
-                    block_number: block_receipts.block_number,
-                    prior_gas_used,
-                    tx_exec_error_msg: if tx_exec_error_msg.is_empty() {
-                        None
-                    } else {
-                        Some(tx_exec_error_msg.clone())
-                    },
-                }
-            });
-
-        Some(TransactionInfo {
-            tx_index,
-            maybe_executed_extra_info,
-        })
-    }
-
     pub fn check_block_pivot_assumption(
         &self, pivot_hash: &H256, epoch: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), ProviderBlockError> {
         let last_number = self.best_epoch_number();
         let hash = self.get_pivot_hash_from_epoch_number(epoch)?;
         if epoch > last_number || hash != *pivot_hash {
-            return Err("Error: pivot chain assumption failed".to_owned());
+            return Err("Error: pivot chain assumption failed".into());
         }
         Ok(())
     }
@@ -4153,6 +4095,19 @@ impl ConsensusGraphInner {
     }
 }
 
+impl pow::ConsensusProvider for &ConsensusGraphInner {
+    fn num_blocks_in_epoch(&self, h: &H256) -> u64 {
+        let index = self.hash_to_arena_indices.get(h).unwrap(); // TODO handle None
+        let parent = self.arena[*index].parent;
+        (self.arena[*index].past_num_blocks
+            - self.arena[parent].past_num_blocks) as u64
+    }
+
+    fn block_header_by_hash(&self, hash: &H256) -> Option<Arc<BlockHeader>> {
+        self.data_man.block_header_by_hash(hash)
+    }
+}
+
 impl Graph for ConsensusGraphInner {
     type NodeIndex = usize;
 }
@@ -4189,6 +4144,7 @@ impl StateMaintenanceTrait for ConsensusGraphInner {
             self,
             epoch_number,
         )
+        .map_err(|e| e.to_string())
     }
 
     fn get_epoch_execution_commitment_with_db(
@@ -4196,10 +4152,5 @@ impl StateMaintenanceTrait for ConsensusGraphInner {
     ) -> Option<EpochExecutionCommitment> {
         self.data_man
             .get_epoch_execution_commitment_with_db(block_hash)
-    }
-
-    fn remove_epoch_execution_commitment_from_db(&self, block_hash: &EpochId) {
-        self.data_man
-            .remove_epoch_execution_commitment_from_db(block_hash)
     }
 }

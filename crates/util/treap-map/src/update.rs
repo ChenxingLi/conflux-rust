@@ -16,7 +16,7 @@ pub trait TreapNodeUpdate<C: TreapMapConfig> {
     /// The core update logic for a node.
     ///
     /// We pass `Option<&mut Box<_>>` instead of `&mut Option<Box<_>>` here
-    /// intensionally. This approach restricts the function from directly
+    /// intentionally. This approach restricts the function from directly
     /// inserting or removing nodes. Instead, the function should
     /// communicates any attempts to add or remove nodes through
     /// the `UpdateResult`.
@@ -197,7 +197,7 @@ where
                 assert!(
                     C::next_node_dir(self.key, (&node.sort_key, &node.key))
                         .is_none(),
-                    "Inserted node has incosistent key"
+                    "Inserted node has inconsistent key"
                 );
                 InsertOnVacant {
                     insert: Box::new(node),

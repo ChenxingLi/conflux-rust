@@ -2,7 +2,7 @@
 
 import os
 import time
-from jsonrpcclient.exceptions import ReceivedErrorResponseError
+from test_framework.simple_rpc_proxy import ReceivedErrorResponseError
 
 from test_framework.test_framework import ConfluxTestFramework
 from conflux.rpc import RpcClient
@@ -15,7 +15,7 @@ class ThrottleRpcTests(ConfluxTestFramework):
         }
 
     def setup_chain(self):
-        # prepare throttling configuratoin file
+        # prepare throttling configuration file
         throttle_conf = os.path.join(self.options.tmpdir, "throttling.toml")
         # Note: Should not use cfx_getBestBlockHash for this test, because it has been called to start a node.
         with open(throttle_conf, "w") as fp:

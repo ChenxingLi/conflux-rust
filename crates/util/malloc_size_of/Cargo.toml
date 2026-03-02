@@ -1,21 +1,20 @@
 [package]
 name = "malloc_size_of"
 version = "0.0.1"
-edition = "2018"
+edition = "2021"
 license = "MIT/Apache-2.0"
 
 [dependencies]
 cfx-types = { workspace = true }
-cfg-if = "0.1"
-hashbrown = "0.7.1"
-winapi = "0.3.7"
+cfg-if = { workspace = true }
+hashbrown = { workspace = true }
+winapi = { workspace = true }
 slab = { workspace = true }
 parking_lot = { workspace = true }
-smallvec = "1.4"
+smallvec = { workspace = true }
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { workspace = true, features = ["profiling", "unprefixed_malloc_on_supported_platforms"] }
 
 [features]
-jemalloc-global = ["jemallocator"]
-
-[target.'cfg(not(target_env = "msvc"))'.dependencies.jemallocator]
-version = "0.3.2"
-optional = true
+jemalloc = []

@@ -2,14 +2,27 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
+#[cfg(all(not(target_env = "msvc"), feature = "jemalloc-global"))]
+#[global_allocator]
+static ALLOC: cfx_mallocator_utils::allocator::Allocator =
+    cfx_mallocator_utils::allocator::new_allocator();
+// jemalloc profiling config
+#[allow(non_upper_case_globals)]
+#[export_name = "malloc_conf"]
+#[cfg(all(not(target_env = "msvc"), feature = "jemalloc-prof"))]
+pub static malloc_conf: &[u8] =
+    b"prof:true,prof_active:true,lg_prof_sample:19\0"; // 512kb
+
 #[cfg(test)]
 mod test;
 
+mod cli;
 mod command;
 
 use crate::command::rpc::RpcCommand;
 use cfxcore::NodeType;
-use clap::{crate_version, load_yaml, App, ArgMatches};
+use clap::{crate_version, ArgMatches, CommandFactory};
+use cli::Cli;
 use client::{
     archive::ArchiveClient,
     common::{shutdown_handler, ClientTrait},
@@ -17,7 +30,10 @@ use client::{
     full::FullClient,
     light::LightClient,
 };
-use command::account::{AccountCmd, ImportAccounts, ListAccounts, NewAccount};
+use command::{
+    account::{AccountCmd, ImportAccounts, ListAccounts, NewAccount},
+    dump::DumpCommand,
+};
 use log::{info, LevelFilter};
 use log4rs::{
     append::{console::ConsoleAppender, file::FileAppender},
@@ -26,7 +42,13 @@ use log4rs::{
 };
 use network::throttling::THROTTLING_SERVICE;
 use parking_lot::{Condvar, Mutex};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+
+static VERSION: OnceLock<String> = OnceLock::new();
+
+fn get_version() -> &'static str {
+    VERSION.get_or_init(|| parity_version::version(crate_version!()))
+}
 
 fn main() -> Result<(), String> {
     #[cfg(feature = "deadlock-detection")]
@@ -54,9 +76,7 @@ fn main() -> Result<(), String> {
         });
     } // only for #[cfg]
 
-    let yaml = load_yaml!("cli.yaml");
-    let version = parity_version::version(crate_version!());
-    let matches = App::from_yaml(yaml).version(version.as_str()).get_matches();
+    let matches = Cli::command().version(get_version()).get_matches();
 
     if let Some(output) = handle_sub_command(&matches)? {
         println!("{}", output);
@@ -65,15 +85,114 @@ fn main() -> Result<(), String> {
 
     let conf = Configuration::parse(&matches)?;
 
-    // If log_conf is provided, use it for log configuration and ignore
-    // log_file and log_level. Otherwise, set stdout to INFO and set
-    // all our crate log to log_level.
+    setup_logger(&conf)?;
+
+    THROTTLING_SERVICE.write().initialize(
+        conf.raw_conf.egress_queue_capacity,
+        conf.raw_conf.egress_min_throttle,
+        conf.raw_conf.egress_max_throttle,
+    );
+
+    let exit = Arc::new((Mutex::new(false), Condvar::new()));
+
+    info!(
+        "
+:'######:::'#######::'##::: ##:'########:'##:::::::'##::::'##:'##::::'##:
+'##... ##:'##.... ##: ###:: ##: ##.....:: ##::::::: ##:::: ##:. ##::'##::
+ ##:::..:: ##:::: ##: ####: ##: ##::::::: ##::::::: ##:::: ##::. ##'##:::
+ ##::::::: ##:::: ##: ## ## ##: ######::: ##::::::: ##:::: ##:::. ###::::
+ ##::::::: ##:::: ##: ##. ####: ##...:::: ##::::::: ##:::: ##::: ## ##:::
+ ##::: ##: ##:::: ##: ##:. ###: ##::::::: ##::::::: ##:::: ##:: ##:. ##::
+. ######::. #######:: ##::. ##: ##::::::: ########:. #######:: ##:::. ##:
+:......::::.......:::..::::..::..::::::::........:::.......:::..:::::..::
+Current Version: {}
+",
+        get_version()
+    );
+
+    let client_handle: Box<dyn ClientTrait>;
+    client_handle = match conf.node_type() {
+        NodeType::Archive => {
+            info!("Starting archive client...");
+            ArchiveClient::start(conf, exit.clone())
+                .map_err(|e| format!("failed to start archive client: {}", e))?
+        }
+        NodeType::Full => {
+            info!("Starting full client...");
+            FullClient::start(conf, exit.clone())
+                .map_err(|e| format!("failed to start full client: {}", e))?
+        }
+        NodeType::Light => {
+            info!("Starting light client...");
+            LightClient::start(conf, exit.clone())
+                .map_err(|e| format!("failed to start light client: {}", e))?
+        }
+        NodeType::Unknown => return Err("Unknown node type".into()),
+    };
+    info!("Conflux client started");
+    shutdown_handler::run(client_handle, exit);
+
+    Ok(())
+}
+
+fn handle_sub_command(matches: &ArgMatches) -> Result<Option<String>, String> {
+    if matches.subcommand_name().is_none() {
+        return Ok(None);
+    }
+
+    // account sub-commands
+    if let Some(("account", account_matches)) = matches.subcommand() {
+        let account_cmd = match account_matches.subcommand() {
+            Some(("new", new_acc_matches)) => {
+                AccountCmd::New(NewAccount::new(new_acc_matches))
+            }
+            Some(("list", list_acc_matches)) => {
+                AccountCmd::List(ListAccounts::new(list_acc_matches))
+            }
+            Some(("import", import_acc_matches)) => {
+                AccountCmd::Import(ImportAccounts::new(import_acc_matches))
+            }
+            _ => unreachable!(),
+        };
+        let execute_output = command::account::execute(account_cmd)?;
+        return Ok(Some(execute_output));
+    }
+
+    // dump sub-commands
+    if let Some(("dump", dump_matches)) = matches.subcommand() {
+        let dump_cmd = DumpCommand::parse(dump_matches).map_err(|e| {
+            format!("Failed to parse dump command arguments: {}", e)
+        })?;
+        let mut conf = Configuration::parse(&matches)?;
+        let execute_output = dump_cmd.execute(&mut conf)?;
+        return Ok(Some(execute_output));
+    }
+
+    // general RPC commands
+    let mut subcmd_matches = matches;
+    while let Some(m) = subcmd_matches.subcommand() {
+        subcmd_matches = m.1;
+    }
+
+    if let Some(cmd) = RpcCommand::parse(subcmd_matches)? {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(cmd.execute())?;
+        return Ok(Some(result));
+    }
+
+    Ok(None)
+}
+
+// If log_conf is provided, use it for log configuration and ignore
+// log_file and log_level. Otherwise, set stdout to INFO and set
+// all our crate log to log_level.
+fn setup_logger(conf: &Configuration) -> Result<(), String> {
     match conf.raw_conf.log_conf {
         Some(ref log_conf) => {
             log4rs::init_file(log_conf, Default::default()).map_err(|e| {
                 format!(
-                    "failed to initialize log with log config file: {:?}",
-                    e
+                    "failed to initialize log with log config file '{}': {:?}; maybe you want 'run/log.yaml'?",
+                    log_conf, e
                 )
             })?;
         }
@@ -132,88 +251,5 @@ fn main() -> Result<(), String> {
         }
     };
 
-    THROTTLING_SERVICE.write().initialize(
-        conf.raw_conf.egress_queue_capacity,
-        conf.raw_conf.egress_min_throttle,
-        conf.raw_conf.egress_max_throttle,
-    );
-
-    let exit = Arc::new((Mutex::new(false), Condvar::new()));
-
-    info!(
-        "
-:'######:::'#######::'##::: ##:'########:'##:::::::'##::::'##:'##::::'##:
-'##... ##:'##.... ##: ###:: ##: ##.....:: ##::::::: ##:::: ##:. ##::'##::
- ##:::..:: ##:::: ##: ####: ##: ##::::::: ##::::::: ##:::: ##::. ##'##:::
- ##::::::: ##:::: ##: ## ## ##: ######::: ##::::::: ##:::: ##:::. ###::::
- ##::::::: ##:::: ##: ##. ####: ##...:::: ##::::::: ##:::: ##::: ## ##:::
- ##::: ##: ##:::: ##: ##:. ###: ##::::::: ##::::::: ##:::: ##:: ##:. ##::
-. ######::. #######:: ##::. ##: ##::::::: ########:. #######:: ##:::. ##:
-:......::::.......:::..::::..::..::::::::........:::.......:::..:::::..::
-Current Version: {}
-",
-        version
-    );
-
-    let client_handle: Box<dyn ClientTrait>;
-    client_handle = match conf.node_type() {
-        NodeType::Archive => {
-            info!("Starting archive client...");
-            ArchiveClient::start(conf, exit.clone())
-                .map_err(|e| format!("failed to start archive client: {}", e))?
-        }
-        NodeType::Full => {
-            info!("Starting full client...");
-            FullClient::start(conf, exit.clone())
-                .map_err(|e| format!("failed to start full client: {}", e))?
-        }
-        NodeType::Light => {
-            info!("Starting light client...");
-            LightClient::start(conf, exit.clone())
-                .map_err(|e| format!("failed to start light client: {}", e))?
-        }
-        NodeType::Unknown => return Err("Unknown node type".into()),
-    };
-    info!("Conflux client started");
-    shutdown_handler::run(client_handle, exit);
-
     Ok(())
-}
-
-fn handle_sub_command(matches: &ArgMatches) -> Result<Option<String>, String> {
-    if matches.subcommand_name().is_none() {
-        return Ok(None);
-    }
-
-    // account sub-commands
-    if let ("account", Some(account_matches)) = matches.subcommand() {
-        let account_cmd = match account_matches.subcommand() {
-            ("new", Some(new_acc_matches)) => {
-                AccountCmd::New(NewAccount::new(new_acc_matches))
-            }
-            ("list", Some(list_acc_matches)) => {
-                AccountCmd::List(ListAccounts::new(list_acc_matches))
-            }
-            ("import", Some(import_acc_matches)) => {
-                AccountCmd::Import(ImportAccounts::new(import_acc_matches))
-            }
-            _ => unreachable!(),
-        };
-        let execute_output = command::account::execute(account_cmd)?;
-        return Ok(Some(execute_output));
-    }
-
-    // general RPC commands
-    let mut subcmd_matches = matches;
-    while let Some(m) = subcmd_matches.subcommand().1 {
-        subcmd_matches = m;
-    }
-
-    if let Some(cmd) = RpcCommand::parse(subcmd_matches)? {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(cmd.execute())?;
-        return Ok(Some(result));
-    }
-
-    Ok(None)
 }

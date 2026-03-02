@@ -33,7 +33,7 @@ impl Handleable for GetBlockTxnResponse {
         let tx_hashes: Vec<_> = self
             .block_txn
             .iter()
-            .map(|x| x.transaction.signature_hash())
+            .map(|x| x.transaction.hash_for_compute_signature())
             .collect();
         debug!(
             "[1b1r][p2p] handle_response(msg_name={}, req_id={}): tx_hashes = {:?}",
@@ -112,7 +112,7 @@ impl Handleable for GetBlockTxnResponse {
                             .manager
                             .graph
                             .consensus
-                            .get_tx_pool()
+                            .tx_pool()
                             .insert_new_signed_transactions(signed_txns);
                         // a transaction from compact block should be
                         // added to received pool

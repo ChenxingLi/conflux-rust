@@ -32,10 +32,6 @@ use log::warn;
 
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use malloc_size_of_derive::MallocSizeOf as MallocSizeOfDerive;
-use parity_util_mem::{
-    MallocSizeOf as ParityMallocSizeOf,
-    MallocSizeOfOps as ParityMallocSizeOfOps,
-};
 #[cfg(target_os = "linux")]
 use regex::Regex;
 #[cfg(target_os = "linux")]
@@ -46,7 +42,6 @@ use std::path::PathBuf;
 use std::process::Command;
 
 type DBError = String;
-type KeyValuePair = (Box<[u8]>, Box<[u8]>);
 fn other_io_err<E>(e: E) -> io::Error
 where E: Into<Box<dyn error::Error + Send + Sync>> {
     io::Error::new(io::ErrorKind::Other, e)
@@ -291,11 +286,6 @@ pub struct Database {
     flushing_lock: Mutex<bool>,
 }
 
-// Compatible hack for KeyValueDB
-impl ParityMallocSizeOf for Database {
-    fn size_of(&self, _ops: &mut ParityMallocSizeOfOps) -> usize { 0 }
-}
-
 #[inline]
 fn check_for_corruption<T, P: AsRef<Path>>(
     path: P, res: result::Result<T, DBError>,
@@ -468,6 +458,9 @@ impl Database {
                 DBOp::Delete { col, key } => {
                     overlay[col as usize].insert(key, KeyState::Delete);
                 }
+                DBOp::DeletePrefix { .. } => {
+                    unimplemented!("DeletePrefix is not supported")
+                }
             }
         }
     }
@@ -555,6 +548,9 @@ impl Database {
                         DBOp::Delete { col, key } => batch
                             .delete_cf(cfs.get_cf(col as usize), &key)
                             .map_err(other_io_err)?,
+                        DBOp::DeletePrefix { .. } => {
+                            unimplemented!("DeletePrefix is not supported")
+                        }
                     }
                 }
 
@@ -707,34 +703,26 @@ impl KeyValueDB for Database {
         Database::get(self, col, key)
     }
 
-    fn get_by_prefix(&self, _col: u32, _prefix: &[u8]) -> Option<Box<[u8]>> {
+    fn get_by_prefix(
+        &self, _col: u32, _prefix: &[u8],
+    ) -> io::Result<Option<DBValue>> {
         unimplemented!()
-    }
-
-    fn write_buffered(&self, transaction: DBTransaction) {
-        Database::write_buffered(self, transaction)
     }
 
     fn write(&self, transaction: DBTransaction) -> io::Result<()> {
         Database::write(self, transaction)
     }
 
-    fn flush(&self) -> io::Result<()> { Database::flush(self) }
-
     fn iter<'a>(
         &'a self, _col: u32,
-    ) -> Box<dyn Iterator<Item = KeyValuePair> + 'a> {
+    ) -> Box<dyn Iterator<Item = io::Result<kvdb::DBKeyValue>> + 'a> {
         unimplemented!()
     }
 
-    fn iter_from_prefix<'a>(
+    fn iter_with_prefix<'a>(
         &'a self, _col: u32, _prefix: &'a [u8],
-    ) -> Box<dyn Iterator<Item = KeyValuePair> + 'a> {
+    ) -> Box<dyn Iterator<Item = io::Result<kvdb::DBKeyValue>> + 'a> {
         unimplemented!()
-    }
-
-    fn restore(&self, new_db: &str) -> io::Result<()> {
-        Database::restore(self, new_db)
     }
 }
 
@@ -750,10 +738,10 @@ mod tests {
     use super::*;
     use cfx_types::H256;
     use std::str::FromStr;
-    use tempdir::TempDir;
+    use tempfile::tempdir;
 
     fn test_db(config: &DatabaseConfig) {
-        let tempdir = TempDir::new("").unwrap();
+        let tempdir = tempdir().unwrap();
         let db =
             Database::open(config, tempdir.path().to_str().unwrap()).unwrap();
         let key1 = H256::from_str(
@@ -823,7 +811,7 @@ mod tests {
 
     #[test]
     fn kvdb() {
-        let tempdir = TempDir::new("").unwrap();
+        let tempdir = tempdir().unwrap();
         let _ =
             Database::open_default(tempdir.path().to_str().unwrap()).unwrap();
         test_db(&DatabaseConfig::default());
@@ -854,7 +842,7 @@ mod tests {
         let config = DatabaseConfig::default();
         let config_5 = DatabaseConfig::with_columns(5);
 
-        let tempdir = TempDir::new("").unwrap();
+        let tempdir = tempdir().unwrap();
 
         // open empty, add 5.
         {
@@ -882,7 +870,7 @@ mod tests {
         let config = DatabaseConfig::default();
         let config_5 = DatabaseConfig::with_columns(5);
 
-        let tempdir = TempDir::new("").unwrap();
+        let tempdir = tempdir().unwrap();
 
         // open 5, remove all.
         {
@@ -907,7 +895,7 @@ mod tests {
 
     #[test]
     fn write_clears_buffered_ops() {
-        let tempdir = TempDir::new("").unwrap();
+        let tempdir = tempdir().unwrap();
         let config = DatabaseConfig::default();
         let db =
             Database::open(&config, tempdir.path().to_str().unwrap()).unwrap();
@@ -925,7 +913,7 @@ mod tests {
 
     #[test]
     fn test_memory_property() {
-        let tempdir = TempDir::new("").unwrap();
+        let tempdir = tempdir().unwrap();
         let db = Database::open(
             &DatabaseConfig::default(),
             tempdir.path().to_str().unwrap(),
