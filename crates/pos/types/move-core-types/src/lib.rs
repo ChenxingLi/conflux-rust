@@ -8,7 +8,6 @@
 //! Core types for Move.
 
 pub mod account_address;
-pub mod effects;
 pub mod gas_schedule;
 pub mod identifier;
 pub mod language_storage;

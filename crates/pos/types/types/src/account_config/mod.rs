@@ -6,10 +6,8 @@
 // See http://www.gnu.org/licenses/
 
 pub mod constants;
-pub mod resources;
 
 pub use constants::*;
-pub use resources::*;
 
 use move_core_types::account_address::AccountAddress;
 

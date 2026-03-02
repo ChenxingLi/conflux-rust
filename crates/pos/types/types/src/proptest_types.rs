@@ -8,10 +8,6 @@
 use crate::{
     access_path::AccessPath,
     account_address::{self, AccountAddress},
-    account_config::{
-        AccountResource, BalanceResource, KeyRotationCapabilityResource,
-        WithdrawCapabilityResource,
-    },
     account_state_blob::AccountStateBlob,
     block_info::{BlockInfo, Round},
     block_metadata::BlockMetadata,
@@ -49,7 +45,6 @@ use proptest_derive::Arbitrary;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    convert::TryFrom,
     iter::Iterator,
 };
 
@@ -127,11 +122,6 @@ impl Arbitrary for ChangeSet {
 struct AccountInfo {
     address: AccountAddress,
     private_key: ConsensusPrivateKey,
-    public_key: ConsensusPublicKey,
-    #[allow(dead_code)]
-    vrf_private_key: ConsensusVRFPrivateKey,
-    #[allow(dead_code)]
-    vrf_public_key: ConsensusVRFPublicKey,
     sequence_number: u64,
     sent_event_handle: EventHandle,
     received_event_handle: EventHandle,
@@ -140,7 +130,7 @@ struct AccountInfo {
 impl AccountInfo {
     pub fn new(
         private_key: ConsensusPrivateKey, public_key: ConsensusPublicKey,
-        vrf_private_key: ConsensusVRFPrivateKey,
+        _vrf_private_key: ConsensusVRFPrivateKey,
         vrf_public_key: ConsensusVRFPublicKey,
     ) -> Self {
         let address = account_address::from_consensus_public_key(
@@ -150,9 +140,6 @@ impl AccountInfo {
         Self {
             address,
             private_key,
-            public_key,
-            vrf_private_key,
-            vrf_public_key,
             sequence_number: 0,
             sent_event_handle: EventHandle::new_from_address(&address, 0),
             received_event_handle: EventHandle::new_from_address(&address, 1),
@@ -658,59 +645,6 @@ impl ContractEventGen {
     }
 }
 
-#[derive(Arbitrary, Debug)]
-pub struct AccountResourceGen {
-    withdrawal_capability: Option<WithdrawCapabilityResource>,
-    key_rotation_capability: Option<KeyRotationCapabilityResource>,
-}
-
-impl AccountResourceGen {
-    pub fn materialize(
-        self, account_index: Index, universe: &AccountInfoUniverse,
-    ) -> AccountResource {
-        let account_info = universe.get_account_info(account_index);
-
-        AccountResource::new(
-            account_info.sequence_number,
-            account_info.public_key.to_bytes().to_vec(),
-            self.withdrawal_capability,
-            self.key_rotation_capability,
-            account_info.sent_event_handle.clone(),
-            account_info.received_event_handle.clone(),
-        )
-    }
-}
-
-#[derive(Arbitrary, Debug)]
-pub struct BalanceResourceGen {
-    coin: u64,
-}
-
-impl BalanceResourceGen {
-    pub fn materialize(self) -> BalanceResource {
-        BalanceResource::new(self.coin)
-    }
-}
-
-#[derive(Arbitrary, Debug)]
-pub struct AccountStateBlobGen {
-    account_resource_gen: AccountResourceGen,
-    balance_resource_gen: BalanceResourceGen,
-}
-
-impl AccountStateBlobGen {
-    pub fn materialize(
-        self, account_index: Index, universe: &AccountInfoUniverse,
-    ) -> AccountStateBlob {
-        let account_resource = self
-            .account_resource_gen
-            .materialize(account_index, universe);
-        let balance_resource = self.balance_resource_gen.materialize();
-        AccountStateBlob::try_from((&account_resource, &balance_resource))
-            .unwrap()
-    }
-}
-
 impl EventHandle {
     pub fn strategy_impl(
         event_key_strategy: impl Strategy<Value = EventKey>,
@@ -781,7 +715,7 @@ pub struct TransactionToCommitGen {
     /// N.B. the transaction sender and event owners must be updated to reflect
     /// information such as sequence numbers so that test data generated
     /// through this is more realistic and logical.
-    account_state_gens: Vec<(Index, AccountStateBlobGen)>,
+    account_state_blobs: Vec<(Index, AccountStateBlob)>,
     /// Gas used.
     gas_used: u64,
     /// Transaction status
@@ -802,16 +736,11 @@ impl TransactionToCommitGen {
             .into_iter()
             .map(|(index, event_gen)| event_gen.materialize(index, universe))
             .collect();
-        // Account states must be materialized last, to reflect the latest
-        // account and event sequence numbers.
         let account_states = self
-            .account_state_gens
+            .account_state_blobs
             .into_iter()
-            .map(|(index, blob_gen)| {
-                (
-                    universe.get_account_info(index).address,
-                    blob_gen.materialize(index, universe),
-                )
+            .map(|(index, blob)| {
+                (universe.get_account_info(index).address, blob)
             })
             .collect();
 
@@ -833,18 +762,18 @@ impl Arbitrary for TransactionToCommitGen {
         (
             (
                 any::<Index>(),
-                any::<AccountStateBlobGen>(),
+                any::<AccountStateBlob>(),
                 any::<SignatureCheckedTransactionGen>(),
             ),
             vec(
                 (
                     any::<Index>(),
-                    any::<AccountStateBlobGen>(),
+                    any::<AccountStateBlob>(),
                     any::<ContractEventGen>(),
                 ),
                 0..=2,
             ),
-            vec((any::<Index>(), any::<AccountStateBlobGen>()), 0..=1),
+            vec((any::<Index>(), any::<AccountStateBlob>()), 0..=1),
             any::<u64>(),
             any::<KeptVMStatus>(),
         )
@@ -859,19 +788,19 @@ impl Arbitrary for TransactionToCommitGen {
                     // To reflect change of account/event sequence numbers, txn
                     // sender account and event emitter
                     // accounts must be updated.
-                    let (sender_index, sender_blob_gen, txn_gen) = sender;
-                    touched_accounts.push((sender_index, sender_blob_gen));
+                    let (sender_index, sender_blob, txn_gen) = sender;
+                    touched_accounts.push((sender_index, sender_blob));
 
                     let mut event_gens = Vec::new();
-                    for (index, blob_gen, event_gen) in event_emitters {
-                        touched_accounts.push((index, blob_gen));
+                    for (index, blob, event_gen) in event_emitters {
+                        touched_accounts.push((index, blob));
                         event_gens.push((index, event_gen));
                     }
 
                     Self {
                         transaction_gen: (sender_index, txn_gen),
                         event_gens,
-                        account_state_gens: touched_accounts,
+                        account_state_blobs: touched_accounts,
                         gas_used,
                         status,
                     }

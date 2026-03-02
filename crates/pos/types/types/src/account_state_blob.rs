@@ -7,13 +7,12 @@
 
 use crate::{
     account_address::{AccountAddress, HashAccountAddress},
-    account_config::{AccountResource, BalanceResource},
     account_state::AccountState,
     ledger_info::LedgerInfo,
     proof::AccountStateProof,
     transaction::Version,
 };
-use anyhow::{anyhow, ensure, Error, Result};
+use anyhow::{ensure, Error, Result};
 use diem_crypto::{
     hash::{CryptoHash, CryptoHasher},
     HashValue,
@@ -87,32 +86,6 @@ impl TryFrom<&AccountStateBlob> for AccountState {
     }
 }
 
-impl TryFrom<(&AccountResource, &BalanceResource)> for AccountStateBlob {
-    type Error = Error;
-
-    fn try_from(
-        (account_resource, balance_resource): (
-            &AccountResource,
-            &BalanceResource,
-        ),
-    ) -> Result<Self> {
-        Self::try_from(&AccountState::try_from((
-            account_resource,
-            balance_resource,
-        ))?)
-    }
-}
-
-impl TryFrom<&AccountStateBlob> for AccountResource {
-    type Error = Error;
-
-    fn try_from(account_state_blob: &AccountStateBlob) -> Result<Self> {
-        AccountState::try_from(account_state_blob)?
-            .get_account_resource()?
-            .ok_or_else(|| anyhow!("AccountResource not found."))
-    }
-}
-
 impl CryptoHash for AccountStateBlob {
     type Hasher = AccountStateBlobHasher;
 
@@ -125,8 +98,16 @@ impl CryptoHash for AccountStateBlob {
 
 #[cfg(any(test, feature = "fuzzing"))]
 prop_compose! {
-    fn account_state_blob_strategy()(account_resource in any::<AccountResource>(), balance_resource in any::<BalanceResource>()) -> AccountStateBlob {
-        AccountStateBlob::try_from((&account_resource, &balance_resource)).unwrap()
+    fn account_state_blob_strategy()(
+        entries in proptest::collection::btree_map(
+            proptest::collection::vec(any::<u8>(), 1..32),
+            proptest::collection::vec(any::<u8>(), 1..64),
+            0..5,
+        )
+    ) -> AccountStateBlob {
+        // AccountState is a newtype over BTreeMap<Vec<u8>, Vec<u8>>,
+        // so BCS serialization of the map is equivalent.
+        AccountStateBlob::from(bcs::to_bytes(&entries).unwrap())
     }
 }
 
