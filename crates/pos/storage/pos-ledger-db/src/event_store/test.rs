@@ -32,10 +32,6 @@ fn save(
 ) -> HashValue {
     let mut cs = ChangeSet::new();
     let root_hash = store.put_events(version, events, &mut cs).unwrap();
-    assert_eq!(
-        cs.counter_bumps(version).get(LedgerCounter::EventsCreated),
-        events.len()
-    );
     store.db.write_schemas(cs.batch, true).unwrap();
 
     root_hash

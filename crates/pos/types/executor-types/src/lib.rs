@@ -12,12 +12,8 @@ use std::{cmp::max, sync::Arc};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use diem_crypto::{
-    hash::{TransactionAccumulatorHasher, SPARSE_MERKLE_PLACEHOLDER_HASH},
-    HashValue,
-};
+use diem_crypto::{hash::TransactionAccumulatorHasher, HashValue};
 use diem_types::{
-    account_state_blob::AccountStateBlob,
     block_info::PivotBlockDecision,
     contract_event::ContractEvent,
     epoch_state::EpochState,
@@ -37,8 +33,6 @@ pub use self::processed_vm_output::{ProcessedVMOutput, TransactionData};
 
 mod error;
 mod processed_vm_output;
-
-type SparseMerkleTree = scratchpad::SparseMerkleTree<AccountStateBlob>;
 
 pub trait ChunkExecutor: Send {
     /// Verifies the transactions based on the provided proofs and ledger info.
@@ -221,19 +215,12 @@ impl StateComputeResult {
     }
 }
 
-/// A wrapper of the in-memory state sparse merkle tree and the transaction
-/// accumulator that represent a specific state collectively. Usually it is a
-/// state after executing a block.
+/// A wrapper of the transaction accumulator and PoS state that represent a
+/// specific blockchain state collectively. Usually it is a state after
+/// executing a block.
 #[derive(Clone, Debug)]
 pub struct ExecutedTrees {
-    /// The in-memory Sparse Merkle Tree representing a specific state after
-    /// execution. If this tree is presenting the latest committed state, it
-    /// will have a single Subtree node (or Empty node) whose hash equals
-    /// the root hash of the newest Sparse Merkle Tree in storage.
-    state_tree: Arc<SparseMerkleTree>,
-
-    /// The in-memory Merkle Accumulator representing a blockchain state
-    /// consistent with the `state_tree`.
+    /// The in-memory Merkle Accumulator representing the blockchain state.
     transaction_accumulator:
         Arc<InMemoryAccumulator<TransactionAccumulatorHasher>>,
 
@@ -262,20 +249,16 @@ impl ExecutedTrees {
     }
 
     pub fn new_copy(
-        state_tree: Arc<SparseMerkleTree>,
         transaction_accumulator: Arc<
             InMemoryAccumulator<TransactionAccumulatorHasher>,
         >,
         pos_state: PosState,
     ) -> Self {
         Self {
-            state_tree,
             transaction_accumulator,
             pos_state,
         }
     }
-
-    pub fn state_tree(&self) -> &Arc<SparseMerkleTree> { &self.state_tree }
 
     pub fn pos_state(&self) -> &PosState { &self.pos_state }
 
@@ -292,16 +275,11 @@ impl ExecutedTrees {
 
     pub fn state_id(&self) -> HashValue { self.txn_accumulator().root_hash() }
 
-    pub fn state_root(&self) -> HashValue { self.state_tree().root_hash() }
-
     pub fn new(
         frozen_subtrees_in_accumulator: Vec<HashValue>,
         num_leaves_in_accumulator: u64, pos_state: PosState,
     ) -> ExecutedTrees {
         ExecutedTrees {
-            state_tree: Arc::new(SparseMerkleTree::new(
-                *SPARSE_MERKLE_PLACEHOLDER_HASH,
-            )),
             transaction_accumulator: Arc::new(
                 InMemoryAccumulator::new(
                     frozen_subtrees_in_accumulator,

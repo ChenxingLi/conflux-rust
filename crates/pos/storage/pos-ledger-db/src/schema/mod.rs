@@ -23,7 +23,6 @@ pub(crate) mod event;
 pub(crate) mod event_accumulator;
 pub(crate) mod event_by_key;
 pub(crate) mod event_by_version;
-pub(crate) mod ledger_counters;
 pub(crate) mod ledger_info;
 pub(crate) mod ledger_info_by_block;
 pub(crate) mod ledger_info_by_voted_block;
@@ -39,6 +38,9 @@ pub const EVENT_ACCUMULATOR_CF_NAME: ColumnFamilyName = "event_accumulator";
 pub const EVENT_BY_KEY_CF_NAME: ColumnFamilyName = "event_by_key";
 pub const EVENT_BY_VERSION_CF_NAME: ColumnFamilyName = "event_by_version";
 pub const EVENT_CF_NAME: ColumnFamilyName = "event";
+// These CF names are kept for backward compatibility with existing RocksDB
+// instances. The column families still need to be listed to open the DB,
+// even though no code reads/writes them anymore.
 pub const JELLYFISH_MERKLE_NODE_CF_NAME: ColumnFamilyName =
     "jellyfish_merkle_node";
 pub const LEDGER_COUNTERS_CF_NAME: ColumnFamilyName = "ledger_counters";
@@ -97,10 +99,6 @@ pub mod fuzzing {
             decode_key_value!(super::event_by_key::EventByKeySchema, data);
             decode_key_value!(
                 super::event_by_version::EventByVersionSchema,
-                data
-            );
-            decode_key_value!(
-                super::ledger_counters::LedgerCountersSchema,
                 data
             );
             decode_key_value!(super::ledger_info::LedgerInfoSchema, data);

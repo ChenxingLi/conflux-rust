@@ -94,7 +94,6 @@ members = [
     "crates/pos/storage/cached-pos-ledger-db",
     "crates/pos/storage/pos-ledger-db",
     "crates/pos/storage/schemadb",
-    "crates/pos/storage/scratchpad",
     "crates/pos/storage/state-view",
     "crates/pos/storage/storage-interface",
     "crates/pos/types/executor-types",
@@ -232,7 +231,6 @@ accumulator = { path = "./crates/pos/storage/accumulator" }
 cached-pos-ledger-db = { path = "./crates/pos/storage/cached-pos-ledger-db" }
 pos-ledger-db = { path = "./crates/pos/storage/pos-ledger-db" }
 schemadb = { path = "./crates/pos/storage/schemadb" }
-scratchpad = { path = "./crates/pos/storage/scratchpad" }
 diem-state-view = { path = "./crates/pos/storage/state-view" }
 storage-interface = { path = "./crates/pos/storage/storage-interface" }
 executor-types = { path = "./crates/pos/types/executor-types" }

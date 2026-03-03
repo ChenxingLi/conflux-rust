@@ -4006,7 +4006,6 @@ dependencies = [
  "move-core-types",
  "once_cell",
  "pow-types",
- "scratchpad",
  "serde",
  "storage-interface",
 ]
@@ -4020,7 +4019,6 @@ dependencies = [
  "diem-crypto",
  "diem-secure-net",
  "diem-types",
- "scratchpad",
  "serde",
  "storage-interface",
  "thiserror 1.0.63",
@@ -8621,16 +8619,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1792db035ce95be60c3f8853017b3999209281c24e2ba5bc8e59bf97a0c590c1"
 
 [[package]]
-name = "scratchpad"
-version = "0.1.0"
-dependencies = [
- "arc-swap",
- "diem-crypto",
- "diem-types",
- "itertools 0.14.0",
-]
-
-[[package]]
 name = "scrypt"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9362,7 +9350,6 @@ dependencies = [
  "diem-types",
  "itertools 0.14.0",
  "parking_lot 0.12.1",
- "scratchpad",
  "serde",
  "thiserror 1.0.63",
 ]

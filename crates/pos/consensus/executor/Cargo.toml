@@ -26,7 +26,6 @@ diem-state-view = { workspace = true }
 cached-pos-ledger-db = { workspace = true }
 diem-types = { workspace = true }
 move-core-types = { workspace = true }
-scratchpad = { workspace = true }
 storage-interface = { workspace = true }
 
 pow-types = { workspace = true }

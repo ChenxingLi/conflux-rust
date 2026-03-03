@@ -39,9 +39,6 @@ pub struct TransactionData {
     /// The execution status set by the VM.
     status: TransactionStatus,
 
-    /// Root hash of the state tree.
-    state_root_hash: HashValue,
-
     /// The in-memory Merkle Accumulator that has all events emitted by this
     /// transaction.
     event_tree: Arc<InMemoryAccumulator<EventAccumulatorHasher>>,
@@ -58,7 +55,6 @@ impl TransactionData {
     pub fn new(
         account_blobs: HashMap<AccountAddress, AccountStateBlob>,
         events: Vec<ContractEvent>, status: TransactionStatus,
-        state_root_hash: HashValue,
         event_tree: Arc<InMemoryAccumulator<EventAccumulatorHasher>>,
         gas_used: u64, txn_info_hash: Option<HashValue>,
     ) -> Self {
@@ -66,7 +62,6 @@ impl TransactionData {
             account_blobs,
             events,
             status,
-            state_root_hash,
             event_tree,
             gas_used,
             txn_info_hash,
@@ -80,8 +75,6 @@ impl TransactionData {
     pub fn events(&self) -> &[ContractEvent] { &self.events }
 
     pub fn status(&self) -> &TransactionStatus { &self.status }
-
-    pub fn state_root_hash(&self) -> HashValue { self.state_root_hash }
 
     pub fn event_root_hash(&self) -> HashValue { self.event_tree.root_hash() }
 
@@ -97,8 +90,8 @@ pub struct ProcessedVMOutput {
     /// The entire set of data associated with each transaction.
     transaction_data: Vec<TransactionData>,
 
-    /// The in-memory Merkle Accumulator and state Sparse Merkle Tree after
-    /// appending all the transactions in this set.
+    /// The in-memory Merkle Accumulator after appending all the transactions
+    /// in this set.
     executed_trees: ExecutedTrees,
 
     /// If set, this is the new epoch info that should be changed to if this

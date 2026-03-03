@@ -8,96 +8,55 @@
 use anyhow::Result;
 use diem_state_view::{StateView, StateViewId};
 use diem_types::{
-    access_path::AccessPath,
-    account_address::{AccountAddress, HashAccountAddress},
-    account_state::AccountState,
-    account_state_blob::AccountStateBlob,
-    term_state::PosState,
+    access_path::AccessPath, account_address::AccountAddress,
+    account_state::AccountState, term_state::PosState,
 };
-use parking_lot::RwLock;
-use scratchpad::{AccountStatus, SparseMerkleTree};
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    convert::TryInto,
-};
+use std::collections::HashMap;
 
-/// `VerifiedStateView` is like a snapshot of the global state comprised of
-/// state view at two levels, persistent storage and memory.
-pub struct VerifiedStateView<'a> {
+/// `VerifiedStateView` is a snapshot of the global state for PoS execution.
+///
+/// In Conflux PoS, the VM (`PosVM`) reads state exclusively through
+/// `pos_state()` and never calls `get()`. The `account_to_state_cache` exists
+/// only because `process_write_set()` in the executor populates and reads it
+/// when processing genesis write sets.
+pub struct VerifiedStateView {
     /// For logging and debugging purpose, identifies what this view is for.
     id: StateViewId,
 
-    /// The in-memory version of sparse Merkle tree of which the states haven't
-    /// been committed.
-    speculative_state: &'a SparseMerkleTree<AccountStateBlob>,
-
-    /// The cache of verified account states from `speculative_state`,
-    /// represented by a hashmap with an account address as key and an
-    /// AccountState as value.
-    account_to_state_cache: RwLock<HashMap<AccountAddress, AccountState>>,
+    /// The cache of account states populated by `process_write_set()`.
+    account_to_state_cache: HashMap<AccountAddress, AccountState>,
 
     pos_state: PosState,
 }
 
-impl<'a> VerifiedStateView<'a> {
-    /// Constructs a [`VerifiedStateView`] with the in-memory speculative
-    /// state.
-    pub fn new(
-        id: StateViewId,
-        speculative_state: &'a SparseMerkleTree<AccountStateBlob>,
-        pos_state: PosState,
-    ) -> Self {
+impl VerifiedStateView {
+    pub fn new(id: StateViewId, pos_state: PosState) -> Self {
         Self {
             id,
-            speculative_state,
-            account_to_state_cache: RwLock::new(HashMap::new()),
+            account_to_state_cache: HashMap::new(),
             pos_state,
         }
     }
 }
 
-impl<'a> From<VerifiedStateView<'a>> for HashMap<AccountAddress, AccountState> {
-    fn from(view: VerifiedStateView<'a>) -> Self {
-        view.account_to_state_cache.into_inner()
-    }
+impl From<VerifiedStateView> for HashMap<AccountAddress, AccountState> {
+    fn from(view: VerifiedStateView) -> Self { view.account_to_state_cache }
 }
 
-impl<'a> StateView for VerifiedStateView<'a> {
+impl StateView for VerifiedStateView {
     fn id(&self) -> StateViewId { self.id }
 
-    fn get(&self, access_path: &AccessPath) -> Result<Option<Vec<u8>>> {
-        let address = access_path.address;
-        let path = &access_path.path;
-
-        // Lock for read first:
-        if let Some(contents) = self.account_to_state_cache.read().get(&address)
-        {
-            return Ok(contents.get(path).cloned());
-        }
-
-        // Do most of the work outside the write lock.
-        let address_hash = address.hash();
-        let account_blob_option = match self.speculative_state.get(address_hash)
-        {
-            AccountStatus::ExistsInScratchPad(blob) => Some(blob),
-            AccountStatus::DoesNotExist
-            | AccountStatus::ExistsInDB
-            | AccountStatus::Unknown => None,
-        };
-
-        // Now enter the locked region, and write if still empty.
-        let new_account_blob = account_blob_option
-            .as_ref()
-            .map(TryInto::try_into)
-            .transpose()?
-            .unwrap_or_default();
-
-        match self.account_to_state_cache.write().entry(address) {
-            Entry::Occupied(occupied) => Ok(occupied.get().get(path).cloned()),
-            Entry::Vacant(vacant) => {
-                Ok(vacant.insert(new_account_blob).get(path).cloned())
-            }
-        }
+    fn get(&self, _access_path: &AccessPath) -> Result<Option<Vec<u8>>> {
+        // SAFETY INVARIANT: PosVM must not read account state via
+        // StateView::get(). It exclusively uses pos_state(). If this
+        // panic is hit, a code change has violated this invariant and
+        // the scratchpad/Jellyfish Merkle state tree removal is no
+        // longer safe.
+        panic!(
+            "PosVM must not read account state via StateView::get(). \
+             Use pos_state() instead. If you need account state reads, \
+             the scratchpad state tree must be re-introduced."
+        );
     }
 
     fn multi_get(

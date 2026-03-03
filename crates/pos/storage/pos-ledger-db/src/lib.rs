@@ -60,7 +60,6 @@ use crate::{
     change_set::{ChangeSet, SealedChangeSet},
     errors::DiemDbError,
     event_store::EventStore,
-    ledger_counters::LedgerCounters,
     ledger_store::LedgerStore,
     metrics::{
         DIEM_STORAGE_API_LATENCY_SECONDS, DIEM_STORAGE_COMMITTED_TXNS,
@@ -69,7 +68,6 @@ use crate::{
         DIEM_STORAGE_ROCKSDB_PROPERTIES,
     },
     schema::*,
-    system_store::SystemStore,
     transaction_store::TransactionStore,
 };
 use diem_types::block_metadata::BlockMetadata;
@@ -85,9 +83,7 @@ pub mod schema;
 
 mod change_set;
 mod event_store;
-mod ledger_counters;
 mod ledger_store;
-mod system_store;
 mod transaction_store;
 
 #[cfg(any(test, feature = "fuzzing"))]
@@ -219,7 +215,6 @@ pub struct PosLedgerDB {
     ledger_store: Arc<LedgerStore>,
     transaction_store: Arc<TransactionStore>,
     event_store: Arc<EventStore>,
-    system_store: SystemStore,
     #[allow(dead_code)]
     rocksdb_property_reporter: RocksdbPropertyReporter,
 }
@@ -258,7 +253,6 @@ impl PosLedgerDB {
             event_store: Arc::new(EventStore::new(Arc::clone(&db))),
             ledger_store: Arc::new(LedgerStore::new(Arc::clone(&db))),
             transaction_store: Arc::new(TransactionStore::new(Arc::clone(&db))),
-            system_store: SystemStore::new(Arc::clone(&db)),
             rocksdb_property_reporter: RocksdbPropertyReporter::new(
                 Arc::clone(&db),
             ),
@@ -431,24 +425,8 @@ impl PosLedgerDB {
     }
 
     /// Convert a `ChangeSet` to `SealedChangeSet`.
-    ///
-    /// Specifically, counter increases are added to current counter values and
-    /// converted to DB alternations.
-    fn seal_change_set(
-        &self, first_version: Version, num_txns: Version, mut cs: ChangeSet,
-    ) -> Result<(SealedChangeSet, Option<LedgerCounters>)> {
-        // Avoid reading base counter values when not necessary.
-        let counters = if num_txns > 0 {
-            Some(self.system_store.bump_ledger_counters(
-                first_version,
-                first_version + num_txns - 1,
-                &mut cs,
-            )?)
-        } else {
-            None
-        };
-
-        Ok((SealedChangeSet { batch: cs.batch }, counters))
+    fn seal_change_set(&self, cs: ChangeSet) -> Result<SealedChangeSet> {
+        Ok(SealedChangeSet { batch: cs.batch })
     }
 
     fn save_transactions_impl(
@@ -844,8 +822,7 @@ impl DbWriter for PosLedgerDB {
             }
 
             // Persist.
-            let (sealed_cs, counters) =
-                self.seal_change_set(first_version, num_txns, cs)?;
+            let sealed_cs = self.seal_change_set(cs)?;
             {
                 let _timer = DIEM_STORAGE_OTHER_TIMERS_SECONDS
                     .with_label_values(&["save_transactions_commit"])
@@ -871,9 +848,6 @@ impl DbWriter for PosLedgerDB {
                 let last_version = first_version + num_txns - 1;
                 DIEM_STORAGE_COMMITTED_TXNS.inc_by(num_txns);
                 DIEM_STORAGE_LATEST_TXN_VERSION.set(last_version as i64);
-                counters
-                    .expect("Counters should be bumped with transactions being saved.")
-                    .bump_op_counters();
             }
 
             Ok(())
