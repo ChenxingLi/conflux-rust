@@ -15,7 +15,6 @@ use diem_logger::prelude::*;
 use diem_types::{
     contract_event::ContractEvent,
     ledger_info::LedgerInfoWithSignatures,
-    move_resource::MoveStorage,
     on_chain_config::{OnChainConfigPayload, ON_CHAIN_CONFIG_REGISTRY},
     transaction::TransactionListWithProof,
 };
@@ -75,16 +74,16 @@ impl ExecutorProxy {
         storage: Arc<dyn DbReader>, executor: Box<dyn ChunkExecutor>,
         mut reconfig_subscriptions: Vec<ReconfigSubscription>,
     ) -> Self {
-        // TODO(lpl): Double check the `None` case here.
-        let on_chain_configs = if let Ok(Some(startup_info)) =
-            storage.get_startup_info(false)
-        {
-            let epoch_state = startup_info.latest_epoch_state.or(startup_info
-                .latest_ledger_info
-                .ledger_info()
-                .next_epoch_state()
-                .cloned());
-            if let Some(epoch_state) = epoch_state {
+        let on_chain_configs =
+            if let Ok(Some(startup_info)) = storage.get_startup_info(false) {
+                let epoch_state = startup_info
+                    .latest_epoch_state
+                    .or(startup_info
+                        .latest_ledger_info
+                        .ledger_info()
+                        .next_epoch_state()
+                        .cloned())
+                    .expect("[state sync] EpochState must exist after genesis");
                 OnChainConfigPayload::new(
                     epoch_state.epoch,
                     Arc::new(
@@ -96,14 +95,18 @@ impl ExecutorProxy {
                     ),
                 )
             } else {
-                Self::fetch_all_configs(&*storage).expect(
-                    "[state sync] Failed initial read of on-chain configs",
+                // Pre-bootstrap: no startup info yet, use default config
+                OnChainConfigPayload::new(
+                    0,
+                    Arc::new(
+                        ON_CHAIN_CONFIG_REGISTRY
+                            .iter()
+                            .cloned()
+                            .zip_eq(vec![vec![]])
+                            .collect(),
+                    ),
                 )
-            }
-        } else {
-            Self::fetch_all_configs(&*storage)
-                .expect("[state sync] Failed initial read of on-chain configs")
-        };
+            };
 
         for subscription in reconfig_subscriptions.iter_mut() {
             subscription.publish(on_chain_configs.clone()).expect(
@@ -116,77 +119,6 @@ impl ExecutorProxy {
             reconfig_subscriptions,
             on_chain_configs,
         }
-    }
-
-    fn fetch_all_configs(
-        storage: &dyn DbReader,
-    ) -> Result<OnChainConfigPayload, Error> {
-        let access_paths = ON_CHAIN_CONFIG_REGISTRY
-            .iter()
-            .map(|config_id| config_id.access_path())
-            .collect();
-        let configs = storage
-            .batch_fetch_resources_by_version(access_paths, 0)
-            .map_err(|error| {
-                Error::UnexpectedError(format!(
-                    "Failed batch fetch of resources: {}",
-                    error
-                ))
-            })?;
-        // TODO(linxi): get correct epoch
-        // let synced_version =
-        //     storage.fetch_synced_version().map_err(|error| {
-        //         Error::UnexpectedError(format!(
-        //             "Failed to fetch storage synced version: {}",
-        //             error
-        //         ))
-        //     })?;
-        //
-        // let account_state_blob = storage
-        //     .get_account_state_with_proof_by_version(
-        //         config_address(),
-        //         synced_version,
-        //     )
-        //     .map_err(|error| {
-        //         Error::UnexpectedError(format!(
-        //             "Failed to fetch account state with proof {}",
-        //             error
-        //         ))
-        //     })?
-        //     .0;
-        /*let epoch = account_state_blob
-        .map(|blob| {
-            AccountState::try_from(&blob).and_then(|state| {
-                Ok(state
-                    .get_configuration_resource()?
-                    .ok_or_else(|| {
-                        Error::UnexpectedError(
-                            "Configuration resource does not exist".into(),
-                        )
-                    })?
-                    .epoch())
-            })
-        })
-        .ok_or_else(|| {
-            Error::UnexpectedError("Missing account state blob".into())
-        })?
-        .map_err(|error| {
-            Error::UnexpectedError(format!(
-                "Failed to fetch configuration resource: {}",
-                error
-            ))
-        })?;*/
-
-        Ok(OnChainConfigPayload::new(
-            1, /* The epoch number after executing genesis block */
-            Arc::new(
-                ON_CHAIN_CONFIG_REGISTRY
-                    .iter()
-                    .cloned()
-                    .zip_eq(configs)
-                    .collect(),
-            ),
-        ))
     }
 }
 

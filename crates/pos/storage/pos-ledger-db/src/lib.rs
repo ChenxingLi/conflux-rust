@@ -34,21 +34,16 @@ use diem_crypto::hash::{
 use diem_logger::prelude::*;
 use diem_types::{
     account_address::AccountAddress,
-    account_state_blob::{AccountStateBlob, AccountStateWithProof},
     committed_block::CommittedBlock,
     contract_event::ContractEvent,
     epoch_change::EpochChangeProof,
     ledger_info::LedgerInfoWithSignatures,
-    proof::{
-        AccountStateProof, AccumulatorConsistencyProof, SparseMerkleProof,
-        TransactionListProof,
-    },
+    proof::{AccumulatorConsistencyProof, TransactionListProof},
     reward_distribution_event::RewardDistributionEventV2,
     term_state::PosState,
     transaction::{
         Transaction, TransactionInfo, TransactionListWithProof,
         TransactionToCommit, TransactionWithProof, Version,
-        PRE_GENESIS_VERSION,
     },
 };
 #[cfg(feature = "fuzzing")]
@@ -73,9 +68,7 @@ use crate::{
         DIEM_STORAGE_NEXT_BLOCK_EPOCH, DIEM_STORAGE_OTHER_TIMERS_SECONDS,
         DIEM_STORAGE_ROCKSDB_PROPERTIES,
     },
-    pruner::Pruner,
     schema::*,
-    state_store::StateStore,
     system_store::SystemStore,
     transaction_store::TransactionStore,
 };
@@ -94,8 +87,6 @@ mod change_set;
 mod event_store;
 mod ledger_counters;
 mod ledger_store;
-mod pruner;
-mod state_store;
 mod system_store;
 mod transaction_store;
 
@@ -227,12 +218,10 @@ pub struct PosLedgerDB {
     db: Arc<DB>,
     ledger_store: Arc<LedgerStore>,
     transaction_store: Arc<TransactionStore>,
-    state_store: Arc<StateStore>,
     event_store: Arc<EventStore>,
     system_store: SystemStore,
     #[allow(dead_code)]
     rocksdb_property_reporter: RocksdbPropertyReporter,
-    pruner: Option<Pruner>,
 }
 
 impl PosLedgerDB {
@@ -261,20 +250,18 @@ impl PosLedgerDB {
         ]
     }
 
-    fn new_with_db(db: DB, prune_window: Option<u64>) -> Self {
+    fn new_with_db(db: DB, _prune_window: Option<u64>) -> Self {
         let db = Arc::new(db);
 
         PosLedgerDB {
             db: Arc::clone(&db),
             event_store: Arc::new(EventStore::new(Arc::clone(&db))),
             ledger_store: Arc::new(LedgerStore::new(Arc::clone(&db))),
-            state_store: Arc::new(StateStore::new(Arc::clone(&db))),
             transaction_store: Arc::new(TransactionStore::new(Arc::clone(&db))),
             system_store: SystemStore::new(Arc::clone(&db)),
             rocksdb_property_reporter: RocksdbPropertyReporter::new(
                 Arc::clone(&db),
             ),
-            pruner: prune_window.map(|n| Pruner::new(Arc::clone(&db), n)),
         }
     }
 
@@ -439,7 +426,6 @@ impl PosLedgerDB {
         BackupHandler::new(
             Arc::clone(&self.ledger_store),
             Arc::clone(&self.transaction_store),
-            Arc::clone(&self.state_store),
             Arc::clone(&self.event_store),
         )
     }
@@ -471,27 +457,8 @@ impl PosLedgerDB {
     ) -> Result<HashValue> {
         let last_version = first_version + txns_to_commit.len() as u64 - 1;
 
-        // Account state updates. Gather account state root hashes
-        let account_state_sets = txns_to_commit
-            .iter()
-            .map(|txn_to_commit| txn_to_commit.account_states().clone())
-            .collect::<Vec<_>>();
-        let state_root_hashes = if first_version == 0 {
-            // Genesis transactions.
-            self.state_store.put_account_state_sets(
-                account_state_sets,
-                first_version,
-                &mut cs,
-            )?
-        } else {
-            // TODO(lpl): Remove state tree.
-            vec![Default::default(); txns_to_commit.len()]
-        };
-        diem_debug!(
-            "save_transactions_impl: {} {:?}",
-            first_version,
-            state_root_hashes
-        );
+        // State root hashes are always default (state tree removed).
+        let state_root_hashes = vec![Default::default(); txns_to_commit.len()];
 
         // Event updates. Gather event accumulator root hashes.
         let event_root_hashes =
@@ -531,15 +498,11 @@ impl PosLedgerDB {
                 .collect::<Result<Vec<_>>>()?;
         assert_eq!(txn_infos.len(), txns_to_commit.len());
 
-        let mut new_root_hash = self.ledger_store.put_transaction_infos(
+        let new_root_hash = self.ledger_store.put_transaction_infos(
             first_version,
             &txn_infos,
             &mut cs,
         )?;
-        if first_version != 0 {
-            // TODO(lpl): Remove StateTree.
-            new_root_hash = Default::default();
-        };
 
         Ok(new_root_hash)
     }
@@ -551,12 +514,6 @@ impl PosLedgerDB {
         self.db.write_schemas(sealed_cs.batch, false)?;
 
         Ok(())
-    }
-
-    fn wake_pruner(&self, latest_version: Version) {
-        if let Some(pruner) = self.pruner.as_ref() {
-            pruner.wake(latest_version)
-        }
     }
 }
 
@@ -639,20 +596,6 @@ impl DbReader for PosLedgerDB {
                 None => 0,
             };
             Ok(ts)
-        })
-    }
-
-    fn get_latest_account_state(
-        &self, address: AccountAddress,
-    ) -> Result<Option<AccountStateBlob>> {
-        gauged_api("get_latest_account_state", || {
-            let ledger_info_with_sigs =
-                self.ledger_store.get_latest_ledger_info()?;
-            let version = ledger_info_with_sigs.ledger_info().version();
-            let (blob, _proof) = self
-                .state_store
-                .get_account_state_with_proof_by_version(address, version)?;
-            Ok(blob)
         })
     }
 
@@ -753,79 +696,26 @@ impl DbReader for PosLedgerDB {
         })
     }
 
-    fn get_account_state_with_proof(
-        &self, address: AccountAddress, version: Version,
-        ledger_version: Version,
-    ) -> Result<AccountStateWithProof> {
-        gauged_api("get_account_state_with_proof", || {
-            ensure!(
-                version <= ledger_version,
-                "The queried version {} should be equal to or older than ledger version {}.",
-                version,
-                ledger_version
-            );
-            {
-                let latest_version = self.get_latest_version()?;
-                ensure!(
-                    ledger_version <= latest_version,
-                    "ledger_version specified {} is greater than committed version {}.",
-                    ledger_version,
-                    latest_version
-                );
-            }
-
-            let txn_info_with_proof = self
-                .ledger_store
-                .get_transaction_info_with_proof(version, ledger_version)?;
-            let (account_state_blob, sparse_merkle_proof) = self
-                .state_store
-                .get_account_state_with_proof_by_version(address, version)?;
-            Ok(AccountStateWithProof::new(
-                version,
-                account_state_blob,
-                AccountStateProof::new(
-                    txn_info_with_proof,
-                    sparse_merkle_proof,
-                ),
-            ))
-        })
-    }
-
-    fn get_account_state_with_proof_by_version(
-        &self, address: AccountAddress, version: Version,
-    ) -> Result<(
-        Option<AccountStateBlob>,
-        SparseMerkleProof<AccountStateBlob>,
-    )> {
-        gauged_api("get_account_state_with_proof_by_version", || {
-            self.state_store
-                .get_account_state_with_proof_by_version(address, version)
-        })
-    }
-
-    fn get_latest_state_root(&self) -> Result<(Version, HashValue)> {
-        gauged_api("get_latest_state_root", || {
-            let (version, txn_info) =
-                self.ledger_store.get_latest_transaction_info()?;
-            Ok((version, txn_info.state_root_hash()))
-        })
-    }
-
     fn get_latest_tree_state(&self) -> Result<TreeState> {
         gauged_api("get_latest_tree_state", || {
-            let tree_state =
-                match self.ledger_store.get_latest_transaction_info_option()? {
-                    Some((version, txn_info)) => self
+            let tree_state = match self
+                .ledger_store
+                .get_latest_transaction_info_option()?
+            {
+                Some((version, _txn_info)) => {
+                    let frozen_subtrees = self
                         .ledger_store
-                        .get_tree_state(version + 1, txn_info)?,
-                    None => TreeState::new(
-                        0,
-                        vec![],
-                        self.state_store
-                            .get_root_hash_option(PRE_GENESIS_VERSION)?
-                            .unwrap_or(*SPARSE_MERKLE_PLACEHOLDER_HASH),
-                    ),
-                };
+                        .get_frozen_subtree_hashes(version + 1)?;
+                    TreeState::new(
+                        version + 1,
+                        frozen_subtrees,
+                        *SPARSE_MERKLE_PLACEHOLDER_HASH,
+                    )
+                }
+                None => {
+                    TreeState::new(0, vec![], *SPARSE_MERKLE_PLACEHOLDER_HASH)
+                }
+            };
 
             diem_info!(
                 num_transactions = tree_state.num_transactions,
@@ -984,8 +874,6 @@ impl DbWriter for PosLedgerDB {
                 counters
                     .expect("Counters should be bumped with transactions being saved.")
                     .bump_op_counters();
-
-                self.wake_pruner(last_version);
             }
 
             Ok(())
@@ -1098,7 +986,6 @@ impl GetRestoreHandler for Arc<PosLedgerDB> {
             Arc::clone(self),
             Arc::clone(&self.ledger_store),
             Arc::clone(&self.transaction_store),
-            Arc::clone(&self.state_store),
             Arc::clone(&self.event_store),
         )
     }

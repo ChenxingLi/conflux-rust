@@ -3395,30 +3395,6 @@ name = "diem-infallible"
 version = "0.1.0"
 
 [[package]]
-name = "diem-jellyfish-merkle"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bcs",
- "byteorder",
- "diem-crypto",
- "diem-crypto-derive",
- "diem-infallible",
- "diem-metrics",
- "diem-nibble",
- "diem-types",
- "mirai-annotations",
- "num-derive",
- "num-traits",
- "once_cell",
- "proptest",
- "proptest-derive",
- "rand 0.8.5",
- "serde",
- "thiserror 1.0.63",
-]
-
-[[package]]
 name = "diem-log-derive"
 version = "0.1.0"
 dependencies = [
@@ -4030,6 +4006,7 @@ dependencies = [
  "move-core-types",
  "once_cell",
  "pow-types",
+ "scratchpad",
  "serde",
  "storage-interface",
 ]
@@ -7250,7 +7227,6 @@ dependencies = [
  "diem-config",
  "diem-crypto",
  "diem-infallible",
- "diem-jellyfish-merkle",
  "diem-logger",
  "diem-metrics",
  "diem-proptest-helpers",

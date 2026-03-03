@@ -21,35 +21,16 @@ use std::collections::BTreeMap;
 #[cfg_attr(test, derive(Arbitrary))]
 pub(crate) enum LedgerCounter {
     EventsCreated = 101,
-
-    NewStateLeaves = 201,
-    StaleStateLeaves = 202,
-
-    NewStateNodes = 301,
-    StaleStateNodes = 302,
 }
 
 impl LedgerCounter {
     const STR_EVENTS_CREATED: &'static str = "events_created";
-    const STR_NEW_STATE_LEAVES: &'static str = "new_state_leaves";
-    const STR_NEW_STATE_NODES: &'static str = "new_state_nodes";
-    const STR_STALE_STATE_LEAVES: &'static str = "stale_state_leaves";
-    const STR_STALE_STATE_NODES: &'static str = "stale_state_nodes";
-    const VARIANTS: [LedgerCounter; LedgerCounter::NUM_VARIANTS] = [
-        LedgerCounter::EventsCreated,
-        LedgerCounter::NewStateLeaves,
-        LedgerCounter::StaleStateLeaves,
-        LedgerCounter::NewStateNodes,
-        LedgerCounter::StaleStateNodes,
-    ];
+    const VARIANTS: [LedgerCounter; LedgerCounter::NUM_VARIANTS] =
+        [LedgerCounter::EventsCreated];
 
     pub fn name(self) -> &'static str {
         match self {
             Self::EventsCreated => Self::STR_EVENTS_CREATED,
-            Self::NewStateLeaves => Self::STR_NEW_STATE_LEAVES,
-            Self::StaleStateLeaves => Self::STR_STALE_STATE_LEAVES,
-            Self::NewStateNodes => Self::STR_NEW_STATE_NODES,
-            Self::StaleStateNodes => Self::STR_STALE_STATE_NODES,
         }
     }
 }

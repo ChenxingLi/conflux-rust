@@ -7,7 +7,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::{cmp::max, collections::HashMap, sync::Arc};
+use std::{cmp::max, sync::Arc};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,6 @@ use diem_types::{
     validator_config::ConsensusSignature,
 };
 pub use error::Error;
-use scratchpad::ProofRead;
 use storage_interface::TreeState;
 
 pub use self::processed_vm_output::{ProcessedVMOutput, TransactionData};
@@ -39,7 +38,6 @@ pub use self::processed_vm_output::{ProcessedVMOutput, TransactionData};
 mod error;
 mod processed_vm_output;
 
-type SparseMerkleProof = diem_types::proof::SparseMerkleProof<AccountStateBlob>;
 type SparseMerkleTree = scratchpad::SparseMerkleTree<AccountStateBlob>;
 
 pub trait ChunkExecutor: Send {
@@ -245,10 +243,8 @@ pub struct ExecutedTrees {
 impl From<TreeState> for ExecutedTrees {
     fn from(tree_state: TreeState) -> Self {
         ExecutedTrees::new(
-            tree_state.account_state_root_hash,
             tree_state.ledger_frozen_subtree_hashes,
             tree_state.num_transactions,
-            // TODO(lpl): Ensure this is not used.
             PosState::new_empty(),
         )
     }
@@ -259,7 +255,6 @@ impl ExecutedTrees {
         tree_state: TreeState, pos_state: PosState,
     ) -> Self {
         ExecutedTrees::new(
-            tree_state.account_state_root_hash,
             tree_state.ledger_frozen_subtree_hashes,
             tree_state.num_transactions,
             pos_state,
@@ -300,12 +295,13 @@ impl ExecutedTrees {
     pub fn state_root(&self) -> HashValue { self.state_tree().root_hash() }
 
     pub fn new(
-        state_root_hash: HashValue,
         frozen_subtrees_in_accumulator: Vec<HashValue>,
         num_leaves_in_accumulator: u64, pos_state: PosState,
     ) -> ExecutedTrees {
         ExecutedTrees {
-            state_tree: Arc::new(SparseMerkleTree::new(state_root_hash)),
+            state_tree: Arc::new(SparseMerkleTree::new(
+                *SPARSE_MERKLE_PLACEHOLDER_HASH,
+            )),
             transaction_accumulator: Arc::new(
                 InMemoryAccumulator::new(
                     frozen_subtrees_in_accumulator,
@@ -318,33 +314,10 @@ impl ExecutedTrees {
     }
 
     pub fn new_empty() -> ExecutedTrees {
-        Self::new(
-            *SPARSE_MERKLE_PLACEHOLDER_HASH,
-            vec![],
-            0,
-            PosState::new_empty(),
-        )
+        Self::new(vec![], 0, PosState::new_empty())
     }
 
     pub fn set_pos_state_skipped(&mut self, skipped: bool) {
         self.pos_state.set_skipped(skipped)
-    }
-}
-
-pub struct ProofReader {
-    account_to_proof: HashMap<HashValue, SparseMerkleProof>,
-}
-
-impl ProofReader {
-    pub fn new(
-        account_to_proof: HashMap<HashValue, SparseMerkleProof>,
-    ) -> Self {
-        ProofReader { account_to_proof }
-    }
-}
-
-impl ProofRead<AccountStateBlob> for ProofReader {
-    fn get_proof(&self, key: HashValue) -> Option<&SparseMerkleProof> {
-        self.account_to_proof.get(&key)
     }
 }

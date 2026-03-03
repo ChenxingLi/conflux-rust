@@ -134,7 +134,6 @@ impl SafetyRules {
             .map_err(|e| Error::InvalidAccumulatorExtension(e.to_string()))?;
         Ok(VoteData::new(
             proposed_block.gen_block_info(
-                // TODO(lpl): Remove state tree.
                 Default::default(),
                 new_tree.version(),
                 vote_proposal.next_epoch_state().cloned(),

@@ -8,17 +8,15 @@
 use crate::{
     change_set::ChangeSet, event_store::EventStore, ledger_store::LedgerStore,
     schema::transaction_accumulator::TransactionAccumulatorSchema,
-    state_store::StateStore, transaction_store::TransactionStore, PosLedgerDB,
+    transaction_store::TransactionStore, PosLedgerDB,
 };
 use anyhow::{ensure, Result};
 use diem_crypto::{hash::SPARSE_MERKLE_PLACEHOLDER_HASH, HashValue};
-use diem_jellyfish_merkle::restore::JellyfishMerkleRestore;
 use diem_types::{
-    account_state_blob::AccountStateBlob,
     contract_event::ContractEvent,
     ledger_info::LedgerInfoWithSignatures,
     proof::{definition::LeafCount, position::FrozenSubTreeIterator},
-    transaction::{Transaction, TransactionInfo, Version, PRE_GENESIS_VERSION},
+    transaction::{Transaction, TransactionInfo, Version},
 };
 use schemadb::DB;
 use std::sync::Arc;
@@ -31,34 +29,21 @@ pub struct RestoreHandler {
     pub diemdb: Arc<PosLedgerDB>,
     ledger_store: Arc<LedgerStore>,
     transaction_store: Arc<TransactionStore>,
-    state_store: Arc<StateStore>,
     event_store: Arc<EventStore>,
 }
 
 impl RestoreHandler {
     pub(crate) fn new(
         db: Arc<DB>, diemdb: Arc<PosLedgerDB>, ledger_store: Arc<LedgerStore>,
-        transaction_store: Arc<TransactionStore>, state_store: Arc<StateStore>,
-        event_store: Arc<EventStore>,
+        transaction_store: Arc<TransactionStore>, event_store: Arc<EventStore>,
     ) -> Self {
         Self {
             db,
             diemdb,
             ledger_store,
             transaction_store,
-            state_store,
             event_store,
         }
-    }
-
-    pub fn get_state_restore_receiver(
-        &self, version: Version, expected_root_hash: HashValue,
-    ) -> Result<JellyfishMerkleRestore<AccountStateBlob>> {
-        JellyfishMerkleRestore::new_overwrite(
-            Arc::clone(&self.state_store),
-            version,
-            expected_root_hash,
-        )
     }
 
     pub fn save_ledger_infos(
@@ -153,18 +138,11 @@ impl RestoreHandler {
         let frozen_subtrees = self
             .ledger_store
             .get_frozen_subtree_hashes(num_transactions)?;
-        let state_root_hash = if num_transactions == 0 {
-            self.state_store
-                .get_root_hash_option(PRE_GENESIS_VERSION)?
-                .unwrap_or(*SPARSE_MERKLE_PLACEHOLDER_HASH)
-        } else {
-            self.state_store.get_root_hash(num_transactions - 1)?
-        };
 
         Ok(TreeState::new(
             num_transactions,
             frozen_subtrees,
-            state_root_hash,
+            *SPARSE_MERKLE_PLACEHOLDER_HASH,
         ))
     }
 

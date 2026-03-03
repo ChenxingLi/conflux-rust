@@ -15,27 +15,20 @@ use diem_crypto::{hash::PRE_GENESIS_BLOCK_ID, HashValue};
 use diem_logger::prelude::*;
 use diem_state_view::{StateView, StateViewId};
 use diem_types::{
-    access_path::AccessPath,
     account_address::AccountAddress,
-    account_config::diem_root_address,
     block_info::{
         BlockInfo, PivotBlockDecision, GENESIS_EPOCH, GENESIS_ROUND,
         GENESIS_TIMESTAMP_USECS,
     },
-    diem_timestamp::DiemTimestampResource,
     ledger_info::{LedgerInfo, LedgerInfoWithSignatures},
-    on_chain_config::{config_address, ConfigurationResource},
     term_state::NodeID,
     transaction::Transaction,
     waypoint::Waypoint,
 };
 use executor_types::BlockExecutor;
-use move_core_types::move_resource::MoveResource;
 use pow_types::FakePowHandler;
 use std::{collections::btree_map::BTreeMap, sync::Arc};
-use storage_interface::{
-    state_view::VerifiedStateView, DbReaderWriter, TreeState,
-};
+use storage_interface::{DbReaderWriter, TreeState};
 
 pub fn generate_waypoint<V: VMExecutor>(
     db: &DbReaderWriter, genesis_txn: &Transaction,
@@ -157,17 +150,15 @@ pub fn calculate_genesis<V: VMExecutor>(
     );
 
     let block_id = HashValue::zero();
-    let epoch = if genesis_version == 0 {
-        GENESIS_EPOCH
-    } else {
-        let executor_trees =
-            executor.get_executed_trees(*PRE_GENESIS_BLOCK_ID)?;
-        let state_view = executor.get_executed_state_view(
-            StateViewId::Miscellaneous,
-            &executor_trees,
-        );
-        get_state_epoch(&state_view)?
-    };
+    // Deliberate product decision: Conflux PoS does not support Diem's
+    // non-zero genesis recovery path (bootstrapping from a mid-chain
+    // snapshot). This assertion ensures we fail explicitly rather than
+    // silently producing incorrect state if this assumption is violated.
+    assert_eq!(
+        genesis_version, 0,
+        "Conflux PoS only supports genesis at version 0"
+    );
+    let epoch = GENESIS_EPOCH;
 
     // Create a block with genesis_txn being the only txn. Execute it then
     // commit it immediately.
@@ -190,21 +181,7 @@ pub fn calculate_genesis<V: VMExecutor>(
         next_epoch_state,
         state_view.pos_state().epoch_state()
     );
-    let timestamp_usecs = if genesis_version == 0 {
-        // TODO(aldenhu): fix existing tests before using real timestamp and
-        // check on-chain epoch.
-        GENESIS_TIMESTAMP_USECS
-    } else {
-        let next_epoch = epoch
-            .checked_add(1)
-            .ok_or_else(|| format_err!("integer overflow occurred"))?;
-
-        ensure!(
-            next_epoch == get_state_epoch(&state_view)?,
-            "Genesis txn didn't bump epoch."
-        );
-        get_state_timestamp(&state_view)?
-    };
+    let timestamp_usecs = GENESIS_TIMESTAMP_USECS;
 
     let ledger_info_with_sigs = LedgerInfoWithSignatures::new(
         LedgerInfo::new(
@@ -230,28 +207,6 @@ pub fn calculate_genesis<V: VMExecutor>(
         committer.waypoint,
     );
     Ok(committer)
-}
-
-fn get_state_timestamp(state_view: &VerifiedStateView) -> Result<u64> {
-    let rsrc_bytes = &state_view
-        .get(&AccessPath::new(
-            diem_root_address(),
-            DiemTimestampResource::resource_path(),
-        ))?
-        .ok_or_else(|| format_err!("DiemTimestampResource missing."))?;
-    let rsrc = bcs::from_bytes::<DiemTimestampResource>(&rsrc_bytes)?;
-    Ok(rsrc.diem_timestamp.microseconds)
-}
-
-fn get_state_epoch(state_view: &VerifiedStateView) -> Result<u64> {
-    let rsrc_bytes = &state_view
-        .get(&AccessPath::new(
-            config_address(),
-            ConfigurationResource::resource_path(),
-        ))?
-        .ok_or_else(|| format_err!("ConfigurationResource missing."))?;
-    let rsrc = bcs::from_bytes::<ConfigurationResource>(&rsrc_bytes)?;
-    Ok(rsrc.epoch())
 }
 
 fn genesis_block_id() -> HashValue { HashValue::zero() }

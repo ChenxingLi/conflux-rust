@@ -54,7 +54,7 @@ use diem_types::{
 };
 use executor_types::{
     BlockExecutor, ChunkExecutor, Error, ExecutedTrees, ProcessedVMOutput,
-    ProofReader, StateComputeResult, TransactionData, TransactionReplayer,
+    StateComputeResult, TransactionData, TransactionReplayer,
 };
 use pow_types::PowInterface;
 use storage_interface::state_view::VerifiedStateView;
@@ -81,7 +81,18 @@ mod logging;
 mod metrics;
 pub mod vm;
 
-type SparseMerkleProof = diem_types::proof::SparseMerkleProof<AccountStateBlob>;
+/// A no-op proof reader. The state tree is always Empty (created with
+/// SPARSE_MERKLE_PLACEHOLDER_HASH), so Unknown nodes never occur and proofs
+/// are never needed.
+struct NoopProofReader;
+
+impl scratchpad::ProofRead<AccountStateBlob> for NoopProofReader {
+    fn get_proof(
+        &self, _key: HashValue,
+    ) -> Option<&diem_types::proof::SparseMerkleProof<AccountStateBlob>> {
+        None
+    }
+}
 
 /// `Executor` implements all functionalities the execution module needs to
 /// provide.
@@ -274,7 +285,6 @@ where V: VMExecutor
     /// output.
     fn process_vm_outputs(
         &self, mut account_to_state: HashMap<AccountAddress, AccountState>,
-        account_to_proof: HashMap<HashValue, SparseMerkleProof>,
         transactions: &[Transaction], vm_outputs: Vec<TransactionOutput>,
         parent_trees: &ExecutedTrees, parent_block_id: &HashValue,
         catch_up_mode: bool,
@@ -289,7 +299,6 @@ where V: VMExecutor
         // do not go into the transaction accumulator.
         let mut txn_info_hashes = vec![];
 
-        let proof_reader = ProofReader::new(account_to_proof);
         let pivot_select_event_key =
             PivotBlockDecision::pivot_select_event_key();
         let election_event_key = ElectionEvent::event_key();
@@ -482,26 +491,15 @@ where V: VMExecutor
                             .collect::<Vec<_>>()
                     })
                     .collect(),
-                &proof_reader,
+                &NoopProofReader,
             )
             .expect("Failed to update state tree.");
 
-        for ((vm_output, txn), (mut state_tree_hash, blobs)) in
-            itertools::zip_eq(
-                itertools::zip_eq(vm_outputs.into_iter(), transactions.iter()),
-                itertools::zip_eq(txn_state_roots, txn_blobs),
-            )
-        {
-            // Not genesis transactions.
-            diem_debug!(
-                "process_vm_outputs: {} {:?}",
-                parent_trees.txn_accumulator().version(),
-                state_tree_hash
-            );
-            if parent_trees.txn_accumulator().version() != 0 {
-                // TODO(lpl): Remove state tree.
-                state_tree_hash = Default::default();
-            }
+        for ((vm_output, txn), (_state_tree_hash, blobs)) in itertools::zip_eq(
+            itertools::zip_eq(vm_outputs.into_iter(), transactions.iter()),
+            itertools::zip_eq(txn_state_roots, txn_blobs),
+        ) {
+            let state_tree_hash = Default::default();
             let event_tree = {
                 let event_hashes: Vec<_> =
                     vm_output.events().iter().map(CryptoHash::hash).collect();
@@ -660,12 +658,8 @@ where V: VMExecutor
     fn get_executed_state_view<'a>(
         &self, id: StateViewId, executed_trees: &'a ExecutedTrees,
     ) -> VerifiedStateView<'a> {
-        let cache = self.db_with_cache.cache.lock();
         VerifiedStateView::new(
             id,
-            Arc::clone(&self.db_with_cache.db.reader),
-            cache.committed_trees().version(),
-            cache.committed_trees().state_root(),
             executed_trees.state_tree(),
             executed_trees.pos_state().clone(),
         )
@@ -685,9 +679,6 @@ where V: VMExecutor
         let cache = self.db_with_cache.cache.lock();
         let state_view = VerifiedStateView::new(
             StateViewId::ChunkExecution { first_version },
-            Arc::clone(&self.db_with_cache.db.reader),
-            cache.synced_trees().version(),
-            cache.synced_trees().state_root(),
             cache.synced_trees().state_tree(),
             // TODO(lpl): State sync not used yet.
             PosState::new_empty(),
@@ -707,11 +698,10 @@ where V: VMExecutor
             }
         }
 
-        let (account_to_state, account_to_proof) = state_view.into();
+        let account_to_state = state_view.into();
 
         let output = self.process_vm_outputs(
             account_to_state,
-            account_to_proof,
             &transactions,
             vm_outputs,
             cache.synced_trees(),
@@ -1077,12 +1067,11 @@ impl<V: VMExecutor> BlockExecutor for Executor<V> {
                 diem_trace!("Execution status: {:?}", status);
             }
 
-            let (account_to_state, account_to_proof) = state_view.into();
+            let account_to_state = state_view.into();
 
             let output = self
                 .process_vm_outputs(
                     account_to_state,
-                    account_to_proof,
                     &transactions,
                     vm_outputs,
                     &parent_block_executed_trees,
@@ -1475,9 +1464,12 @@ impl<V: VMExecutor> BlockExecutor for Executor<V> {
             ));
         }
 
-        for block in blocks {
-            block.output().executed_trees().state_tree().prune()
-        }
+        // Note: state_tree().prune() was removed because the Jellyfish
+        // Merkle persistent state tree has been removed. Pruning was designed
+        // to release in-memory nodes after they were persisted to DB.
+        // Post-genesis, all state trees are Empty (created from placeholder
+        // hash) and PosVM produces empty write sets, so there are no nodes
+        // to prune.
 
         let old_committed_block = self.db_with_cache.prune(
             ledger_info_with_sigs.ledger_info(),

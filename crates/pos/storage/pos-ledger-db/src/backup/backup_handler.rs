@@ -8,24 +8,14 @@
 use crate::{
     event_store::EventStore,
     ledger_store::LedgerStore,
-    metrics::{
-        BACKUP_EPOCH_ENDING_EPOCH, BACKUP_STATE_SNAPSHOT_LEAF_IDX,
-        BACKUP_STATE_SNAPSHOT_VERSION, BACKUP_TXN_VERSION,
-    },
-    state_store::StateStore,
+    metrics::{BACKUP_EPOCH_ENDING_EPOCH, BACKUP_TXN_VERSION},
     transaction_store::TransactionStore,
 };
 use anyhow::{anyhow, ensure, Result};
-use diem_crypto::hash::HashValue;
-use diem_jellyfish_merkle::iterator::JellyfishMerkleIterator;
 use diem_types::{
-    account_state_blob::AccountStateBlob,
     contract_event::ContractEvent,
     ledger_info::LedgerInfoWithSignatures,
-    proof::{
-        SparseMerkleRangeProof, TransactionAccumulatorRangeProof,
-        TransactionInfoWithProof,
-    },
+    proof::{TransactionAccumulatorRangeProof, TransactionInfoWithProof},
     transaction::{Transaction, TransactionInfo, Version},
 };
 use itertools::zip_eq;
@@ -37,20 +27,17 @@ use std::{fmt, sync::Arc};
 pub struct BackupHandler {
     ledger_store: Arc<LedgerStore>,
     transaction_store: Arc<TransactionStore>,
-    state_store: Arc<StateStore>,
     event_store: Arc<EventStore>,
 }
 
 impl BackupHandler {
     pub(crate) fn new(
         ledger_store: Arc<LedgerStore>,
-        transaction_store: Arc<TransactionStore>, state_store: Arc<StateStore>,
-        event_store: Arc<EventStore>,
+        transaction_store: Arc<TransactionStore>, event_store: Arc<EventStore>,
     ) -> Self {
         Self {
             ledger_store,
             transaction_store,
-            state_store,
             event_store,
         }
     }
@@ -110,38 +97,6 @@ impl BackupHandler {
             ledger_info.ledger_info().version(),
         )?;
         Ok((accumulator_proof, ledger_info))
-    }
-
-    /// Gets an iterator which can yield all accounts in the state tree.
-    pub fn get_account_iter(
-        &self, version: Version,
-    ) -> Result<
-        Box<
-            dyn Iterator<Item = Result<(HashValue, AccountStateBlob)>>
-                + Send
-                + Sync,
-        >,
-    > {
-        let iterator = JellyfishMerkleIterator::new(
-            Arc::clone(&self.state_store),
-            version,
-            HashValue::zero(),
-        )?
-        .enumerate()
-        .map(move |(idx, res)| {
-            BACKUP_STATE_SNAPSHOT_VERSION.set(version as i64);
-            BACKUP_STATE_SNAPSHOT_LEAF_IDX.set(idx as i64);
-            res
-        });
-        Ok(Box::new(iterator))
-    }
-
-    /// Gets the proof that proves a range of accounts.
-    pub fn get_account_state_range_proof(
-        &self, rightmost_key: HashValue, version: Version,
-    ) -> Result<SparseMerkleRangeProof> {
-        self.state_store
-            .get_account_state_range_proof(rightmost_key, version)
     }
 
     /// Gets the epoch, committed version, and synced version of the DB.

@@ -33,6 +33,7 @@ use diem_types::{
         parse_memory, NetworkAddress, Protocol,
     },
     on_chain_config::ValidatorSet,
+    term_state::PosState,
     proof::TransactionListProof,
     test_helpers::transaction_test_helpers::get_test_signed_txn,
     transaction::{
@@ -672,9 +673,9 @@ impl MockStorage {
         let frozen_subtree_roots =
             vec![HashValue::zero(); num_leaves.count_ones() as usize];
         self.synced_trees = ExecutedTrees::new(
-            HashValue::zero(), /* dummy_state_root */
             frozen_subtree_roots,
             num_leaves as u64,
+            PosState::new_empty(),
         );
     }
 

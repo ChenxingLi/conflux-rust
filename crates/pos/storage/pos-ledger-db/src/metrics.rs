@@ -129,21 +129,3 @@ pub(crate) static BACKUP_TXN_VERSION: Lazy<IntGauge> = Lazy::new(|| {
     )
     .unwrap()
 });
-
-pub(crate) static BACKUP_STATE_SNAPSHOT_VERSION: Lazy<IntGauge> =
-    Lazy::new(|| {
-        register_int_gauge!(
-            "diem_backup_handler_state_snapshot_version",
-            "Version of requested state snapshot backup."
-        )
-        .unwrap()
-    });
-
-pub(crate) static BACKUP_STATE_SNAPSHOT_LEAF_IDX: Lazy<IntGauge> =
-    Lazy::new(|| {
-        register_int_gauge!(
-            "diem_backup_handler_state_snapshot_leaf_index",
-            "Index of current leaf index returned in a state snapshot backup."
-        )
-        .unwrap()
-    });
