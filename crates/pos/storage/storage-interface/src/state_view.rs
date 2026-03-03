@@ -7,40 +7,23 @@
 
 use anyhow::Result;
 use diem_state_view::{StateView, StateViewId};
-use diem_types::{
-    access_path::AccessPath, account_address::AccountAddress,
-    account_state::AccountState, term_state::PosState,
-};
-use std::collections::HashMap;
+use diem_types::{access_path::AccessPath, term_state::PosState};
 
 /// `VerifiedStateView` is a snapshot of the global state for PoS execution.
 ///
 /// In Conflux PoS, the VM (`PosVM`) reads state exclusively through
-/// `pos_state()` and never calls `get()`. The `account_to_state_cache` exists
-/// only because `process_write_set()` in the executor populates and reads it
-/// when processing genesis write sets.
+/// `pos_state()` and never calls `get()`.
 pub struct VerifiedStateView {
     /// For logging and debugging purpose, identifies what this view is for.
     id: StateViewId,
-
-    /// The cache of account states populated by `process_write_set()`.
-    account_to_state_cache: HashMap<AccountAddress, AccountState>,
 
     pos_state: PosState,
 }
 
 impl VerifiedStateView {
     pub fn new(id: StateViewId, pos_state: PosState) -> Self {
-        Self {
-            id,
-            account_to_state_cache: HashMap::new(),
-            pos_state,
-        }
+        Self { id, pos_state }
     }
-}
-
-impl From<VerifiedStateView> for HashMap<AccountAddress, AccountState> {
-    fn from(view: VerifiedStateView) -> Self { view.account_to_state_cache }
 }
 
 impl StateView for VerifiedStateView {

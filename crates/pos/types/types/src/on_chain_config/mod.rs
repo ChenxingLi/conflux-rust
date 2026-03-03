@@ -6,33 +6,20 @@
 // See http://www.gnu.org/licenses/
 
 use crate::{
-    access_path::AccessPath,
-    account_address::AccountAddress,
-    account_config::CORE_CODE_ADDRESS,
-    event::{EventHandle, EventKey},
+    access_path::AccessPath, account_address::AccountAddress,
+    account_config::CORE_CODE_ADDRESS, event::EventKey,
 };
 use anyhow::{format_err, Result};
 use move_core_types::{
     identifier::Identifier,
     language_storage::{StructTag, TypeTag},
-    move_resource::MoveResource,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 use std::{collections::HashMap, fmt, sync::Arc};
 
-mod diem_version;
-mod registered_currencies;
 mod validator_set;
-mod vm_config;
-mod vm_publishing_option;
 
-pub use self::{
-    diem_version::{DiemVersion, DIEM_MAX_KNOWN_VERSION, DIEM_VERSION_2},
-    registered_currencies::RegisteredCurrencies,
-    validator_set::{NextValidatorSetProposal, ValidatorSet},
-    vm_config::VMConfig,
-    vm_publishing_option::VMPublishingOption,
-};
+pub use self::validator_set::{NextValidatorSetProposal, ValidatorSet};
 
 /// To register an on-chain config in Rust:
 /// 1. Implement the `OnChainConfig` trait for the Rust representation of the
@@ -70,13 +57,7 @@ impl fmt::Display for ConfigID {
 
 /// State sync will panic if the value of any config in this registry is
 /// uninitialized
-pub const ON_CHAIN_CONFIG_REGISTRY: &[ConfigID] = &[
-    //VMConfig::CONFIG_ID,
-    //VMPublishingOption::CONFIG_ID,
-    //DiemVersion::CONFIG_ID,
-    ValidatorSet::CONFIG_ID,
-    //RegisteredCurrencies::CONFIG_ID,
-];
+pub const ON_CHAIN_CONFIG_REGISTRY: &[ConfigID] = &[ValidatorSet::CONFIG_ID];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct OnChainConfigPayload {
@@ -183,54 +164,4 @@ pub fn access_path_for_config(
             })],
         }),
     )
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ConfigurationResource {
-    epoch: u64,
-    last_reconfiguration_time: u64,
-    events: EventHandle,
-}
-
-impl ConfigurationResource {
-    pub fn epoch(&self) -> u64 { self.epoch }
-
-    pub fn last_reconfiguration_time(&self) -> u64 {
-        self.last_reconfiguration_time
-    }
-
-    pub fn events(&self) -> &EventHandle { &self.events }
-
-    #[cfg(feature = "fuzzing")]
-    pub fn bump_epoch_for_test(&self) -> Self {
-        let epoch = self.epoch + 1;
-        let last_reconfiguration_time = self.last_reconfiguration_time + 1;
-        let mut events = self.events.clone();
-        *events.count_mut() += 1;
-
-        Self {
-            epoch,
-            last_reconfiguration_time,
-            events,
-        }
-    }
-}
-
-#[cfg(feature = "fuzzing")]
-impl Default for ConfigurationResource {
-    fn default() -> Self {
-        Self {
-            epoch: 0,
-            last_reconfiguration_time: 0,
-            events: EventHandle::new_from_address(
-                &crate::account_config::diem_root_address(),
-                16,
-            ),
-        }
-    }
-}
-
-impl MoveResource for ConfigurationResource {
-    const MODULE_NAME: &'static str = "DiemConfig";
-    const STRUCT_NAME: &'static str = "Configuration";
 }

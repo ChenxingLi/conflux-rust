@@ -9,7 +9,6 @@
 
 use std::{
     collections::{hash_map, BTreeMap, HashMap, HashSet},
-    convert::TryFrom,
     marker::PhantomData,
     sync::Arc,
 };
@@ -32,7 +31,6 @@ use diem_state_view::StateViewId;
 use diem_types::{
     account_address::AccountAddress,
     account_state::AccountState,
-    account_state_blob::AccountStateBlob,
     block_info::PivotBlockDecision,
     committed_block::CommittedBlock,
     contract_event::ContractEvent,
@@ -271,10 +269,9 @@ where V: VMExecutor
     /// Post-processing of what the VM outputs. Returns the entire block's
     /// output.
     fn process_vm_outputs(
-        &self, mut account_to_state: HashMap<AccountAddress, AccountState>,
-        transactions: &[Transaction], vm_outputs: Vec<TransactionOutput>,
-        parent_trees: &ExecutedTrees, parent_block_id: &HashValue,
-        catch_up_mode: bool,
+        &self, transactions: &[Transaction],
+        vm_outputs: Vec<TransactionOutput>, parent_trees: &ExecutedTrees,
+        parent_block_id: &HashValue, catch_up_mode: bool,
     ) -> Result<ProcessedVMOutput> {
         // The data of each individual transaction. For convenience purpose,
         // even for the transactions that will be discarded, we will
@@ -456,21 +453,29 @@ where V: VMExecutor
         }
         let mut next_epoch_state = new_pos_state.next_view()?;
 
-        let txn_blobs =
-            itertools::zip_eq(vm_outputs.iter(), transactions.iter())
-                .map(|(vm_output, txn)| {
-                    process_write_set(
-                        txn,
-                        &mut account_to_state,
-                        vm_output.write_set().clone(),
-                    )
-                })
-                .collect::<Result<Vec<_>>>()?;
+        // For genesis (epoch==1), build account_to_state from write
+        // sets so we can extract the ValidatorSet below.
+        let is_genesis =
+            next_epoch_state.as_ref().map_or(false, |es| es.epoch == 1);
+        let mut genesis_account_to_state = if is_genesis {
+            let mut account_to_state = HashMap::new();
+            for (vm_output, txn) in
+                itertools::zip_eq(vm_outputs.iter(), transactions.iter())
+            {
+                process_write_set(
+                    txn,
+                    &mut account_to_state,
+                    vm_output.write_set().clone(),
+                )?;
+            }
+            Some(account_to_state)
+        } else {
+            None
+        };
 
-        for ((vm_output, txn), blobs) in itertools::zip_eq(
-            itertools::zip_eq(vm_outputs.into_iter(), transactions.iter()),
-            txn_blobs,
-        ) {
+        for (vm_output, txn) in
+            itertools::zip_eq(vm_outputs.into_iter(), transactions.iter())
+        {
             let event_tree = {
                 let event_hashes: Vec<_> =
                     vm_output.events().iter().map(CryptoHash::hash).collect();
@@ -517,7 +522,6 @@ where V: VMExecutor
             }
 
             txn_data.push(TransactionData::new(
-                blobs,
                 vm_output.events().to_vec(),
                 vm_output.status().clone(),
                 Arc::new(event_tree),
@@ -526,15 +530,13 @@ where V: VMExecutor
             ));
         }
 
-        // TODO(lpl): For genesis.
-        if next_epoch_state.is_some()
-            && next_epoch_state.as_ref().unwrap().epoch == 1
-        {
+        // For genesis, extract ValidatorSet from account state built
+        // from write sets.
+        if let Some(account_to_state) = genesis_account_to_state.take() {
             // Pad the rest of transactions
             txn_data.resize(
                 transactions.len(),
                 TransactionData::new(
-                    HashMap::new(),
                     vec![],
                     TransactionStatus::Retry,
                     Arc::new(
@@ -556,20 +558,7 @@ where V: VMExecutor
                 .ok_or_else(|| {
                     format_err!("ValidatorSet account does not exist")
                 })??;
-            /*let configuration = account_to_state
-            .get(&on_chain_config::config_address())
-            .map(|state| {
-                state.get_configuration_resource()?.ok_or_else(|| {
-                    format_err!("Configuration does not exist")
-                })
-            })
-            .ok_or_else(|| {
-                format_err!("Association account does not exist")
-            })??;*/
             next_epoch_state = Some(EpochState::new(
-                // TODO(lpl): This is only used for genesis, and after
-                // executing the genesis block, the epoch
-                // number should be increased from 0 to 1.
                 1,
                 (&validator_set).into(),
                 pivot_decision
@@ -661,10 +650,7 @@ where V: VMExecutor
             }
         }
 
-        let account_to_state = state_view.into();
-
         let output = self.process_vm_outputs(
-            account_to_state,
             &transactions,
             vm_outputs,
             cache.synced_trees(),
@@ -715,7 +701,6 @@ where V: VMExecutor
             );
             txns_to_commit.push(TransactionToCommit::new(
                 txn,
-                txn_data.account_blobs().clone(),
                 txn_data.events().to_vec(),
                 txn_data.gas_used(),
                 recorded_status,
@@ -1030,11 +1015,8 @@ impl<V: VMExecutor> BlockExecutor for Executor<V> {
                 diem_trace!("Execution status: {:?}", status);
             }
 
-            let account_to_state = state_view.into();
-
             let output = self
                 .process_vm_outputs(
-                    account_to_state,
                     &transactions,
                     vm_outputs,
                     &parent_block_executed_trees,
@@ -1337,7 +1319,6 @@ impl<V: VMExecutor> BlockExecutor for Executor<V> {
             {
                 txns_to_keep.push(TransactionToCommit::new(
                     txn.clone(),
-                    txn_data.account_blobs().clone(),
                     txn_data.events().to_vec(),
                     txn_data.gas_used(),
                     recorded_status.clone(),
@@ -1443,19 +1424,14 @@ impl<V: VMExecutor> BlockExecutor for Executor<V> {
     }
 }
 
-/// For all accounts modified by this transaction, find the previous blob and
-/// update it based on the write set. Returns the blob value of all these
-/// accounts.
-pub fn process_write_set(
+/// For all accounts modified by this transaction, update the
+/// `account_to_state` map based on the write set. Only used for genesis
+/// to extract the ValidatorSet from the initial write set.
+fn process_write_set(
     transaction: &Transaction,
     account_to_state: &mut HashMap<AccountAddress, AccountState>,
     write_set: WriteSet,
-) -> Result<HashMap<AccountAddress, AccountStateBlob>> {
-    let mut updated_blobs = HashMap::new();
-
-    // Find all addresses this transaction touches while processing each write
-    // op.
-    let mut addrs = HashSet::new();
+) -> Result<()> {
     for (access_path, write_op) in write_set.into_iter() {
         let address = access_path.address;
         let path = access_path.path;
@@ -1464,16 +1440,9 @@ pub fn process_write_set(
                 update_account_state(entry.get_mut(), path, write_op);
             }
             hash_map::Entry::Vacant(entry) => {
-                // Before writing to an account, VM should always read that
-                // account. So we should not reach this code
-                // path. The exception is genesis transaction (and
-                // maybe other writeset transactions).
                 match transaction {
                     Transaction::GenesisTransaction(_) => (),
-                    Transaction::BlockMetadata(_) => {
-                        // bail!("BlockMetadata: Write set should be a subset of
-                        // read set.")
-                    }
+                    Transaction::BlockMetadata(_) => (),
                     Transaction::UserTransaction(txn) => match txn.payload() {
                         TransactionPayload::WriteSet(_) => (),
                         _ => bail!(
@@ -1488,17 +1457,9 @@ pub fn process_write_set(
                 entry.insert(account_state);
             }
         }
-        addrs.insert(address);
     }
 
-    for addr in addrs {
-        let account_state =
-            account_to_state.get(&addr).expect("Address should exist.");
-        let account_blob = AccountStateBlob::try_from(account_state)?;
-        updated_blobs.insert(addr, account_blob);
-    }
-
-    Ok(updated_blobs)
+    Ok(())
 }
 
 fn update_account_state(

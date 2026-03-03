@@ -6,7 +6,6 @@
 // See http://www.gnu.org/licenses/
 
 use std::{
-    collections::HashMap,
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     ops::Deref,
@@ -37,7 +36,6 @@ pub use transaction_argument::{
 
 use crate::{
     account_address::AccountAddress,
-    account_state_blob::AccountStateBlob,
     block_info::PivotBlockDecision,
     block_metadata::BlockMetadata,
     chain_id::ChainId,
@@ -1062,7 +1060,6 @@ impl Display for TransactionInfo {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TransactionToCommit {
     transaction: Transaction,
-    account_states: HashMap<AccountAddress, AccountStateBlob>,
     events: Vec<ContractEvent>,
     gas_used: u64,
     status: KeptVMStatus,
@@ -1070,13 +1067,11 @@ pub struct TransactionToCommit {
 
 impl TransactionToCommit {
     pub fn new(
-        transaction: Transaction,
-        account_states: HashMap<AccountAddress, AccountStateBlob>,
-        events: Vec<ContractEvent>, gas_used: u64, status: KeptVMStatus,
+        transaction: Transaction, events: Vec<ContractEvent>, gas_used: u64,
+        status: KeptVMStatus,
     ) -> Self {
         TransactionToCommit {
             transaction,
-            account_states,
             events,
             gas_used,
             status,
@@ -1084,10 +1079,6 @@ impl TransactionToCommit {
     }
 
     pub fn transaction(&self) -> &Transaction { &self.transaction }
-
-    pub fn account_states(&self) -> &HashMap<AccountAddress, AccountStateBlob> {
-        &self.account_states
-    }
 
     pub fn events(&self) -> &[ContractEvent] { &self.events }
 
