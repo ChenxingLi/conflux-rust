@@ -1,7 +1,7 @@
 name: Tests
 
 env:
-  RUST_VERSION: 1.91.1
+  RUST_VERSION: 1.94
   SCCACHE_GHA_ENABLED: "true"
   RUSTC_WRAPPER: "sccache"
 
