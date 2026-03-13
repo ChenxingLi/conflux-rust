@@ -314,7 +314,7 @@ impl TransactionRequest {
 mod tests {
     use super::TransactionRequest;
 
-    use crate::rpc::types::address::RpcAddress;
+    use crate::RpcAddress;
     use cfx_addr::Network;
     use cfx_types::{H160, U256, U64};
     use rustc_hex::FromHex;

@@ -1693,6 +1693,7 @@ dependencies = [
  "diem-crypto",
  "diem-types",
  "jsonrpc-core",
+ "keccak-hash",
  "log",
  "once_cell",
  "parity-version",

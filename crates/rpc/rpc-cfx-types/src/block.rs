@@ -238,7 +238,7 @@ pub struct Header {
 #[cfg(test)]
 mod tests {
     use super::{Block, BlockTransactions, Header, RpcAddress};
-    use crate::rpc::types::Transaction;
+    use crate::Transaction;
     use cfx_addr::Network;
     use cfx_types::{H256, U256};
     use keccak_hash::KECCAK_EMPTY_LIST_RLP;
