@@ -6,8 +6,7 @@
 // See http://www.gnu.org/licenses/
 
 use crate::{
-    account_address::AccountAddress,
-    account_config::diem_root_address,
+    account_address::AccountAddress, account_config::diem_root_address,
     event::EventKey,
 };
 use diem_crypto::HashValue;

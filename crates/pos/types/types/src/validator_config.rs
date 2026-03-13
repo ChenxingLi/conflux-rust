@@ -5,9 +5,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use crate::{
-    network_address::{encrypted::EncNetworkAddress, NetworkAddress},
-};
+use crate::network_address::{encrypted::EncNetworkAddress, NetworkAddress};
 use diem_crypto::{
     bls::{BLSPrivateKey, BLSPublicKey, BLSSignature},
     ec_vrf::{EcVrfPrivateKey, EcVrfProof, EcVrfPublicKey},
