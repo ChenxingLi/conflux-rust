@@ -19,7 +19,7 @@ use std::{collections::HashMap, fmt, sync::Arc};
 
 mod validator_set;
 
-pub use self::validator_set::{NextValidatorSetProposal, ValidatorSet};
+pub use self::validator_set::ValidatorSet;
 
 /// To register an on-chain config in Rust:
 /// 1. Implement the `OnChainConfig` trait for the Rust representation of the
@@ -96,12 +96,6 @@ impl fmt::Display for OnChainConfigPayload {
     }
 }
 
-/// Trait to be implemented by a storage type from which to read on-chain
-/// configs
-pub trait ConfigStorage {
-    fn fetch_config(&self, access_path: AccessPath) -> Option<Vec<u8>>;
-}
-
 /// Trait to be implemented by a Rust struct representation of an on-chain
 /// config that is stored in storage as a serialized byte array
 pub trait OnChainConfig: Send + Sync + DeserializeOwned {
@@ -133,13 +127,6 @@ pub trait OnChainConfig: Send + Sync + DeserializeOwned {
     // function if this logic needs to be customized
     fn deserialize_into_config(bytes: &[u8]) -> Result<Self> {
         Self::deserialize_default_impl(bytes)
-    }
-
-    fn fetch_config<T>(storage: &T) -> Option<Self>
-    where T: ConfigStorage {
-        storage
-            .fetch_config(Self::CONFIG_ID.access_path())
-            .and_then(|bytes| Self::deserialize_into_config(&bytes).ok())
     }
 }
 

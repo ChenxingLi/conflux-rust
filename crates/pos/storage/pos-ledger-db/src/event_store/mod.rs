@@ -29,7 +29,7 @@ use diem_types::{
     block_metadata::new_block_event_key,
     contract_event::ContractEvent,
     event::EventKey,
-    proof::{position::Position, EventAccumulatorProof, EventProof},
+    proof::{position::Position, EventAccumulatorProof},
     transaction::Version,
 };
 use schemadb::{schema::ValueCodec, ReadOptions, SchemaIterator, DB};

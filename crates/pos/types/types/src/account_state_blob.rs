@@ -5,14 +5,8 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use crate::{
-    account_address::{AccountAddress, HashAccountAddress},
-    account_state::AccountState,
-    ledger_info::LedgerInfo,
-    proof::AccountStateProof,
-    transaction::Version,
-};
-use anyhow::{ensure, Error, Result};
+use crate::account_state::AccountState;
+use anyhow::{Error, Result};
 use diem_crypto::{
     hash::{CryptoHash, CryptoHasher},
     HashValue,
@@ -121,60 +115,6 @@ impl Arbitrary for AccountStateBlob {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "fuzzing"), derive(Arbitrary))]
-pub struct AccountStateWithProof {
-    /// The transaction version at which this account state is seen.
-    pub version: Version,
-    /// Blob value representing the account state. If this field is not set, it
-    /// means the account does not exist.
-    pub blob: Option<AccountStateBlob>,
-    /// The proof the client can use to authenticate the value.
-    pub proof: AccountStateProof,
-}
-
-impl AccountStateWithProof {
-    /// Constructor.
-    pub fn new(
-        version: Version, blob: Option<AccountStateBlob>,
-        proof: AccountStateProof,
-    ) -> Self {
-        Self {
-            version,
-            blob,
-            proof,
-        }
-    }
-
-    /// Verifies the account state blob with the proof, both carried by
-    /// `self`.
-    ///
-    /// Two things are ensured if no error is raised:
-    ///   1. This account state exists in the ledger represented by
-    /// `ledger_info`.   2. It belongs to account of `address` and is seen
-    /// at the time the transaction at version `state_version` is just
-    /// committed. To make sure this is the latest state, pass in
-    /// `ledger_info.version()` as `state_version`.
-    pub fn verify(
-        &self, ledger_info: &LedgerInfo, version: Version,
-        address: AccountAddress,
-    ) -> Result<()> {
-        ensure!(
-            self.version == version,
-            "State version ({}) is not expected ({}).",
-            self.version,
-            version,
-        );
-
-        self.proof.verify(
-            ledger_info,
-            version,
-            address.hash(),
-            self.blob.as_ref(),
-        )
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,11 +136,6 @@ mod tests {
         #[test]
         fn account_state_blob_bcs_roundtrip(account_state_blob in any::<AccountStateBlob>()) {
             assert_canonical_encode_decode(account_state_blob);
-        }
-
-        #[test]
-        fn account_state_with_proof_bcs_roundtrip(account_state_with_proof in any::<AccountStateWithProof>()) {
-            assert_canonical_encode_decode(account_state_with_proof);
         }
     }
 
