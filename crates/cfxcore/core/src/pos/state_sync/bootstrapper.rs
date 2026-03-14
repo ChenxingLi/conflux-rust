@@ -13,7 +13,6 @@ use crate::pos::{
     },
 };
 use diem_config::config::NodeConfig;
-use diem_types::waypoint::Waypoint;
 use futures::channel::mpsc;
 use std::sync::Arc;
 use storage_interface::DbReader;
@@ -33,7 +32,6 @@ impl StateSyncBootstrapper {
             diem_mempool::CommitNotification,
         >,
         storage: Arc<dyn DbReader>, node_config: &NodeConfig,
-        waypoint: Waypoint,
         reconfig_event_subscriptions: Vec<ReconfigSubscription>,
     ) -> Self {
         let runtime = Builder::new_multi_thread()
@@ -48,7 +46,6 @@ impl StateSyncBootstrapper {
             runtime,
             state_sync_to_mempool_sender,
             node_config,
-            waypoint,
             executor_proxy,
         )
     }
@@ -58,7 +55,7 @@ impl StateSyncBootstrapper {
         state_sync_to_mempool_sender: mpsc::Sender<
             diem_mempool::CommitNotification,
         >,
-        node_config: &NodeConfig, waypoint: Waypoint, executor_proxy: E,
+        node_config: &NodeConfig, executor_proxy: E,
     ) -> Self {
         let (coordinator_sender, coordinator_receiver) = mpsc::unbounded();
         let initial_state = executor_proxy
@@ -69,7 +66,6 @@ impl StateSyncBootstrapper {
             coordinator_receiver,
             state_sync_to_mempool_sender,
             node_config,
-            waypoint,
             executor_proxy,
             initial_state,
         )

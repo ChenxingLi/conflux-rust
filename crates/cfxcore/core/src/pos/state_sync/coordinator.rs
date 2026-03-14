@@ -15,9 +15,7 @@ use crate::pos::{
 };
 use diem_config::config::{NodeConfig, RoleType, StateSyncConfig};
 use diem_logger::prelude::*;
-use diem_types::{
-    contract_event::ContractEvent, transaction::Transaction, waypoint::Waypoint,
-};
+use diem_types::{contract_event::ContractEvent, transaction::Transaction};
 use futures::{
     channel::{mpsc, oneshot},
     StreamExt,
@@ -35,9 +33,7 @@ pub(crate) struct StateSyncCoordinator<T> {
     local_state: SyncState,
     config: StateSyncConfig,
     role: RoleType,
-    waypoint: Waypoint,
     sync_request: Option<SyncRequest>,
-    initialization_listener: Option<oneshot::Sender<Result<(), anyhow::Error>>>,
     executor_proxy: T,
 }
 
@@ -45,14 +41,8 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
     pub fn new(
         client_events: mpsc::UnboundedReceiver<CoordinatorMessage>,
         state_sync_to_mempool_sender: mpsc::Sender<CommitNotification>,
-        node_config: &NodeConfig, waypoint: Waypoint, executor_proxy: T,
-        initial_state: SyncState,
+        node_config: &NodeConfig, executor_proxy: T, initial_state: SyncState,
     ) -> Result<Self, anyhow::Error> {
-        diem_info!(LogSchema::event_log(
-            LogEntry::Waypoint,
-            LogEvent::Initialize
-        ));
-
         let role = node_config.base.role;
 
         Ok(Self {
@@ -61,9 +51,7 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
             local_state: initial_state,
             config: node_config.state_sync.clone(),
             role,
-            waypoint,
             sync_request: None,
-            initialization_listener: None,
             executor_proxy,
         })
     }
@@ -101,10 +89,10 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
                             }
                         }
                         CoordinatorMessage::WaitForInitialization(cb_sender) => {
-                            if let Err(e) = self.wait_for_initialization(cb_sender) {
+                            // Always initialized (waypoint removed).
+                            if let Err(e) = Self::send_initialization_callback(cb_sender) {
                                 diem_error!(
-                                    LogSchema::new(LogEntry::Waypoint),
-                                    "Failed to wait for initialization: {:?}",
+                                    "Failed to send initialization callback: {:?}",
                                     e
                                 );
                             }
@@ -135,22 +123,6 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
                 .new_epoch(new_state.trusted_epoch()));
         }
         self.local_state = new_state;
-        Ok(())
-    }
-
-    fn is_initialized(&self) -> bool {
-        self.waypoint.version() <= self.local_state.committed_version()
-    }
-
-    fn wait_for_initialization(
-        &mut self, cb_sender: oneshot::Sender<Result<(), anyhow::Error>>,
-    ) -> Result<(), anyhow::Error> {
-        if self.is_initialized() {
-            Self::send_initialization_callback(cb_sender)?;
-        } else {
-            self.initialization_listener = Some(cb_sender);
-        }
-
         Ok(())
     }
 
@@ -197,13 +169,13 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
             );
         }
 
-        let synced_version = self.local_state.synced_version();
         if let Some(req) = self.sync_request.as_mut() {
             req.last_commit_timestamp = SystemTime::now();
         }
 
-        // Check if we're now initialized or if we hit the sync request target
-        self.check_initialized_or_sync_request_completed(synced_version)?;
+        // Check if we hit the sync request target
+        let synced_version = self.local_state.synced_version();
+        self.check_sync_request_completed(synced_version)?;
 
         // Publish the on chain config updates
         if let Err(error) = self
@@ -220,29 +192,9 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
         Ok(())
     }
 
-    fn check_initialized_or_sync_request_completed(
+    fn check_sync_request_completed(
         &mut self, synced_version: u64,
     ) -> Result<(), anyhow::Error> {
-        let committed_version = self.local_state.committed_version();
-        let local_epoch = self.local_state.trusted_epoch();
-
-        // Check if we're now initialized
-        if self.is_initialized() {
-            if let Some(initialization_listener) =
-                self.initialization_listener.take()
-            {
-                diem_info!(LogSchema::event_log(
-                    LogEntry::Waypoint,
-                    LogEvent::Complete
-                )
-                .local_li_version(committed_version)
-                .local_synced_version(synced_version)
-                .local_epoch(local_epoch));
-                Self::send_initialization_callback(initialization_listener)?;
-            }
-        }
-
-        // Check if we're now at the sync request target
         if let Some(sync_request) = self.sync_request.as_ref() {
             let sync_target_version =
                 sync_request.target.ledger_info().version();
@@ -254,6 +206,8 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
                 ));
             }
             if synced_version == sync_target_version {
+                let committed_version = self.local_state.committed_version();
+                let local_epoch = self.local_state.trusted_epoch();
                 diem_info!(LogSchema::event_log(
                     LogEntry::SyncRequest,
                     LogEvent::Complete
@@ -335,10 +289,7 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
     }
 
     fn check_progress(&mut self) -> Result<(), anyhow::Error> {
-        if self.is_initialized()
-            && self.role == RoleType::Validator
-            && self.sync_request.is_none()
-        {
+        if self.role == RoleType::Validator && self.sync_request.is_none() {
             return Ok(());
         }
 
@@ -398,7 +349,7 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
     ) -> Result<(), anyhow::Error> {
         callback.send(Ok(())).map_err(|error| {
             anyhow::anyhow!(
-                "Waypoint initialization callback error - failed to send: {:?}",
+                "Initialization callback error - failed to send: {:?}",
                 error
             )
         })

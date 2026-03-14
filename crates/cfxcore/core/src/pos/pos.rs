@@ -257,7 +257,6 @@ pub fn setup_pos_environment(
         state_sync_to_mempool_sender,
         Arc::clone(&db_rw.reader),
         node_config,
-        genesis_waypoint,
         reconfig_subscriptions,
     );
 

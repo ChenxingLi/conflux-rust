@@ -65,7 +65,6 @@ pub enum LogEntry {
     EpochChange,
     CommitFlow,
     ProgressCheck,
-    Waypoint,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -74,7 +73,6 @@ pub enum LogEvent {
     CallbackFail,
     Complete,
     Fail,
-    Initialize,
     Timeout,
     PublishError,
     Success,
