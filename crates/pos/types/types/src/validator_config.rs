@@ -5,41 +5,15 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use crate::{
-    account_address::AccountAddress,
-    network_address::{encrypted::EncNetworkAddress, NetworkAddress},
-};
+use crate::network_address::{encrypted::EncNetworkAddress, NetworkAddress};
 use diem_crypto::{
     bls::{BLSPrivateKey, BLSPublicKey, BLSSignature},
     ec_vrf::{EcVrfPrivateKey, EcVrfProof, EcVrfPublicKey},
     multi_bls::{MultiBLSPrivateKey, MultiBLSPublicKey, MultiBLSSignature},
 };
-use move_core_types::move_resource::MoveResource;
 #[cfg(any(test, feature = "fuzzing"))]
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq, Default)]
-pub struct ValidatorConfigResource {
-    pub validator_config: Option<ValidatorConfig>,
-    pub delegated_account: Option<AccountAddress>,
-    pub human_name: Vec<u8>,
-}
-
-impl MoveResource for ValidatorConfigResource {
-    const MODULE_NAME: &'static str = "ValidatorConfig";
-    const STRUCT_NAME: &'static str = "ValidatorConfig";
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq, Default)]
-pub struct ValidatorOperatorConfigResource {
-    pub human_name: Vec<u8>,
-}
-
-impl MoveResource for ValidatorOperatorConfigResource {
-    const MODULE_NAME: &'static str = "ValidatorOperatorConfig";
-    const STRUCT_NAME: &'static str = "ValidatorOperatorConfig";
-}
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(any(test, feature = "fuzzing"), derive(Arbitrary))]
