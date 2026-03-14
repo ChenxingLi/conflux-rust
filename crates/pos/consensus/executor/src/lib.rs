@@ -8,7 +8,7 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    collections::{hash_map, BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     marker::PhantomData,
     sync::Arc,
 };
@@ -29,14 +29,12 @@ use diem_crypto::{
 use diem_logger::prelude::*;
 use diem_state_view::StateViewId;
 use diem_types::{
-    account_address::AccountAddress,
-    account_state::AccountState,
     block_info::PivotBlockDecision,
     committed_block::CommittedBlock,
     contract_event::ContractEvent,
     epoch_state::EpochState,
     ledger_info::LedgerInfoWithSignatures,
-    on_chain_config,
+    on_chain_config::{self, ValidatorSet},
     proof::accumulator::InMemoryAccumulator,
     reward_distribution_event::{RewardDistributionEventV2, VoteCount},
     term_state::{
@@ -45,10 +43,8 @@ use diem_types::{
     },
     transaction::{
         Transaction, TransactionInfo, TransactionListWithProof,
-        TransactionOutput, TransactionPayload, TransactionStatus,
-        TransactionToCommit, Version,
+        TransactionOutput, TransactionStatus, TransactionToCommit, Version,
     },
-    write_set::{WriteOp, WriteSet},
 };
 use executor_types::{
     BlockExecutor, ChunkExecutor, Error, ExecutedTrees, ProcessedVMOutput,
@@ -453,25 +449,8 @@ where V: VMExecutor
         }
         let mut next_epoch_state = new_pos_state.next_view()?;
 
-        // For genesis (epoch==1), build account_to_state from write
-        // sets so we can extract the ValidatorSet below.
         let is_genesis =
             next_epoch_state.as_ref().map_or(false, |es| es.epoch == 1);
-        let mut genesis_account_to_state = if is_genesis {
-            let mut account_to_state = HashMap::new();
-            for (vm_output, txn) in
-                itertools::zip_eq(vm_outputs.iter(), transactions.iter())
-            {
-                process_write_set(
-                    txn,
-                    &mut account_to_state,
-                    vm_output.write_set().clone(),
-                )?;
-            }
-            Some(account_to_state)
-        } else {
-            None
-        };
 
         for (vm_output, txn) in
             itertools::zip_eq(vm_outputs.into_iter(), transactions.iter())
@@ -530,34 +509,26 @@ where V: VMExecutor
             ));
         }
 
-        // For genesis, extract ValidatorSet from account state built
-        // from write sets.
-        if let Some(account_to_state) = genesis_account_to_state.take() {
-            // Pad the rest of transactions
-            txn_data.resize(
-                transactions.len(),
-                TransactionData::new(
-                    vec![],
-                    TransactionStatus::Retry,
-                    Arc::new(
-                        InMemoryAccumulator::<EventAccumulatorHasher>::default(
-                        ),
-                    ),
-                    0,
-                    None,
-                ),
-            );
-
-            let validator_set = account_to_state
-                .get(&on_chain_config::config_address())
-                .map(|state| {
-                    state.get_validator_set()?.ok_or_else(|| {
-                        format_err!("ValidatorSet does not exist")
-                    })
-                })
-                .ok_or_else(|| {
-                    format_err!("ValidatorSet account does not exist")
-                })??;
+        // For genesis, extract ValidatorSet directly from the epoch
+        // change event instead of going through the WriteSet →
+        // AccountState roundtrip.
+        if is_genesis {
+            let new_epoch_event_key = on_chain_config::new_epoch_event_key();
+            let validator_set = txn_data
+                .iter()
+                .flat_map(|td| td.events())
+                .find(|event| *event.key() == new_epoch_event_key)
+                .ok_or_else(|| format_err!("Genesis epoch event not found"))
+                .and_then(|event| {
+                    bcs::from_bytes::<ValidatorSet>(event.event_data()).map_err(
+                        |e| {
+                            format_err!(
+                                "Failed to deserialize ValidatorSet: {}",
+                                e
+                            )
+                        },
+                    )
+                })?;
             next_epoch_state = Some(EpochState::new(
                 1,
                 (&validator_set).into(),
@@ -566,7 +537,7 @@ where V: VMExecutor
                     .map(|p| p.block_hash.as_bytes().to_vec())
                     .unwrap_or(vec![]),
             ))
-        };
+        }
 
         let current_transaction_accumulator =
             parent_trees.txn_accumulator().append(&txn_info_hashes);
@@ -1422,51 +1393,4 @@ impl<V: VMExecutor> BlockExecutor for Executor<V> {
         // consensus
         Ok((committed_txns, reconfig_events))
     }
-}
-
-/// For all accounts modified by this transaction, update the
-/// `account_to_state` map based on the write set. Only used for genesis
-/// to extract the ValidatorSet from the initial write set.
-fn process_write_set(
-    transaction: &Transaction,
-    account_to_state: &mut HashMap<AccountAddress, AccountState>,
-    write_set: WriteSet,
-) -> Result<()> {
-    for (access_path, write_op) in write_set.into_iter() {
-        let address = access_path.address;
-        let path = access_path.path;
-        match account_to_state.entry(address) {
-            hash_map::Entry::Occupied(mut entry) => {
-                update_account_state(entry.get_mut(), path, write_op);
-            }
-            hash_map::Entry::Vacant(entry) => {
-                match transaction {
-                    Transaction::GenesisTransaction(_) => (),
-                    Transaction::BlockMetadata(_) => (),
-                    Transaction::UserTransaction(txn) => match txn.payload() {
-                        TransactionPayload::WriteSet(_) => (),
-                        _ => bail!(
-                            "Write set should be a subset of read set: {:?}.",
-                            txn
-                        ),
-                    },
-                }
-
-                let mut account_state = Default::default();
-                update_account_state(&mut account_state, path, write_op);
-                entry.insert(account_state);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn update_account_state(
-    account_state: &mut AccountState, path: Vec<u8>, write_op: WriteOp,
-) {
-    match write_op {
-        WriteOp::Value(new_value) => account_state.insert(path, new_value),
-        WriteOp::Deletion => account_state.remove(&path),
-    };
 }

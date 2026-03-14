@@ -2867,44 +2867,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "diem-github-client"
-version = "0.1.0"
-dependencies = [
- "proxy",
- "serde",
- "serde_json",
- "thiserror 1.0.63",
- "ureq",
-]
-
-[[package]]
 name = "diem-global-constants"
 version = "0.1.0"
 
 [[package]]
 name = "diem-infallible"
 version = "0.1.0"
-
-[[package]]
-name = "diem-jellyfish-merkle"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bcs",
- "byteorder",
- "diem-crypto",
- "diem-crypto-derive",
- "diem-infallible",
- "diem-metrics",
- "diem-nibble",
- "diem-types",
- "mirai-annotations",
- "num-derive",
- "num-traits",
- "once_cell",
- "serde",
- "thiserror 1.0.63",
-]
 
 [[package]]
 name = "diem-log-derive"
@@ -2956,13 +2924,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "diem-nibble"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "diem-secure-net"
 version = "0.1.0"
 dependencies = [
@@ -2990,13 +2951,11 @@ dependencies = [
  "bcs",
  "chrono",
  "diem-crypto",
- "diem-github-client",
  "diem-infallible",
  "diem-logger",
  "diem-temppath",
  "diem-time-service",
  "diem-types",
- "diem-vault-client",
  "enum_dispatch",
  "rand 0.8.5",
  "serde",
@@ -3054,22 +3013,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.63",
  "tiny-keccak 2.0.2",
-]
-
-[[package]]
-name = "diem-vault-client"
-version = "0.1.0"
-dependencies = [
- "base64 0.13.1",
- "chrono",
- "diem-crypto",
- "diem-types",
- "native-tls",
- "once_cell",
- "serde",
- "serde_json",
- "thiserror 1.0.63",
- "ureq",
 ]
 
 [[package]]
@@ -3488,7 +3431,6 @@ dependencies = [
  "diem-crypto",
  "diem-secure-net",
  "diem-types",
- "scratchpad",
  "serde",
  "storage-interface",
  "thiserror 1.0.63",
@@ -6153,7 +6095,6 @@ dependencies = [
  "diem-config",
  "diem-crypto",
  "diem-infallible",
- "diem-jellyfish-merkle",
  "diem-logger",
  "diem-metrics",
  "diem-types",
@@ -6392,13 +6333,6 @@ dependencies = [
  "rusty-fork",
  "tempfile",
  "unarray",
-]
-
-[[package]]
-name = "proxy"
-version = "0.1.0"
-dependencies = [
- "ipnet",
 ]
 
 [[package]]
@@ -7214,7 +7148,6 @@ dependencies = [
  "diem-secure-storage",
  "diem-temppath",
  "diem-types",
- "diem-vault-client",
  "log",
  "once_cell",
  "rand 0.8.5",
@@ -7286,16 +7219,6 @@ name = "scratch"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1792db035ce95be60c3f8853017b3999209281c24e2ba5bc8e59bf97a0c590c1"
-
-[[package]]
-name = "scratchpad"
-version = "0.1.0"
-dependencies = [
- "arc-swap",
- "diem-crypto",
- "diem-types",
- "itertools 0.14.0",
-]
 
 [[package]]
 name = "scrypt"
@@ -7963,7 +7886,6 @@ dependencies = [
  "diem-types",
  "itertools 0.14.0",
  "parking_lot 0.12.1",
- "scratchpad",
  "serde",
  "thiserror 1.0.63",
 ]

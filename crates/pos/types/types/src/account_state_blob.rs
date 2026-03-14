@@ -5,8 +5,6 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use crate::account_state::AccountState;
-use anyhow::{Error, Result};
 use diem_crypto::{
     hash::{CryptoHash, CryptoHasher},
     HashValue,
@@ -14,10 +12,8 @@ use diem_crypto::{
 use diem_crypto_derive::CryptoHasher;
 #[cfg(any(test, feature = "fuzzing"))]
 use proptest::{arbitrary::Arbitrary, prelude::*};
-#[cfg(any(test, feature = "fuzzing"))]
-use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, fmt};
+use std::fmt;
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, CryptoHasher)]
 pub struct AccountStateBlob {
@@ -26,18 +22,12 @@ pub struct AccountStateBlob {
 
 impl fmt::Debug for AccountStateBlob {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let decoded = bcs::from_bytes(&self.blob)
-            .map(|account_state: AccountState| format!("{:#?}", account_state))
-            .unwrap_or_else(|_| String::from("[fail]"));
-
         write!(
             f,
             "AccountStateBlob {{ \n \
              Raw: 0x{} \n \
-             Decoded: {} \n \
              }}",
             hex::encode(&self.blob),
-            decoded,
         )
     }
 }
@@ -62,24 +52,6 @@ impl From<Vec<u8>> for AccountStateBlob {
     fn from(blob: Vec<u8>) -> AccountStateBlob { AccountStateBlob { blob } }
 }
 
-impl TryFrom<&AccountState> for AccountStateBlob {
-    type Error = Error;
-
-    fn try_from(account_state: &AccountState) -> Result<Self> {
-        Ok(Self {
-            blob: bcs::to_bytes(account_state)?,
-        })
-    }
-}
-
-impl TryFrom<&AccountStateBlob> for AccountState {
-    type Error = Error;
-
-    fn try_from(account_state_blob: &AccountStateBlob) -> Result<Self> {
-        bcs::from_bytes(&account_state_blob.blob).map_err(Into::into)
-    }
-}
-
 impl CryptoHash for AccountStateBlob {
     type Hasher = AccountStateBlobHasher;
 
@@ -99,8 +71,6 @@ prop_compose! {
             0..5,
         )
     ) -> AccountStateBlob {
-        // AccountState is a newtype over BTreeMap<Vec<u8>, Vec<u8>>,
-        // so BCS serialization of the map is equivalent.
         AccountStateBlob::from(bcs::to_bytes(&entries).unwrap())
     }
 }
