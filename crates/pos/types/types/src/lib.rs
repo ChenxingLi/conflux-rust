@@ -31,7 +31,6 @@ pub mod serde_helper;
 #[cfg(any(test, feature = "fuzzing"))]
 pub mod test_helpers;
 pub mod transaction;
-pub mod trusted_state;
 pub mod validator_config;
 pub mod validator_info;
 pub mod validator_signer;
