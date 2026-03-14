@@ -82,21 +82,3 @@ pub static DIEM_STORAGE_ROCKSDB_PROPERTIES: Lazy<IntGaugeVec> =
         )
         .unwrap()
     });
-
-// Backup progress gauges:
-
-pub(crate) static BACKUP_EPOCH_ENDING_EPOCH: Lazy<IntGauge> = Lazy::new(|| {
-    register_int_gauge!(
-        "diem_backup_handler_epoch_ending_epoch",
-        "Current epoch returned in an epoch ending backup."
-    )
-    .unwrap()
-});
-
-pub(crate) static BACKUP_TXN_VERSION: Lazy<IntGauge> = Lazy::new(|| {
-    register_int_gauge!(
-        "diem_backup_handler_transaction_version",
-        "Current version returned in a transaction backup."
-    )
-    .unwrap()
-});

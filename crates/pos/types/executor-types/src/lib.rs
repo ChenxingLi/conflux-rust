@@ -20,10 +20,7 @@ use diem_types::{
     ledger_info::LedgerInfoWithSignatures,
     proof::{accumulator::InMemoryAccumulator, AccumulatorExtensionProof},
     term_state::PosState,
-    transaction::{
-        Transaction, TransactionInfo, TransactionListWithProof,
-        TransactionStatus, Version,
-    },
+    transaction::{Transaction, TransactionStatus, Version},
     validator_config::ConsensusSignature,
 };
 pub use error::Error;
@@ -33,23 +30,6 @@ pub use self::processed_vm_output::{ProcessedVMOutput, TransactionData};
 
 mod error;
 mod processed_vm_output;
-
-pub trait ChunkExecutor: Send {
-    /// Verifies the transactions based on the provided proofs and ledger info.
-    /// If the transactions are valid, executes them and commits immediately
-    /// if execution results match the proofs. Returns a vector of
-    /// reconfiguration events in the chunk
-    fn execute_and_commit_chunk(
-        &self,
-        txn_list_with_proof: TransactionListWithProof,
-        // Target LI that has been verified independently: the proofs are
-        // relative to this version.
-        verified_target_li: LedgerInfoWithSignatures,
-        // An optional end of epoch LedgerInfo. We do not allow chunks that end
-        // epoch without carrying any epoch change LI.
-        epoch_change_li: Option<LedgerInfoWithSignatures>,
-    ) -> Result<Vec<ContractEvent>>;
-}
 
 pub trait BlockExecutor: Send {
     /// Get the latest committed block id
@@ -79,15 +59,6 @@ pub trait BlockExecutor: Send {
         &self, block_ids: Vec<HashValue>,
         ledger_info_with_sigs: LedgerInfoWithSignatures,
     ) -> Result<(Vec<Transaction>, Vec<ContractEvent>), Error>;
-}
-
-pub trait TransactionReplayer: Send {
-    fn replay_chunk(
-        &self, first_version: Version, txns: Vec<Transaction>,
-        txn_infos: Vec<TransactionInfo>,
-    ) -> Result<()>;
-
-    fn expecting_version(&self) -> Version;
 }
 
 /// A structure that summarizes the result of the execution needed for consensus

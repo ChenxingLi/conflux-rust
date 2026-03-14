@@ -56,7 +56,6 @@ use storage_interface::{
 };
 
 use crate::{
-    backup::{backup_handler::BackupHandler, restore_handler::RestoreHandler},
     change_set::{ChangeSet, SealedChangeSet},
     errors::DiemDbError,
     event_store::EventStore,
@@ -76,7 +75,6 @@ use diem_types::block_metadata::BlockMetadata;
 #[cfg(any(test, feature = "fuzzing"))]
 pub mod test_helper;
 
-pub mod backup;
 pub mod errors;
 pub mod metrics;
 pub mod schema;
@@ -410,18 +408,6 @@ impl PosLedgerDB {
         &self, version: u64,
     ) -> Result<TransactionInfo> {
         self.ledger_store.get_transaction_info(version)
-    }
-
-    // ================================== Backup APIs
-    // ===================================
-
-    /// Gets an instance of `BackupHandler` for data backup purpose.
-    pub fn get_backup_handler(&self) -> BackupHandler {
-        BackupHandler::new(
-            Arc::clone(&self.ledger_store),
-            Arc::clone(&self.transaction_store),
-            Arc::clone(&self.event_store),
-        )
     }
 
     /// Convert a `ChangeSet` to `SealedChangeSet`.
@@ -946,23 +932,6 @@ fn get_first_seq_num_and_limit(
     } else {
         (0, cursor + 1)
     })
-}
-
-pub trait GetRestoreHandler {
-    /// Gets an instance of `RestoreHandler` for data restore purpose.
-    fn get_restore_handler(&self) -> RestoreHandler;
-}
-
-impl GetRestoreHandler for Arc<PosLedgerDB> {
-    fn get_restore_handler(&self) -> RestoreHandler {
-        RestoreHandler::new(
-            Arc::clone(&self.db),
-            Arc::clone(self),
-            Arc::clone(&self.ledger_store),
-            Arc::clone(&self.transaction_store),
-            Arc::clone(&self.event_store),
-        )
-    }
 }
 
 fn gauged_api<T, F>(api_name: &'static str, api_impl: F) -> Result<T>
