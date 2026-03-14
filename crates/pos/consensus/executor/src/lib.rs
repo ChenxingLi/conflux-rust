@@ -1377,6 +1377,10 @@ impl<V: VMExecutor> BlockExecutor for Executor<V> {
             ));
         }
 
+        // Drop block locks before prune() which needs to re-lock them.
+        drop(blocks);
+        drop(arc_blocks);
+
         let old_committed_block = self.db_with_cache.prune(
             ledger_info_with_sigs.ledger_info(),
             committed_txns.clone(),
