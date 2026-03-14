@@ -229,18 +229,12 @@ impl PersistentLivenessStorage for MockStorage {
     }
 
     fn retrieve_epoch_change_proof(
-        &self, version: u64,
+        &self, _epoch: u64,
     ) -> Result<EpochChangeProof> {
-        let lis = self
-            .shared_storage
-            .lis
-            .lock()
-            .get(&version)
-            .cloned()
-            .ok_or_else(|| {
-                anyhow::anyhow!("LedgerInfo for version not found")
-            })?;
-        Ok(EpochChangeProof::new(vec![lis], false))
+        // In tests, return all stored LedgerInfos as the proof.
+        let lis: Vec<_> =
+            self.shared_storage.lis.lock().values().cloned().collect();
+        Ok(EpochChangeProof::new(lis, false))
     }
 
     fn pos_ledger_db(&self) -> Arc<dyn DbReader> { unimplemented!() }
@@ -301,7 +295,7 @@ impl PersistentLivenessStorage for EmptyStorage {
     }
 
     fn retrieve_epoch_change_proof(
-        &self, _version: u64,
+        &self, _epoch: u64,
     ) -> Result<EpochChangeProof> {
         unimplemented!()
     }

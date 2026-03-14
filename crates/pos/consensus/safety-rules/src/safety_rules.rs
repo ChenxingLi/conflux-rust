@@ -40,7 +40,6 @@ use diem_types::{
     validator_config::{
         ConsensusPublicKey, ConsensusSignature, ConsensusVRFPrivateKey,
     },
-    waypoint::Waypoint,
 };
 use log::error;
 use serde::Serialize;
@@ -270,19 +269,16 @@ impl SafetyRules {
     // logging and metrics
 
     fn guarded_consensus_state(&mut self) -> Result<ConsensusState, Error> {
-        let waypoint = self.persistent_storage.waypoint()?;
         let safety_data = self.persistent_storage.safety_data()?;
 
         diem_info!(SafetyLogSchema::new(LogEntry::State, LogEvent::Update)
             .author(self.persistent_storage.author()?)
             .epoch(safety_data.epoch)
             .last_voted_round(safety_data.last_voted_round)
-            .preferred_round(safety_data.preferred_round)
-            .waypoint(waypoint));
+            .preferred_round(safety_data.preferred_round));
 
         Ok(ConsensusState::new(
             self.persistent_storage.safety_data()?,
-            self.persistent_storage.waypoint()?,
             self.signer().is_ok(),
         ))
     }
@@ -290,27 +286,37 @@ impl SafetyRules {
     fn guarded_initialize(
         &mut self, proof: &EpochChangeProof,
     ) -> Result<(), Error> {
-        let waypoint = self.persistent_storage.waypoint()?;
-        let last_li = proof
-            .verify(&waypoint)
-            .map_err(|e| Error::InvalidEpochChangeProof(format!("{}", e)))?;
-        let ledger_info = last_li.ledger_info();
+        let current_epoch = self.persistent_storage.safety_data()?.epoch;
+
+        // If we have a cached epoch_state, use it to verify the proof
+        // (full validator signature verification). Otherwise (cold
+        // start), trust the first LI since we just bootstrapped from
+        // genesis.
+        let last_li = if let Some(epoch_state) = &self.epoch_state {
+            proof
+                .verify(epoch_state)
+                .map(Some)
+                .map_err(|e| Error::InvalidEpochChangeProof(format!("{}", e)))?
+        } else {
+            proof
+                .verify_trust_first(current_epoch)
+                .map_err(|e| Error::InvalidEpochChangeProof(format!("{}", e)))?
+        };
+
+        // Extract epoch state from the last LI in the proof.
+        // If no new epochs, use the last LI to initialize epoch_state.
+        let li = last_li
+            .or_else(|| proof.ledger_info_with_sigs().last())
+            .ok_or_else(|| {
+                Error::InvalidEpochChangeProof("Empty EpochChangeProof".into())
+            })?;
+        let ledger_info = li.ledger_info();
         let epoch_state = ledger_info
             .next_epoch_state()
             .cloned()
             .ok_or(Error::InvalidLedgerInfo)?;
 
-        let current_epoch = self.persistent_storage.safety_data()?.epoch;
         if current_epoch < epoch_state.epoch {
-            // This is ordered specifically to avoid configuration issues:
-            // * First set the waypoint to lock in the minimum restarting point,
-            // * set the round information,
-            // * finally, set the epoch information because once the epoch is
-            //   set, this `if`
-            // statement cannot be re-entered.
-            let waypoint = &Waypoint::new_epoch_boundary(ledger_info)
-                .map_err(|error| Error::InternalError(error.to_string()))?;
-            self.persistent_storage.set_waypoint(waypoint)?;
             self.persistent_storage.set_safety_data(SafetyData::new(
                 epoch_state.epoch,
                 0,

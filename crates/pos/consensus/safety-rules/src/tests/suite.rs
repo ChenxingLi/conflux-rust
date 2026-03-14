@@ -248,8 +248,7 @@ fn test_end_to_end(safety_rules: &Callback) {
 }
 
 /// Initialize from scratch, ensure that SafetyRules can properly initialize
-/// from a Waypoint and that it rejects invalid LedgerInfos or those that do not
-/// match.
+/// from an EpochChangeProof and that it rejects invalid proofs.
 fn test_initialize(safety_rules: &Callback) {
     let (mut safety_rules, signer, _key) = safety_rules();
 

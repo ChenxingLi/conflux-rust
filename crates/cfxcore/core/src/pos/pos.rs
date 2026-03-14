@@ -207,13 +207,11 @@ pub fn setup_pos_environment(
         .expect("DB should open."),
     );
 
-    let genesis_waypoint = node_config.base.waypoint.genesis_waypoint();
-    // if there's genesis txn and waypoint, commit it if the result matches.
+    // If the DB hasn't been bootstrapped yet, commit genesis.
     if let Some(genesis) = get_genesis_txn(&node_config) {
         maybe_bootstrap::<PosVM>(
             &db_rw,
             genesis,
-            genesis_waypoint,
             Some(PivotBlockDecision {
                 block_hash: protocol_config.pos_genesis_pivot_decision,
                 height: 0,

@@ -36,7 +36,6 @@ pub mod validator_info;
 pub mod validator_signer;
 pub mod validator_verifier;
 pub mod vm_status;
-pub mod waypoint;
 pub mod write_set;
 
 pub mod committed_block;

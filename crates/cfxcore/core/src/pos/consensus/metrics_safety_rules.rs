@@ -33,13 +33,12 @@ impl MetricsSafetyRules {
 
     pub fn perform_initialize(&mut self) -> Result<(), Error> {
         let consensus_state = self.consensus_state()?;
-        let sr_waypoint = consensus_state.waypoint();
         let proofs = self
             .storage
-            .retrieve_epoch_change_proof(sr_waypoint.version())
+            .retrieve_epoch_change_proof(consensus_state.epoch())
             .map_err(|e| {
                 Error::InternalError(format!(
-                    "Unable to retrieve Waypoint state from storage, encountered Error:{}",
+                    "Unable to retrieve epoch change proof from storage, encountered Error:{}",
                     e
                 ))
             })?;

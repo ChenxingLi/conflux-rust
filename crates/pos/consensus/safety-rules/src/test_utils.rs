@@ -34,7 +34,6 @@ use diem_types::{
     proof::AccumulatorExtensionProof,
     validator_info::ValidatorInfo,
     validator_signer::ValidatorSigner,
-    waypoint::Waypoint,
 };
 use std::collections::BTreeMap;
 
@@ -228,19 +227,12 @@ pub fn validator_signers_to_ledger_info(
     LedgerInfo::mock_genesis(Some(validator_set))
 }
 
-pub fn validator_signers_to_waypoint(signers: &[&ValidatorSigner]) -> Waypoint {
-    let li = validator_signers_to_ledger_info(signers);
-    Waypoint::new_epoch_boundary(&li).unwrap()
-}
-
 pub fn test_storage(signer: &ValidatorSigner) -> PersistentSafetyStorage {
-    let waypoint = validator_signers_to_waypoint(&[signer]);
     let storage = Storage::from(InMemoryStorage::new());
     PersistentSafetyStorage::initialize(
         storage,
         signer.author(),
         signer.private_key().clone(),
-        waypoint,
         true,
     )
 }

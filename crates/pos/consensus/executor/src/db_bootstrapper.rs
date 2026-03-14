@@ -8,7 +8,7 @@
 #![forbid(unsafe_code)]
 
 use crate::{vm::VMExecutor, Executor};
-use anyhow::{ensure, format_err, Result};
+use anyhow::{format_err, Result};
 use cached_pos_ledger_db::CachedPosLedgerDB;
 use consensus_types::db::FakeLedgerBlockDB;
 use diem_crypto::{hash::PRE_GENESIS_BLOCK_ID, HashValue};
@@ -23,46 +23,25 @@ use diem_types::{
     ledger_info::{LedgerInfo, LedgerInfoWithSignatures},
     term_state::NodeID,
     transaction::Transaction,
-    waypoint::Waypoint,
 };
 use executor_types::BlockExecutor;
 use pow_types::FakePowHandler;
 use std::{collections::btree_map::BTreeMap, sync::Arc};
 use storage_interface::{DbReaderWriter, TreeState};
 
-pub fn generate_waypoint<V: VMExecutor>(
-    db: &DbReaderWriter, genesis_txn: &Transaction,
-) -> Result<Waypoint> {
-    let tree_state = db.reader.get_latest_tree_state()?;
-
-    // TODO(lpl): initial nodes are not passed.
-    // genesis ledger info (including pivot decision) is not used.
-    let committer = calculate_genesis::<V>(
-        db,
-        tree_state,
-        genesis_txn,
-        None,
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-    )?;
-    Ok(committer.waypoint)
-}
-
-/// If current version + 1 != waypoint.version(), return Ok(false) indicating
-/// skipping the txn. otherwise apply the txn and commit it if the result
-/// matches the waypoint. Returns Ok(true) if committed otherwise Err.
+/// If the database has not been bootstrapped yet, commit the genesis
+/// transaction. Returns Ok(true) if committed, Ok(false) if already
+/// bootstrapped.
 pub fn maybe_bootstrap<V: VMExecutor>(
-    db: &DbReaderWriter, genesis_txn: &Transaction, waypoint: Waypoint,
+    db: &DbReaderWriter, genesis_txn: &Transaction,
     genesis_pivot_decision: Option<PivotBlockDecision>, initial_seed: Vec<u8>,
     initial_nodes: Vec<(NodeID, u64)>,
     initial_committee: Vec<(AccountAddress, u64)>,
 ) -> Result<bool> {
     let tree_state = db.reader.get_latest_tree_state()?;
-    // if the waypoint is not targeted with the genesis txn, it may be either
-    // already bootstrapped, or aiming for state sync to catch up.
-    if tree_state.num_transactions != waypoint.version() {
-        diem_info!(waypoint = %waypoint, "Skip genesis txn.");
+    // If the DB already has transactions, it's already bootstrapped.
+    if tree_state.num_transactions != 0 {
+        diem_info!("DB already bootstrapped, skipping genesis.");
         return Ok(false);
     }
     diem_debug!(
@@ -80,12 +59,6 @@ pub fn maybe_bootstrap<V: VMExecutor>(
         initial_nodes,
         initial_committee,
     )?;
-    ensure!(
-        waypoint == committer.waypoint(),
-        "Waypoint verification failed. Expected {:?}, got {:?}.",
-        waypoint,
-        committer.waypoint(),
-    );
     committer.commit()?;
     Ok(true)
 }
@@ -93,24 +66,17 @@ pub fn maybe_bootstrap<V: VMExecutor>(
 pub struct GenesisCommitter<V: VMExecutor> {
     executor: Executor<V>,
     ledger_info_with_sigs: LedgerInfoWithSignatures,
-    waypoint: Waypoint,
 }
 
 impl<V: VMExecutor> GenesisCommitter<V> {
     pub fn new(
         executor: Executor<V>, ledger_info_with_sigs: LedgerInfoWithSignatures,
     ) -> Result<Self> {
-        let waypoint =
-            Waypoint::new_epoch_boundary(ledger_info_with_sigs.ledger_info())?;
-
         Ok(Self {
             executor,
             ledger_info_with_sigs,
-            waypoint,
         })
     }
-
-    pub fn waypoint(&self) -> Waypoint { self.waypoint }
 
     pub fn commit(self) -> Result<()> {
         self.executor.commit_blocks(
@@ -202,9 +168,8 @@ pub fn calculate_genesis<V: VMExecutor>(
 
     let committer = GenesisCommitter::new(executor, ledger_info_with_sigs)?;
     diem_info!(
-        "Genesis calculated: ledger_info_with_sigs {:?}, waypoint {:?}",
+        "Genesis calculated: ledger_info_with_sigs {:?}",
         committer.ledger_info_with_sigs,
-        committer.waypoint,
     );
     Ok(committer)
 }

@@ -57,10 +57,10 @@ pub trait PersistentLivenessStorage: Send + Sync {
         &self, highest_timeout_cert: TimeoutCertificate,
     ) -> Result<()>;
 
-    /// Retrieve a epoch change proof for SafetyRules so it can instantiate its
-    /// ValidatorVerifier.
+    /// Retrieve an epoch change proof for SafetyRules so it can instantiate
+    /// its ValidatorVerifier.
     fn retrieve_epoch_change_proof(
-        &self, version: u64,
+        &self, epoch: u64,
     ) -> Result<EpochChangeProof>;
 
     fn save_ledger_blocks(&self, _blocks: Vec<Block>) -> Result<()> {
@@ -462,13 +462,17 @@ impl PersistentLivenessStorage for StorageWriteProxy {
     }
 
     fn retrieve_epoch_change_proof(
-        &self, version: u64,
+        &self, epoch: u64,
     ) -> Result<EpochChangeProof> {
-        let (_, proofs, _) = self
+        let latest_li = self
             .pos_ledger_db
-            .get_state_proof(version)
-            .map_err(DbError::from)?;
-        Ok(proofs)
+            .get_latest_ledger_info()
+            .map_err(|e| DbError::from(e))?;
+        let latest_epoch = latest_li.ledger_info().next_block_epoch();
+        Ok(self
+            .pos_ledger_db
+            .get_epoch_ending_ledger_infos(epoch, latest_epoch)
+            .map_err(|e| DbError::from(e))?)
     }
 
     fn pos_ledger_db(&self) -> Arc<dyn DbReader> { self.pos_ledger_db.clone() }

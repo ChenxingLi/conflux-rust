@@ -134,6 +134,61 @@ impl EpochChangeProof {
         Ok(self.ledger_info_with_sigs.last().unwrap())
     }
 
+    /// Verify the proof chain without requiring a waypoint or external
+    /// verifier.
+    ///
+    /// Trusts the first non-stale LedgerInfo in the proof (the one ending
+    /// `current_epoch`), then verifies each subsequent LedgerInfo using the
+    /// `next_epoch_state` from the previous one. This is safe because:
+    /// 1. Genesis is self-generated (not an external trust anchor)
+    /// 2. Post-genesis, each epoch state is verified by the previous epoch's
+    ///    validator signatures
+    /// 3. The node already verified epochs up to `current_epoch`
+    pub fn verify_trust_first(
+        &self, current_epoch: u64,
+    ) -> Result<Option<&LedgerInfoWithSignatures>> {
+        if self.ledger_info_with_sigs.is_empty() {
+            return Ok(None);
+        }
+
+        let mut iter = self
+            .ledger_info_with_sigs
+            .iter()
+            .skip_while(|li| li.ledger_info().epoch() < current_epoch);
+
+        let first = match iter.next() {
+            Some(li) => li,
+            None => return Ok(None), // All LIs are stale
+        };
+
+        let mut verifier =
+            first.ledger_info().next_epoch_state().ok_or_else(|| {
+                format_err!(
+                    "First LedgerInfo (epoch {}) has no next_epoch_state",
+                    first.ledger_info().epoch()
+                )
+            })?;
+
+        let mut last = first;
+        for li in iter {
+            verifier.verify(li)?;
+            verifier =
+                li.ledger_info().next_epoch_state().ok_or_else(|| {
+                    format_err!(
+                        "LedgerInfo (epoch {}) has no next_epoch_state",
+                        li.ledger_info().epoch()
+                    )
+                })?;
+            last = li;
+        }
+
+        Ok(Some(last))
+    }
+
+    pub fn ledger_info_with_sigs(&self) -> &[LedgerInfoWithSignatures] {
+        &self.ledger_info_with_sigs
+    }
+
     pub fn get_all_ledger_infos(&self) -> Vec<LedgerInfoWithSignatures> {
         self.ledger_info_with_sigs.clone()
     }
@@ -156,9 +211,7 @@ impl Arbitrary for EpochChangeProof {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        block_info::BlockInfo, epoch_state::EpochState, waypoint::Waypoint,
-    };
+    use crate::{block_info::BlockInfo, epoch_state::EpochState};
 
     #[test]
     fn verify_epoch_change_proof() {
@@ -292,34 +345,14 @@ mod tests {
             ))
             .is_err());
 
-        // Test proof with waypoint corresponding to the first epoch change
-        // succeeds.
-        let waypoint_for_1_to_2 =
-            Waypoint::new_epoch_boundary(valid_ledger_info[0].ledger_info())
-                .unwrap();
-        assert!(proof_1.verify(&waypoint_for_1_to_2).is_ok());
+        // Test verify_trust_first
+        assert!(proof_1.verify_trust_first(all_epoch[0]).unwrap().is_some());
+        assert!(proof_1.verify_trust_first(all_epoch[4]).unwrap().is_some());
 
-        // Test proof with stale prefix will verify with a Waypoint
-        let waypoint_for_5_to_6 =
-            Waypoint::new_epoch_boundary(valid_ledger_info[4].ledger_info())
-                .unwrap();
-        assert!(proof_1.verify(&waypoint_for_5_to_6).is_ok());
+        // Empty proof returns None
+        assert!(proof_3.verify_trust_first(all_epoch[0]).unwrap().is_none());
 
-        // Waypoint before proof range will fail to verify
-        let waypoint_for_3_to_4 =
-            Waypoint::new_epoch_boundary(valid_ledger_info[2].ledger_info())
-                .unwrap();
-        let proof_7 = EpochChangeProof::new(
-            valid_ledger_info[4..8].to_vec(),
-            /* more */ false,
-        );
-        assert!(proof_7.verify(&waypoint_for_3_to_4).is_err());
-
-        // Waypoint after proof range will fail to verify
-        let proof_8 = EpochChangeProof::new(
-            valid_ledger_info[..1].to_vec(),
-            /* more */ false,
-        );
-        assert!(proof_8.verify(&waypoint_for_3_to_4).is_err());
+        // Epoch beyond proof range returns None
+        assert!(proof_2.verify_trust_first(all_epoch[6]).unwrap().is_none());
     }
 }
