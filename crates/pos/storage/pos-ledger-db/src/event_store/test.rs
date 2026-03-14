@@ -18,7 +18,6 @@ use diem_types::{
     proptest_types::{AccountInfoUniverse, ContractEventGen},
 };
 use itertools::Itertools;
-use move_core_types::{language_storage::TypeTag, move_resource::MoveResource};
 use proptest::{
     collection::{hash_set, vec},
     prelude::*,

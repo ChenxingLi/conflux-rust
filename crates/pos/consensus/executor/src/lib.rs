@@ -486,9 +486,7 @@ where V: VMExecutor
                     txn_info_hash = Some(real_txn_info_hash);
                 }
                 TransactionStatus::Discard(status) => {
-                    if !vm_output.write_set().is_empty()
-                        || !vm_output.events().is_empty()
-                    {
+                    if !vm_output.events().is_empty() {
                         diem_error!(
                             "Discarded transaction has non-empty write set or events. \
                              Transaction: {:?}. Status: {:?}.",

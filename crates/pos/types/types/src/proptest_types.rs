@@ -341,17 +341,16 @@ fn new_raw_transaction(
                 chain_id,
             )
         }
-        TransactionPayload::WriteSet(WriteSetPayload::Direct(write_set)) => {
-            // It's a bit unfortunate that max_gas_amount etc is generated but
-            // not used, but it isn't a huge deal.
-            RawTransaction::new_change_set(sender, write_set, chain_id)
+        TransactionPayload::WriteSet(_) => {
+            // WriteSet transactions are only used for genesis, not for
+            // user transactions. Generate a no-op script instead.
+            RawTransaction::new_script(
+                sender,
+                Script::new(vec![], vec![], vec![]),
+                expiration_time_secs,
+                chain_id,
+            )
         }
-        TransactionPayload::WriteSet(WriteSetPayload::Script {
-            execute_as: signer,
-            script,
-        }) => RawTransaction::new_writeset_script(
-            sender, script, signer, chain_id,
-        ),
         TransactionPayload::Election(election_payload) => {
             RawTransaction::new_election(sender, election_payload, chain_id)
         }

@@ -5,15 +5,8 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use crate::{
-    access_path::AccessPath, account_address::AccountAddress,
-    account_config::CORE_CODE_ADDRESS, event::EventKey,
-};
+use crate::{account_address::AccountAddress, event::EventKey};
 use anyhow::{format_err, Result};
-use move_core_types::{
-    identifier::Identifier,
-    language_storage::{StructTag, TypeTag},
-};
 use serde::de::DeserializeOwned;
 use std::{collections::HashMap, fmt, sync::Arc};
 
@@ -21,29 +14,8 @@ mod validator_set;
 
 pub use self::validator_set::ValidatorSet;
 
-/// To register an on-chain config in Rust:
-/// 1. Implement the `OnChainConfig` trait for the Rust representation of the
-/// config 2. Add the config's `ConfigID` to `ON_CHAIN_CONFIG_REGISTRY`
-
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ConfigID(&'static str, &'static str);
-
-const CONFIG_ADDRESS_STR: &str = "0xA550C18";
-
-pub fn config_address() -> AccountAddress {
-    AccountAddress::from_hex_literal(CONFIG_ADDRESS_STR)
-        .expect("failed to get address")
-}
-
-impl ConfigID {
-    pub fn access_path(self) -> AccessPath {
-        access_path_for_config(
-            AccountAddress::from_hex_literal(self.0)
-                .expect("failed to get address"),
-            Identifier::new(self.1).expect("failed to get Identifier"),
-        )
-    }
-}
 
 impl fmt::Display for ConfigID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -99,19 +71,10 @@ impl fmt::Display for OnChainConfigPayload {
 /// Trait to be implemented by a Rust struct representation of an on-chain
 /// config that is stored in storage as a serialized byte array
 pub trait OnChainConfig: Send + Sync + DeserializeOwned {
-    // diem_root_address
-    const ADDRESS: &'static str = CONFIG_ADDRESS_STR;
+    const ADDRESS: &'static str = "0xA550C18";
     const IDENTIFIER: &'static str;
     const CONFIG_ID: ConfigID = ConfigID(Self::ADDRESS, Self::IDENTIFIER);
 
-    // Single-round BCS deserialization from bytes to `Self`
-    // This is the expected deserialization pattern for most Rust
-    // representations, but sometimes `deserialize_into_config` may need an
-    // extra customized round of deserialization (e.g. enums like
-    // `VMPublishingOption`) In the override, we can reuse this default
-    // logic via this function Note: we cannot directly call the default
-    // `deserialize_into_config` implementation in its override - this will
-    // just refer to the override implementation itself
     fn deserialize_default_impl(bytes: &[u8]) -> Result<Self> {
         bcs::from_bytes::<Self>(&bytes).map_err(|e| {
             format_err!(
@@ -121,34 +84,16 @@ pub trait OnChainConfig: Send + Sync + DeserializeOwned {
         })
     }
 
-    // Function for deserializing bytes to `Self`
-    // It will by default try one round of BCS deserialization directly to
-    // `Self` The implementation for the concrete type should override this
-    // function if this logic needs to be customized
     fn deserialize_into_config(bytes: &[u8]) -> Result<Self> {
         Self::deserialize_default_impl(bytes)
     }
 }
 
-pub fn new_epoch_event_key() -> EventKey {
-    EventKey::new_from_address(&config_address(), 4)
+pub fn config_address() -> AccountAddress {
+    AccountAddress::from_hex_literal("0xA550C18")
+        .expect("failed to get address")
 }
 
-pub fn access_path_for_config(
-    address: AccountAddress, config_name: Identifier,
-) -> AccessPath {
-    AccessPath::new(
-        address,
-        AccessPath::resource_access_vec(StructTag {
-            address: CORE_CODE_ADDRESS,
-            module: Identifier::new("DiemConfig").unwrap(),
-            name: Identifier::new("DiemConfig").unwrap(),
-            type_params: vec![TypeTag::Struct(StructTag {
-                address: CORE_CODE_ADDRESS,
-                module: config_name.clone(),
-                name: config_name,
-                type_params: vec![],
-            })],
-        }),
-    )
+pub fn new_epoch_event_key() -> EventKey {
+    EventKey::new_from_address(&config_address(), 4)
 }

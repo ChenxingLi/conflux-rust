@@ -8,8 +8,6 @@
 use crate::event::EventKey;
 use diem_crypto_derive::{BCSCryptoHash, CryptoHasher};
 
-#[cfg(any(test, feature = "fuzzing"))]
-use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
