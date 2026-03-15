@@ -33,9 +33,14 @@ impl MetricsSafetyRules {
 
     pub fn perform_initialize(&mut self) -> Result<(), Error> {
         let consensus_state = self.consensus_state()?;
+        // Fetch epoch-ending LIs starting from the previous epoch so
+        // the proof includes the LI that transitions INTO the current
+        // epoch (e.g., for epoch 1, we need the genesis LI at epoch 0).
         let proofs = self
             .storage
-            .retrieve_epoch_change_proof(consensus_state.epoch())
+            .retrieve_epoch_change_proof(
+                consensus_state.epoch().saturating_sub(1),
+            )
             .map_err(|e| {
                 Error::InternalError(format!(
                     "Unable to retrieve epoch change proof from storage, encountered Error:{}",
