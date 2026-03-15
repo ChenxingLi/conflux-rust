@@ -34,7 +34,6 @@ use diem_logger::prelude::*;
 use diem_types::{
     account_address::AccountAddress,
     block_info::BlockInfo,
-    epoch_change::EpochChangeProof,
     epoch_state::EpochState,
     ledger_info::LedgerInfo,
     validator_config::{
@@ -284,37 +283,9 @@ impl SafetyRules {
     }
 
     fn guarded_initialize(
-        &mut self, proof: &EpochChangeProof,
+        &mut self, epoch_state: &EpochState,
     ) -> Result<(), Error> {
         let current_epoch = self.persistent_storage.safety_data()?.epoch;
-
-        // If we have a cached epoch_state, use it to verify the proof
-        // (full validator signature verification). Otherwise (cold
-        // start), trust the first LI since we just bootstrapped from
-        // genesis.
-        let last_li = if let Some(epoch_state) = &self.epoch_state {
-            proof
-                .verify(epoch_state)
-                .map(Some)
-                .map_err(|e| Error::InvalidEpochChangeProof(format!("{}", e)))?
-        } else {
-            proof
-                .verify_trust_first(current_epoch)
-                .map_err(|e| Error::InvalidEpochChangeProof(format!("{}", e)))?
-        };
-
-        // Extract epoch state from the last LI in the proof.
-        // If no new epochs, use the last LI to initialize epoch_state.
-        let li = last_li
-            .or_else(|| proof.ledger_info_with_sigs().last())
-            .ok_or_else(|| {
-                Error::InvalidEpochChangeProof("Empty EpochChangeProof".into())
-            })?;
-        let ledger_info = li.ledger_info();
-        let epoch_state = ledger_info
-            .next_epoch_state()
-            .cloned()
-            .ok_or(Error::InvalidLedgerInfo)?;
 
         if current_epoch < epoch_state.epoch {
             self.persistent_storage.set_safety_data(SafetyData::new(
@@ -551,8 +522,8 @@ impl TSafetyRules for SafetyRules {
         run_and_log(cb, |log| log, LogEntry::ConsensusState)
     }
 
-    fn initialize(&mut self, proof: &EpochChangeProof) -> Result<(), Error> {
-        let cb = || self.guarded_initialize(proof);
+    fn initialize(&mut self, epoch_state: &EpochState) -> Result<(), Error> {
+        let cb = || self.guarded_initialize(epoch_state);
         run_and_log(cb, |log| log, LogEntry::Initialize)
     }
 
