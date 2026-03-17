@@ -13,7 +13,6 @@ use cfx_types::{H256, U64};
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
 
 /// PoS specific rpc interface.
-/// Net rpc interface.
 #[rpc(server, namespace = "pos")]
 pub trait PosRpc {
     #[method(name = "getStatus")]

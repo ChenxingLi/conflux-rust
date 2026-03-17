@@ -263,7 +263,7 @@ pub trait CfxRpc {
     ) -> JsonRpcResult<Vec<RpcRewardInfo>>;
 
     /// Return the client version as a string
-    #[method(name = "getClientVersion")]
+    #[method(name = "clientVersion")]
     async fn get_client_version(&self) -> JsonRpcResult<String>;
 
     /// Return information about total token supply.

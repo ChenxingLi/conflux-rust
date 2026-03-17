@@ -2,7 +2,7 @@ use cfx_rpc_cfx_types::{CfxFilterChanges, CfxRpcLogFilter, Log as RpcLog};
 use cfx_types::H128;
 use jsonrpsee::{core::RpcResult as JsonRpcResult, proc_macros::rpc};
 
-/// Eth filters rpc api (polling).
+/// Cfx filters rpc api (polling).
 #[rpc(server, namespace = "cfx")]
 pub trait CfxFilterRpc {
     /// Returns id of new filter.

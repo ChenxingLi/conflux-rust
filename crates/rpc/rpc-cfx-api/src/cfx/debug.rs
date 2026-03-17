@@ -47,7 +47,7 @@ pub trait CfxDebugRpc {
     #[method(name = "getEpochReceipts")]
     async fn epoch_receipts(
         &self, epoch: BlockHashOrEpochNumber,
-        include_eth_recepits: Option<bool>,
+        include_eth_receipts: Option<bool>,
     ) -> JsonRpcResult<Option<Vec<Vec<RpcReceipt>>>>;
 
     /// Get transaction pending info by account address

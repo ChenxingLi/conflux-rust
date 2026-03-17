@@ -37,7 +37,7 @@ pub trait DebugRpc {
     >;
 
     // return account ready + deferred transactions
-    #[method(name = "txToolAccountTransactions")]
+    #[method(name = "txPoolAccountTransactions")]
     fn txpool_get_account_transactions(
         &self, address: RpcAddress,
     ) -> JsonRpcResult<Vec<RpcTransaction>>;
