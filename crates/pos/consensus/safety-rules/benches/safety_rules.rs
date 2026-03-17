@@ -81,8 +81,13 @@ fn in_memory(n: u64) {
         signer.private_key().clone(),
         true,
     );
-    let safety_rules_manager =
-        SafetyRulesManager::new_local(storage, false, false);
+    let safety_rules_manager = SafetyRulesManager::new_local(
+        storage,
+        false,
+        false,
+        None,
+        Default::default(),
+    );
     lsr(safety_rules_manager.client(), signer, n);
 }
 
@@ -96,40 +101,13 @@ fn on_disk(n: u64) {
         signer.private_key().clone(),
         true,
     );
-    let safety_rules_manager =
-        SafetyRulesManager::new_local(storage, false, false);
-    lsr(safety_rules_manager.client(), signer, n);
-}
-
-fn serializer(n: u64) {
-    let signer = ValidatorSigner::from_int(0);
-    let file_path =
-        NamedTempFile::new().unwrap().into_temp_path().to_path_buf();
-    let storage = PersistentSafetyStorage::initialize(
-        Storage::from(OnDiskStorage::new(file_path)),
-        signer.author(),
-        signer.private_key().clone(),
-        true,
+    let safety_rules_manager = SafetyRulesManager::new_local(
+        storage,
+        false,
+        false,
+        None,
+        Default::default(),
     );
-    let safety_rules_manager =
-        SafetyRulesManager::new_serializer(storage, false, false);
-    lsr(safety_rules_manager.client(), signer, n);
-}
-
-fn thread(n: u64) {
-    let signer = ValidatorSigner::from_int(0);
-    let file_path =
-        NamedTempFile::new().unwrap().into_temp_path().to_path_buf();
-    let storage = PersistentSafetyStorage::initialize(
-        Storage::from(OnDiskStorage::new(file_path)),
-        signer.author(),
-        signer.private_key().clone(),
-        true,
-    );
-    // Test value, in milliseconds
-    let timeout_ms = 5_000;
-    let safety_rules_manager =
-        SafetyRulesManager::new_thread(storage, false, false, timeout_ms);
     lsr(safety_rules_manager.client(), signer, n);
 }
 
@@ -145,10 +123,6 @@ pub fn benchmark(c: &mut Criterion) {
     group
         .bench_function("InMemory", |b| b.iter(|| in_memory(black_box(count))));
     group.bench_function("OnDisk", |b| b.iter(|| on_disk(black_box(count))));
-    group.bench_function("Serializer", |b| {
-        b.iter(|| serializer(black_box(count)))
-    });
-    group.bench_function("Thread", |b| b.iter(|| thread(black_box(count))));
 }
 
 criterion_group!(benches, benchmark);

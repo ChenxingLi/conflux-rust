@@ -14,17 +14,13 @@ mod error;
 mod local_client;
 mod logging;
 mod persistent_safety_storage;
-mod process;
-mod remote_service;
 mod safety_rules;
 mod safety_rules_manager;
-mod serializer;
 mod t_safety_rules;
-mod thread;
 
 pub use crate::{
     consensus_state::ConsensusState, error::Error,
-    persistent_safety_storage::PersistentSafetyStorage, process::Process,
+    persistent_safety_storage::PersistentSafetyStorage,
     safety_rules::SafetyRules, safety_rules_manager::SafetyRulesManager,
     t_safety_rules::TSafetyRules,
 };

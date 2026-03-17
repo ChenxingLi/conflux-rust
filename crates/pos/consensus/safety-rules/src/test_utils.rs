@@ -6,8 +6,8 @@
 // See http://www.gnu.org/licenses/
 
 use crate::{
-    persistent_safety_storage::PersistentSafetyStorage,
-    serializer::SerializerService, SafetyRules, TSafetyRules,
+    persistent_safety_storage::PersistentSafetyStorage, SafetyRules,
+    TSafetyRules,
 };
 use consensus_types::{
     block::Block,
@@ -254,10 +254,4 @@ pub fn test_safety_rules_uninitialized() -> SafetyRules {
     let signer = ValidatorSigner::from_int(0);
     let storage = test_storage(&signer);
     SafetyRules::new(storage, true, false, None, Default::default())
-}
-
-/// Returns a simple serializer for testing purposes.
-pub fn test_serializer() -> SerializerService {
-    let safety_rules = test_safety_rules();
-    SerializerService::new(safety_rules)
 }
