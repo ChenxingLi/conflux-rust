@@ -19,7 +19,6 @@ use super::{
         },
     },
     logging::{LogEvent, LogSchema},
-    metrics_safety_rules::MetricsSafetyRules,
     network::{
         ConsensusMsg, ConsensusNetworkSender, IncomingBlockRetrievalRequest,
         NetworkReceivers,
@@ -397,13 +396,8 @@ impl EpochManager {
             self.pow_handler.clone(),
         ));
 
-        diem_info!(epoch = epoch, "Update SafetyRules");
-
-        let mut safety_rules = MetricsSafetyRules::new(
-            self.safety_rules.clone(),
-            self.storage.clone(),
-        );
-        if let Err(error) = safety_rules.perform_initialize() {
+        diem_info!(epoch = epoch, "Initialize SafetyRules");
+        if let Err(error) = self.safety_rules.write().initialize(&epoch_state) {
             diem_error!(
                 epoch = epoch,
                 error = error,
@@ -465,7 +459,7 @@ impl EpochManager {
             round_state,
             proposer_election,
             proposal_generator,
-            safety_rules,
+            self.safety_rules.clone(),
             network_sender,
             self.txn_manager.clone(),
             self.storage.clone(),
