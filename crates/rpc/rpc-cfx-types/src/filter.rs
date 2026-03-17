@@ -197,7 +197,7 @@ impl Serialize for CfxFilterLog {
 }
 
 /// Results of the filter_changes RPC.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CfxFilterChanges {
     /// New logs.
     Logs(Vec<CfxFilterLog>),

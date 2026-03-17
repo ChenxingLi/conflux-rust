@@ -1878,6 +1878,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfx-rpc-cfx-api"
+version = "3.0.0"
+dependencies = [
+ "cfx-rpc-cfx-types",
+ "cfx-rpc-eth-types",
+ "cfx-rpc-primitives",
+ "cfx-types",
+ "diem-types",
+ "jsonrpsee",
+ "network",
+ "primitives",
+]
+
+[[package]]
 name = "cfx-rpc-cfx-impl"
 version = "0.1.0"
 dependencies = [

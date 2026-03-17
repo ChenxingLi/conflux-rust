@@ -425,7 +425,7 @@ impl LocalizedSetAuthTrace {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct EpochTrace {
     cfx_traces: Vec<CfxLocalizedTrace>,
