@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize, Serializer};
 use short_hex_str::AsShortHexStr;
 use std::{cmp::Ordering, fmt};
 
-// TODO(cleanup): Consider removing PeerRole if network_id itself is unused.
 /// Represents the Role that a peer plays in the network ecosystem rather than
 /// the type of node.
 #[derive(

@@ -12,9 +12,7 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0.38"
 bytes = { workspace = true }
-curve25519-dalek = { version = "0.1.0", package = "curve25519-dalek-fiat", default-features = false, features = ["std"] }
 digest = "0.9.0"
-ed25519-dalek = { version = "0.1.0", package = "ed25519-dalek-fiat", default-features = false, features = ["std", "serde"] }
 hex = "0.4.3"
 once_cell = "1.7.2"
 mirai-annotations = "1.10.1"
@@ -27,7 +25,6 @@ serde-name = "0.1.1"
 static_assertions = "1.1.0"
 thiserror = "1.0.24"
 tiny-keccak = { workspace = true, features = ["sha3"] }
-x25519-dalek = { version = "0.1.0", package = "x25519-dalek-fiat", default-features = false, features = ["std"] }
 diem-crypto-derive = { workspace = true }
 bcs = "0.1.2"
 cfx-types = { workspace = true }
@@ -51,14 +48,10 @@ sha3 = "0.9.1"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(mirai)'] }
 
 [features]
-default = ["fiat"]
+default = []
 assert-private-keys-not-cloneable = []
 cloneable-private-keys = []
 fuzzing = ["proptest", "proptest-derive", "cloneable-private-keys"]
-fiat = ["curve25519-dalek/fiat_u64_backend", "ed25519-dalek/fiat_u64_backend", "x25519-dalek/fiat_u64_backend"]
-u64 = ["curve25519-dalek/u64_backend", "ed25519-dalek/u64_backend", "x25519-dalek/u64_backend"]
-u32 = ["curve25519-dalek/u32_backend", "ed25519-dalek/u32_backend", "x25519-dalek/u32_backend"]
-batch = []
 
 [[bench]]
 name = "bls"
