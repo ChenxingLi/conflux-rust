@@ -78,7 +78,7 @@ fn in_memory(n: u64) {
         true,
     );
     let safety_rules =
-        SafetyRules::new(storage, false, false, None, Default::default());
+        SafetyRules::new(storage, false, None, Default::default());
     lsr(safety_rules, signer, n);
 }
 
@@ -93,7 +93,7 @@ fn on_disk(n: u64) {
         true,
     );
     let safety_rules =
-        SafetyRules::new(storage, false, false, None, Default::default());
+        SafetyRules::new(storage, false, None, Default::default());
     lsr(safety_rules, signer, n);
 }
 

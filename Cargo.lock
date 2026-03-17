@@ -8314,7 +8314,6 @@ version = "0.1.0"
 dependencies = [
  "bcs",
  "consensus-types",
- "crash-handler",
  "criterion",
  "diem-config",
  "diem-crypto",
@@ -8324,7 +8323,6 @@ dependencies = [
  "diem-metrics-core",
  "diem-proptest-helpers",
  "diem-secure-storage",
- "diem-temppath",
  "diem-types",
  "log",
  "once_cell",

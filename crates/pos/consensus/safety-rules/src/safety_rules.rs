@@ -35,9 +35,7 @@ use diem_types::{
     block_info::BlockInfo,
     epoch_state::EpochState,
     ledger_info::LedgerInfo,
-    validator_config::{
-        ConsensusPublicKey, ConsensusSignature, ConsensusVRFPrivateKey,
-    },
+    validator_config::{ConsensusSignature, ConsensusVRFPrivateKey},
 };
 use log::error;
 use serde::Serialize;
@@ -48,7 +46,6 @@ const SAFETY_STORAGE_SAVE_SUFFIX: &str = "json.save";
 /// @TODO consider a cache of verified QCs to cut down on verification costs
 pub struct SafetyRules {
     persistent_storage: PersistentSafetyStorage,
-    execution_public_key: Option<ConsensusPublicKey>,
     export_consensus_key: bool,
     validator_signer: Option<ConfigurableValidatorSigner>,
     epoch_state: Option<EpochState>,
@@ -60,11 +57,10 @@ impl SafetyRules {
     /// storage and the consensus private keys
     pub fn new(
         persistent_storage: PersistentSafetyStorage,
-        _verify_vote_proposal_signature: bool, export_consensus_key: bool,
+        export_consensus_key: bool,
         vrf_private_key: Option<ConsensusVRFPrivateKey>,
         author: AccountAddress,
     ) -> Self {
-        let execution_public_key = None;
         if let Ok(storage_author) = persistent_storage.author() {
             if storage_author != author {
                 // TODO: After we allow non-voting nodes to not have a pos key,
@@ -76,19 +72,8 @@ impl SafetyRules {
                 error!("author in secure_storage does not match PoS keys!");
             }
         }
-        /*
-            if verify_vote_proposal_signature {
-            None
-        Some(
-            persistent_storage
-                .execution_public_key()
-                .expect("Unable to retrieve execution public key"),
-        } else {
-            None
-        )*/
         Self {
             persistent_storage,
-            execution_public_key,
             export_consensus_key,
             validator_signer: None,
             epoch_state: None,
@@ -383,15 +368,6 @@ impl SafetyRules {
         self.signer()?;
 
         let vote_proposal = &maybe_signed_vote_proposal.vote_proposal;
-        let execution_signature = maybe_signed_vote_proposal.signature.as_ref();
-
-        if let Some(public_key) = self.execution_public_key.as_ref() {
-            execution_signature
-                .ok_or(Error::VoteProposalSignatureNotFound)?
-                .verify(vote_proposal, public_key)
-                .map_err(|error| Error::InternalError(error.to_string()))?;
-        }
-
         let proposed_block = vote_proposal.block();
         let mut safety_data = self.persistent_storage.safety_data()?;
 

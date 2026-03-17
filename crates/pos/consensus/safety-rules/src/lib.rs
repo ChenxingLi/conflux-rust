@@ -55,7 +55,6 @@ pub fn create_safety_rules(
     let author = config.test.as_ref().map(|c| c.author).unwrap_or_default();
     SafetyRules::new(
         persistent_storage,
-        config.verify_vote_proposal_signature,
         config.export_consensus_key,
         config.vrf_private_key.as_ref().map(|key| key.private_key()),
         author,

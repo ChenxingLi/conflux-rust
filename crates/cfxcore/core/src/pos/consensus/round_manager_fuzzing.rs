@@ -119,7 +119,6 @@ fn create_node_for_fuzzing() -> RoundManager {
     let mut safety_rules = SafetyRules::new(
         test_utils::test_storage(&signer),
         false,
-        false,
         None,
         Default::default(),
     );

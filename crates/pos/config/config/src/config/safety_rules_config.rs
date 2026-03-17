@@ -25,7 +25,6 @@ pub struct SafetyRulesConfig {
     pub backend: SecureBackend,
     pub logger: LoggerConfig,
     pub test: Option<SafetyRulesTestConfig>,
-    pub verify_vote_proposal_signature: bool,
     pub export_consensus_key: bool,
     pub enable_cached_safety_data: bool,
 
@@ -39,7 +38,6 @@ impl Default for SafetyRulesConfig {
             backend: SecureBackend::OnDiskStorage(Default::default()),
             logger: LoggerConfig::default(),
             test: None,
-            verify_vote_proposal_signature: true,
             export_consensus_key: false,
             enable_cached_safety_data: true,
             vrf_private_key: None,
