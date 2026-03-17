@@ -2000,9 +2000,9 @@ dependencies = [
 
 [[package]]
 name = "chunked_transfer"
-version = "1.4.1"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cca491388666e04d7248af3f60f0c40cfb0991c72205595d7c396e3510207d1a"
+checksum = "6e4de3bc4ea267985becf712dc6d9eed8b04c953b3fcfb339ebc87acd9804901"
 
 [[package]]
 name = "cipher"
@@ -2305,16 +2305,6 @@ dependencies = [
  "generic-array",
  "rand_core 0.6.4",
  "typenum",
-]
-
-[[package]]
-name = "crypto-mac"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4857fd85a0c34b3c3297875b747c1e02e06b6a0ea32dd892d8192b9ce0813ea6"
-dependencies = [
- "generic-array",
- "subtle",
 ]
 
 [[package]]
@@ -2625,7 +2615,6 @@ dependencies = [
 name = "diem-crypto"
 version = "0.1.0"
 dependencies = [
- "aes-gcm",
  "anyhow",
  "bcs",
  "bls-signatures",
@@ -2637,7 +2626,6 @@ dependencies = [
  "digest 0.9.0",
  "ed25519-dalek-fiat",
  "hex",
- "hkdf",
  "lazy_static",
  "mirai-annotations",
  "once_cell",
@@ -2648,7 +2636,6 @@ dependencies = [
  "serde",
  "serde-name",
  "serde_bytes",
- "sha2 0.9.9",
  "static_assertions",
  "thiserror 1.0.63",
  "tiny-keccak 2.0.2",
@@ -3678,32 +3665,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "hkdf"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51ab2f639c231793c5f6114bdb9bbe50a7dbbfcd7c7c6bd8475dec2d991e964f"
-dependencies = [
- "digest 0.9.0",
- "hmac 0.10.1",
-]
-
-[[package]]
-name = "hmac"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1441c6b1e930e2817404b5046f1f989899143a12bf92de603b69f4e0aee1e15"
-dependencies = [
- "crypto-mac 0.10.0",
- "digest 0.9.0",
-]
-
-[[package]]
 name = "hmac"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a2a2320eb7ec0ebe8da8f744d7812d9fc4cb4d09344ac01898dbcb6a20ae69b"
 dependencies = [
- "crypto-mac 0.11.0",
+ "crypto-mac",
  "digest 0.9.0",
 ]
 
@@ -5031,15 +4998,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-variants"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "num_cpus"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5371,7 +5329,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f05894bce6a1ba4be299d0c5f29563e08af2bc18bb7d48313113bed71e904739"
 dependencies = [
- "crypto-mac 0.11.0",
+ "crypto-mac",
 ]
 
 [[package]]
@@ -5587,7 +5545,6 @@ dependencies = [
  "itertools 0.14.0",
  "num-derive",
  "num-traits",
- "num-variants",
  "once_cell",
  "schemadb",
  "serde",
@@ -6538,8 +6495,8 @@ dependencies = [
  "diem-global-constants",
  "diem-infallible",
  "diem-logger",
+ "diem-metrics-core",
  "diem-secure-net",
- "diem-secure-push-metrics",
  "diem-secure-storage",
  "diem-temppath",
  "diem-types",

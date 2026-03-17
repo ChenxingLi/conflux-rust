@@ -1103,15 +1103,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6b4d9b1225d28d360ec6a231d65af1fd99a2a095154c8040689617290569c5c"
 
 [[package]]
-name = "basic-toml"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c0de75129aa8d0cceaf750b89013f0e08804d6ec61416da787b35ad0d7cddf1"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "bcs"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2444,9 +2435,9 @@ dependencies = [
 
 [[package]]
 name = "chunked_transfer"
-version = "1.4.1"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cca491388666e04d7248af3f60f0c40cfb0991c72205595d7c396e3510207d1a"
+checksum = "6e4de3bc4ea267985becf712dc6d9eed8b04c953b3fcfb339ebc87acd9804901"
 
 [[package]]
 name = "ciborium"
@@ -2983,16 +2974,6 @@ dependencies = [
 
 [[package]]
 name = "crypto-mac"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4857fd85a0c34b3c3297875b747c1e02e06b6a0ea32dd892d8192b9ce0813ea6"
-dependencies = [
- "generic-array 0.14.6",
- "subtle",
-]
-
-[[package]]
-name = "crypto-mac"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25fab6889090c8133f3deb8f73ba3c65a7f456f66436fc012a1b1e272b1e103e"
@@ -3353,7 +3334,6 @@ dependencies = [
 name = "diem-crypto"
 version = "0.1.0"
 dependencies = [
- "aes-gcm",
  "anyhow",
  "bcs",
  "bitvec 1.0.1",
@@ -3367,7 +3347,6 @@ dependencies = [
  "digest 0.9.0",
  "ed25519-dalek-fiat",
  "hex",
- "hkdf",
  "lazy_static",
  "mirai-annotations",
  "once_cell",
@@ -3380,13 +3359,10 @@ dependencies = [
  "serde",
  "serde-name",
  "serde_bytes",
- "serde_json",
- "sha2 0.9.9",
  "sha3 0.9.1",
  "static_assertions",
  "thiserror 1.0.63",
  "tiny-keccak 2.0.2",
- "trybuild",
  "vrf",
  "x25519-dalek-fiat",
 ]
@@ -3457,14 +3433,6 @@ name = "diem-metrics-core"
 version = "0.1.0"
 dependencies = [
  "prometheus",
-]
-
-[[package]]
-name = "diem-nibble"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "serde",
 ]
 
 [[package]]
@@ -4661,32 +4629,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "hkdf"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51ab2f639c231793c5f6114bdb9bbe50a7dbbfcd7c7c6bd8475dec2d991e964f"
-dependencies = [
- "digest 0.9.0",
- "hmac 0.10.1",
-]
-
-[[package]]
-name = "hmac"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1441c6b1e930e2817404b5046f1f989899143a12bf92de603b69f4e0aee1e15"
-dependencies = [
- "crypto-mac 0.10.0",
- "digest 0.9.0",
-]
-
-[[package]]
 name = "hmac"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a2a2320eb7ec0ebe8da8f744d7812d9fc4cb4d09344ac01898dbcb6a20ae69b"
 dependencies = [
- "crypto-mac 0.11.0",
+ "crypto-mac",
  "digest 0.9.0",
 ]
 
@@ -6598,15 +6546,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-variants"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "num_cpus"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6991,7 +6930,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f05894bce6a1ba4be299d0c5f29563e08af2bc18bb7d48313113bed71e904739"
 dependencies = [
- "crypto-mac 0.11.0",
+ "crypto-mac",
 ]
 
 [[package]]
@@ -7248,7 +7187,6 @@ dependencies = [
  "move-core-types",
  "num-derive",
  "num-traits",
- "num-variants",
  "once_cell",
  "proptest",
  "proptest-derive",
@@ -8543,9 +8481,9 @@ dependencies = [
  "diem-global-constants",
  "diem-infallible",
  "diem-logger",
+ "diem-metrics-core",
  "diem-proptest-helpers",
  "diem-secure-net",
- "diem-secure-push-metrics",
  "diem-secure-storage",
  "diem-temppath",
  "diem-types",
@@ -10121,21 +10059,6 @@ name = "try-lock"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3528ecfd12c466c6f163363caf2d02a71161dd5e1cc6ae7b34207ea2d42d81ed"
-
-[[package]]
-name = "trybuild"
-version = "1.0.80"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "501dbdbb99861e4ab6b60eb6a7493956a9defb644fd034bc4a5ef27c693c8a3a"
-dependencies = [
- "basic-toml",
- "glob",
- "once_cell",
- "serde",
- "serde_derive",
- "serde_json",
- "termcolor",
-]
 
 [[package]]
 name = "txgen"

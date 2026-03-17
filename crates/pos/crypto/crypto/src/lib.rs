@@ -18,20 +18,12 @@ pub mod bls;
 pub mod compat;
 /// A Elliptic Curve VRF wrapper
 pub mod ec_vrf;
-pub mod ed25519;
 pub mod error;
 pub mod hash;
-pub mod hkdf;
 /// A multi bls signature wrapper
 pub mod multi_bls;
-pub mod multi_ed25519;
-pub mod noise;
 pub mod test_utils;
 pub mod traits;
-/// VDF SHA256.
-pub mod vdf_sha3;
-pub mod x25519;
-
 #[cfg(test)]
 mod unit_tests;
 

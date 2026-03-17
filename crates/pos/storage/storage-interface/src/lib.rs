@@ -8,7 +8,6 @@
 use anyhow::Result;
 use diem_crypto::{hash::SPARSE_MERKLE_PLACEHOLDER_HASH, HashValue};
 use diem_types::{
-    account_address::AccountAddress,
     committed_block::CommittedBlock,
     contract_event::ContractEvent,
     epoch_change::EpochChangeProof,
@@ -16,13 +15,10 @@ use diem_types::{
     ledger_info::{
         deserialize_ledger_info_unchecked, LedgerInfoWithSignatures,
     },
-    proof::{definition::LeafCount, AccumulatorConsistencyProof},
+    proof::definition::LeafCount,
     reward_distribution_event::RewardDistributionEventV2,
     term_state::PosState,
-    transaction::{
-        TransactionInfo, TransactionListWithProof, TransactionToCommit,
-        TransactionWithProof, Version,
-    },
+    transaction::{TransactionInfo, TransactionToCommit, Version},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -180,15 +176,6 @@ pub trait DbReader: Send + Sync {
         &self, start_epoch: u64, end_epoch: u64,
     ) -> Result<EpochChangeProof>;
 
-    /// See [`DiemDB::get_transactions`].
-    ///
-    /// [`DiemDB::get_transactions`]:
-    /// ../pos-ledger-db/struct.DiemDB.html#method.get_transactions
-    fn get_transactions(
-        &self, start_version: Version, batch_size: u64,
-        ledger_version: Version, fetch_events: bool,
-    ) -> Result<TransactionListWithProof>;
-
     /// See [`DiemDB::get_block_timestamp`].
     ///
     /// [`DiemDB::get_block_timestamp`]:
@@ -228,26 +215,6 @@ pub trait DbReader: Send + Sync {
     fn get_startup_info(
         &self, need_pos_state: bool,
     ) -> Result<Option<StartupInfo>>;
-
-    fn get_txn_by_account(
-        &self, address: AccountAddress, seq_num: u64, ledger_version: Version,
-        fetch_events: bool,
-    ) -> Result<Option<TransactionWithProof>>;
-
-    /// Returns proof of new state for a given ledger info with signatures
-    /// relative to version known to client
-    fn get_state_proof_with_ledger_info(
-        &self, known_version: u64, ledger_info: LedgerInfoWithSignatures,
-    ) -> Result<(EpochChangeProof, AccumulatorConsistencyProof)>;
-
-    /// Returns proof of new state relative to version known to client
-    fn get_state_proof(
-        &self, known_version: u64,
-    ) -> Result<(
-        LedgerInfoWithSignatures,
-        EpochChangeProof,
-        AccumulatorConsistencyProof,
-    )>;
 
     /// Gets the latest TreeState no matter if db has been bootstrapped.
     /// Used by the Db-bootstrapper.

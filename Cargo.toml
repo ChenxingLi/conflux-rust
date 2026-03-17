@@ -74,8 +74,6 @@ members = [
     "crates/pos/common/logger",
     "crates/pos/common/metrics",
     "crates/pos/common/metrics-core",
-    "crates/pos/common/nibble",
-    "crates/pos/common/num-variants",
     "crates/pos/common/proptest-helpers",
     "crates/pos/common/short-hex-str",
     "crates/pos/common/subscription-service",
@@ -212,8 +210,6 @@ diem-infallible = { path = "./crates/pos/common/infallible" }
 diem-logger = { path = "./crates/pos/common/logger" }
 diem-metrics = { path = "./crates/pos/common/metrics" }
 diem-metrics-core = { path = "./crates/pos/common/metrics-core" }
-diem-nibble = { path = "./crates/pos/common/nibble" }
-num-variants = { path = "./crates/pos/common/num-variants" }
 diem-proptest-helpers = { path = "./crates/pos/common/proptest-helpers" }
 short-hex-str = { path = "./crates/pos/common/short-hex-str" }
 subscription-service = { path = "./crates/pos/common/subscription-service" }
