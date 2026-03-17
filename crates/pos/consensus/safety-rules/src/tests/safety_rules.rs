@@ -28,13 +28,13 @@ fn safety_rules(
     Box::new(move || {
         let signer = ValidatorSigner::from_int(0);
         let storage = test_utils::test_storage(&signer);
-        let safety_rules = Box::new(SafetyRules::new(
+        let safety_rules = SafetyRules::new(
             storage,
             verify_vote_proposal_signature,
             export_consensus_key,
             None,
             Default::default(),
-        ));
+        );
         (
             safety_rules,
             signer,

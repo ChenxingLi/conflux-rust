@@ -51,7 +51,7 @@ use diem_types::{
 };
 #[cfg(test)]
 use safety_rules::ConsensusState;
-use safety_rules::{SafetyRules, TSafetyRules};
+use safety_rules::SafetyRules;
 
 use crate::pos::{
     mempool::SubmissionStatus,

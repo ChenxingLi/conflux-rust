@@ -219,7 +219,7 @@ fn arb_block_type() -> impl Strategy<Value = BlockType> {
 
 #[cfg(any(test, feature = "fuzzing"))]
 pub mod fuzzing {
-    use crate::{error::Error, test_utils, TSafetyRules};
+    use crate::{error::Error, test_utils};
     use consensus_types::{
         block::Block, block_data::BlockData, timeout::Timeout, vote::Vote,
         vote_proposal::MaybeSignedVoteProposal,

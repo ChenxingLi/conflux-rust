@@ -5,10 +5,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use crate::{
-    persistent_safety_storage::PersistentSafetyStorage, SafetyRules,
-    TSafetyRules,
-};
+use crate::{persistent_safety_storage::PersistentSafetyStorage, SafetyRules};
 use consensus_types::{
     block::Block,
     common::{Payload, Round},

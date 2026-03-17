@@ -5,7 +5,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use crate::{test_utils, Error, SafetyRules, TSafetyRules};
+use crate::{test_utils, Error, SafetyRules};
 use consensus_types::{
     block::block_test_utils::random_payload, common::Round,
     quorum_cert::QuorumCert, timeout::Timeout,
@@ -54,11 +54,8 @@ fn make_proposal_with_parent(
 }
 
 pub type Callback = Box<
-    dyn Fn(/* prevent cargo format failing */) -> (
-        Box<dyn TSafetyRules + Send + Sync>,
-        ValidatorSigner,
-        Option<BLSPrivateKey>,
-    ),
+    dyn Fn(/* prevent cargo format failing */)
+        -> (SafetyRules, ValidatorSigner, Option<BLSPrivateKey>),
 >;
 
 pub fn run_test_suite(safety_rules: &Callback) {

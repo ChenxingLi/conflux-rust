@@ -12,7 +12,6 @@ use crate::{
     error::Error,
     logging::{LogEntry, LogEvent, SafetyLogSchema},
     persistent_safety_storage::PersistentSafetyStorage,
-    t_safety_rules::TSafetyRules,
 };
 use consensus_types::{
     block::Block,
@@ -514,20 +513,20 @@ impl SafetyRules {
         self.persistent_storage
             .save_to_suffix(SAFETY_STORAGE_SAVE_SUFFIX)
     }
-}
 
-impl TSafetyRules for SafetyRules {
-    fn consensus_state(&mut self) -> Result<ConsensusState, Error> {
+    pub fn consensus_state(&mut self) -> Result<ConsensusState, Error> {
         let cb = || self.guarded_consensus_state();
         run_and_log(cb, |log| log, LogEntry::ConsensusState)
     }
 
-    fn initialize(&mut self, epoch_state: &EpochState) -> Result<(), Error> {
+    pub fn initialize(
+        &mut self, epoch_state: &EpochState,
+    ) -> Result<(), Error> {
         let cb = || self.guarded_initialize(epoch_state);
         run_and_log(cb, |log| log, LogEntry::Initialize)
     }
 
-    fn construct_and_sign_vote(
+    pub fn construct_and_sign_vote(
         &mut self, maybe_signed_vote_proposal: &MaybeSignedVoteProposal,
     ) -> Result<Vote, Error> {
         let round = maybe_signed_vote_proposal.vote_proposal.block().round();
@@ -536,13 +535,15 @@ impl TSafetyRules for SafetyRules {
         run_and_log(cb, |log| log.round(round), LogEntry::ConstructAndSignVote)
     }
 
-    fn sign_proposal(&mut self, block_data: BlockData) -> Result<Block, Error> {
+    pub fn sign_proposal(
+        &mut self, block_data: BlockData,
+    ) -> Result<Block, Error> {
         let round = block_data.round();
         let cb = || self.guarded_sign_proposal(block_data);
         run_and_log(cb, |log| log.round(round), LogEntry::SignProposal)
     }
 
-    fn sign_timeout(
+    pub fn sign_timeout(
         &mut self, timeout: &Timeout,
     ) -> Result<ConsensusSignature, Error> {
         let cb = || self.guarded_sign_timeout(timeout);

@@ -9,17 +9,13 @@ use consensus_types::block::block_test_utils;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use diem_secure_storage::{InMemoryStorage, OnDiskStorage, Storage};
 use diem_types::validator_signer::ValidatorSigner;
-use safety_rules::{
-    test_utils, PersistentSafetyStorage, SafetyRulesManager, TSafetyRules,
-};
+use safety_rules::{test_utils, PersistentSafetyStorage, SafetyRules};
 use tempfile::NamedTempFile;
 
 /// Execute an in order series of blocks (0 <- 1 <- 2 <- 3 and commit 0 and
 /// continue to rotate left, appending new blocks on the right, committing the
 /// left most block
-fn lsr(
-    mut safety_rules: Box<dyn TSafetyRules>, signer: ValidatorSigner, n: u64,
-) {
+fn lsr(mut safety_rules: SafetyRules, signer: ValidatorSigner, n: u64) {
     let data = block_test_utils::random_payload(1);
 
     let (proof, genesis_qc) = test_utils::make_genesis(&signer);
@@ -81,14 +77,9 @@ fn in_memory(n: u64) {
         signer.private_key().clone(),
         true,
     );
-    let safety_rules_manager = SafetyRulesManager::new_local(
-        storage,
-        false,
-        false,
-        None,
-        Default::default(),
-    );
-    lsr(safety_rules_manager.client(), signer, n);
+    let safety_rules =
+        SafetyRules::new(storage, false, false, None, Default::default());
+    lsr(safety_rules, signer, n);
 }
 
 fn on_disk(n: u64) {
@@ -101,14 +92,9 @@ fn on_disk(n: u64) {
         signer.private_key().clone(),
         true,
     );
-    let safety_rules_manager = SafetyRulesManager::new_local(
-        storage,
-        false,
-        false,
-        None,
-        Default::default(),
-    );
-    lsr(safety_rules_manager.client(), signer, n);
+    let safety_rules =
+        SafetyRules::new(storage, false, false, None, Default::default());
+    lsr(safety_rules, signer, n);
 }
 
 pub fn benchmark(c: &mut Criterion) {

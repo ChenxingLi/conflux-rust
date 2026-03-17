@@ -24,7 +24,6 @@ use std::path::PathBuf;
 pub struct SafetyRulesConfig {
     pub backend: SecureBackend,
     pub logger: LoggerConfig,
-    pub service: SafetyRulesService,
     pub test: Option<SafetyRulesTestConfig>,
     pub verify_vote_proposal_signature: bool,
     pub export_consensus_key: bool,
@@ -39,7 +38,6 @@ impl Default for SafetyRulesConfig {
         Self {
             backend: SecureBackend::OnDiskStorage(Default::default()),
             logger: LoggerConfig::default(),
-            service: SafetyRulesService::Local,
             test: None,
             verify_vote_proposal_signature: true,
             export_consensus_key: false,
@@ -56,14 +54,6 @@ impl SafetyRulesConfig {
             backend.set_data_dir(data_dir);
         }
     }
-}
-
-/// Defines how safety rules should be executed
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case", tag = "type")]
-pub enum SafetyRulesService {
-    /// This runs safety rules in the same thread as event processor
-    Local,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
