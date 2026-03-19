@@ -4,6 +4,7 @@
 
 use cfx_addr::Network;
 use cfx_execute_helper::exec_tracer::TraceFilter as PrimitiveTraceFilter;
+use cfx_rpc_utils::error::jsonrpsee_error_helpers::internal_error;
 use cfx_types::{Space, H256};
 use cfx_util_macros::bail;
 use cfxcore::{
@@ -11,7 +12,6 @@ use cfxcore::{
     BlockDataManager, ConsensusGraph, SharedConsensusGraph,
 };
 use cfxcore_errors::ProviderBlockError;
-use jsonrpc_core::Error as JsonRpcError;
 use log::warn;
 use primitives::EpochNumber;
 use std::sync::Arc;
@@ -205,7 +205,7 @@ impl TraceHandler {
             primitive_traces_to_eth_localized_traces(&primitive_eth_traces)
                 .map_err(|e| {
                     warn!("Internal error on trace reconstruction: {}", e);
-                    JsonRpcError::internal_error()
+                    internal_error()
                 })?;
 
         Ok(Some(EpochTrace::new(cfx_traces, eth_traces)))
@@ -217,7 +217,7 @@ impl TraceHandler {
         let consensus = self.consensus_graph();
         let epoch = consensus
             .get_block_epoch_number(&epoch_hash)
-            .ok_or(JsonRpcError::internal_error())?;
+            .ok_or(internal_error())?;
         let mut trace_filter = PrimitiveTraceFilter::space_filter(space);
         trace_filter.from_epoch = EpochNumber::Number(epoch);
         trace_filter.to_epoch = EpochNumber::Number(epoch);
