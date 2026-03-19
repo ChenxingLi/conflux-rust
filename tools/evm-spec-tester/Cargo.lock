@@ -1761,7 +1761,6 @@ dependencies = [
  "cfx-types",
  "cfx-util-macros",
  "cfx-vm-types",
- "jsonrpc-core",
  "jsonrpsee",
  "primitives",
  "rlp 0.4.6",
