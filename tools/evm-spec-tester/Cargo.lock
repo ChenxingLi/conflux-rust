@@ -1657,20 +1657,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfx-rpc-cfx-api"
+version = "3.0.0"
+dependencies = [
+ "cfx-rpc-cfx-types",
+ "cfx-rpc-eth-types",
+ "cfx-rpc-primitives",
+ "cfx-types",
+ "diem-types",
+ "jsonrpsee",
+ "network",
+ "primitives",
+]
+
+[[package]]
 name = "cfx-rpc-cfx-impl"
 version = "0.1.0"
 dependencies = [
  "cfx-addr",
  "cfx-execute-helper",
+ "cfx-parameters",
  "cfx-parity-trace-types",
+ "cfx-rpc-cfx-api",
  "cfx-rpc-cfx-types",
  "cfx-rpc-common-impl",
  "cfx-rpc-eth-types",
+ "cfx-rpc-utils",
  "cfx-types",
  "cfx-util-macros",
  "cfxcore",
  "cfxcore-errors",
  "jsonrpc-core",
+ "jsonrpsee",
  "log",
  "primitives",
 ]
@@ -1692,7 +1710,7 @@ dependencies = [
  "cfxkey",
  "diem-crypto",
  "diem-types",
- "jsonrpc-core",
+ "jsonrpsee",
  "keccak-hash",
  "log",
  "once_cell",
@@ -1739,6 +1757,7 @@ dependencies = [
  "cfx-parity-trace-types",
  "cfx-rpc-cfx-types",
  "cfx-rpc-primitives",
+ "cfx-rpc-utils",
  "cfx-types",
  "cfx-util-macros",
  "cfx-vm-types",
@@ -1798,6 +1817,7 @@ dependencies = [
  "jsonrpsee-core",
  "revm-context-interface",
  "revm-primitives",
+ "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
@@ -2867,17 +2887,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "diem-github-client"
-version = "0.1.0"
-dependencies = [
- "proxy",
- "serde",
- "serde_json",
- "thiserror 1.0.63",
- "ureq",
-]
-
-[[package]]
 name = "diem-global-constants"
 version = "0.1.0"
 
@@ -2990,13 +2999,11 @@ dependencies = [
  "bcs",
  "chrono",
  "diem-crypto",
- "diem-github-client",
  "diem-infallible",
  "diem-logger",
  "diem-temppath",
  "diem-time-service",
  "diem-types",
- "diem-vault-client",
  "enum_dispatch",
  "rand 0.8.5",
  "serde",
@@ -3054,22 +3061,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.63",
  "tiny-keccak 2.0.2",
-]
-
-[[package]]
-name = "diem-vault-client"
-version = "0.1.0"
-dependencies = [
- "base64 0.13.1",
- "chrono",
- "diem-crypto",
- "diem-types",
- "native-tls",
- "once_cell",
- "serde",
- "serde_json",
- "thiserror 1.0.63",
- "ureq",
 ]
 
 [[package]]
@@ -6395,13 +6386,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proxy"
-version = "0.1.0"
-dependencies = [
- "ipnet",
-]
-
-[[package]]
 name = "qstring"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7214,7 +7198,6 @@ dependencies = [
  "diem-secure-storage",
  "diem-temppath",
  "diem-types",
- "diem-vault-client",
  "log",
  "once_cell",
  "rand 0.8.5",
