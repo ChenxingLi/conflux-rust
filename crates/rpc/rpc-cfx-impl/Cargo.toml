@@ -22,3 +22,10 @@ cfx-parity-trace-types = { workspace = true }
 cfx-rpc-common-impl = { workspace = true }
 cfxcore-errors = { workspace = true }
 cfx-parameters = { workspace = true }
+diem-types = { workspace = true }
+diem-crypto = { workspace = true }
+consensus-types = { workspace = true }
+storage-interface = { workspace = true }
+itertools = { workspace = true }
+cfx-executor = { workspace = true }
+cfx-statedb = { workspace = true }

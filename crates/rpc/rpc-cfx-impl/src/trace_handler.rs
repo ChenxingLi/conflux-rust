@@ -4,6 +4,10 @@
 
 use cfx_addr::Network;
 use cfx_execute_helper::exec_tracer::TraceFilter as PrimitiveTraceFilter;
+use cfx_rpc_cfx_api::TraceServer;
+use cfx_rpc_cfx_types::{
+    EpochNumber as RpcEpochNumber, TraceFilter as RpcTraceFilter,
+};
 use cfx_rpc_utils::error::jsonrpsee_error_helpers::internal_error;
 use cfx_types::{Space, H256};
 use cfx_util_macros::bail;
@@ -12,6 +16,7 @@ use cfxcore::{
     BlockDataManager, ConsensusGraph, SharedConsensusGraph,
 };
 use cfxcore_errors::ProviderBlockError;
+use jsonrpsee::core::RpcResult;
 use log::warn;
 use primitives::EpochNumber;
 use std::sync::Arc;
@@ -210,7 +215,38 @@ impl TraceHandler {
 
         Ok(Some(EpochTrace::new(cfx_traces, eth_traces)))
     }
+}
 
+impl TraceServer for TraceHandler {
+    fn block_traces(
+        &self, block_hash: H256,
+    ) -> RpcResult<Option<LocalizedBlockTrace>> {
+        self.block_traces_impl(block_hash).map_err(Into::into)
+    }
+
+    fn filter_traces(
+        &self, filter: RpcTraceFilter,
+    ) -> RpcResult<Option<Vec<RpcLocalizedTrace>>> {
+        let primitive_filter = filter.into_primitive()?;
+        self.filter_traces_impl(primitive_filter)
+            .map_err(Into::into)
+    }
+
+    fn transaction_traces(
+        &self, tx_hash: H256,
+    ) -> RpcResult<Option<Vec<RpcLocalizedTrace>>> {
+        Ok(self.transaction_trace_impl(&tx_hash))
+    }
+
+    fn epoch_traces(
+        &self, epoch: RpcEpochNumber,
+    ) -> RpcResult<Option<EpochTrace>> {
+        self.epoch_trace_impl(epoch.into_primitive())
+            .map_err(Into::into)
+    }
+}
+
+impl TraceHandler {
     fn space_epoch_traces(
         &self, space: Space, epoch_hash: H256,
     ) -> CoreResult<Vec<PrimitiveLocalizedTrace>> {

@@ -1897,6 +1897,7 @@ version = "0.1.0"
 dependencies = [
  "cfx-addr",
  "cfx-execute-helper",
+ "cfx-executor",
  "cfx-parameters",
  "cfx-parity-trace-types",
  "cfx-rpc-cfx-api",
@@ -1904,14 +1905,20 @@ dependencies = [
  "cfx-rpc-common-impl",
  "cfx-rpc-eth-types",
  "cfx-rpc-utils",
+ "cfx-statedb",
  "cfx-types",
  "cfx-util-macros",
  "cfxcore",
  "cfxcore-errors",
+ "consensus-types",
+ "diem-crypto",
+ "diem-types",
+ "itertools 0.14.0",
  "jsonrpc-core",
  "jsonrpsee",
  "log",
  "primitives",
+ "storage-interface",
 ]
 
 [[package]]
@@ -2568,6 +2575,7 @@ dependencies = [
  "cfx-parity-trace-types",
  "cfx-rpc",
  "cfx-rpc-builder",
+ "cfx-rpc-cfx-api",
  "cfx-rpc-cfx-impl",
  "cfx-rpc-cfx-types",
  "cfx-rpc-common-impl",
