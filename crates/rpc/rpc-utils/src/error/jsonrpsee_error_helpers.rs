@@ -49,7 +49,7 @@ pub fn internal_error() -> ErrorObjectOwned {
 }
 
 /// Constructs an internal JSON-RPC error.
-pub fn internal_rpc_err<S: Serialize>(data: S) -> ErrorObjectOwned {
+pub fn internal_error_with_data<S: Serialize>(data: S) -> ErrorObjectOwned {
     rpc_err(INTERNAL_ERROR_CODE, INTERNAL_ERROR_MSG, Some(data))
 }
 

@@ -11,7 +11,7 @@ use cfx_rpc_cfx_types::{
     TxPoolPendingNonceRange, TxPoolStatus, TxWithPoolInfo,
 };
 use cfx_rpc_utils::error::jsonrpsee_error_helpers::{
-    internal_rpc_err, invalid_params_rpc_err,
+    internal_error_with_data, invalid_params_rpc_err,
 };
 use cfx_types::{Address, AddressSpaceUtil, H256, U256, U64};
 use cfxcore::{SharedConsensusGraph, SharedTransactionPool};
@@ -92,7 +92,7 @@ impl TxPoolServer for TxPoolHandler {
                 None,
                 self.consensus.best_epoch_number(),
             )
-            .map_err(|e| internal_rpc_err(e.to_string()))?;
+            .map_err(|e| internal_error_with_data(e.to_string()))?;
 
         let mut max_nonce: U256 = U256::from(0);
         let mut min_nonce: U256 = U256::max_value();
@@ -123,7 +123,7 @@ impl TxPoolServer for TxPoolHandler {
             let (state_nonce, state_balance) = self
                 .tx_pool
                 .get_state_account_info(&tx.sender())
-                .map_err(|e| internal_rpc_err(format!("{}", e)))?;
+                .map_err(|e| internal_error_with_data(format!("{}", e)))?;
             let required_storage_collateral =
                 if let Transaction::Native(ref native_tx) = tx.unsigned {
                     U256::from(*native_tx.storage_limit())
@@ -181,13 +181,13 @@ impl TxPoolServer for TxPoolHandler {
                 maybe_limit.map(|limit| limit.as_usize()),
                 self.consensus.best_epoch_number(),
             )
-            .map_err(|e| internal_rpc_err(e.to_string()))?;
+            .map_err(|e| internal_error_with_data(e.to_string()))?;
 
         let pending_transactions = pending_txs
             .into_iter()
             .map(|tx| {
                 RpcTransaction::from_signed(&tx, None, self.network)
-                    .map_err(|e| internal_rpc_err(e))
+                    .map_err(|e| internal_error_with_data(e))
             })
             .collect::<Result<Vec<RpcTransaction>, _>>()?;
 

@@ -29,3 +29,9 @@ storage-interface = { workspace = true }
 itertools = { workspace = true }
 cfx-executor = { workspace = true }
 cfx-statedb = { workspace = true }
+blockgen = { workspace = true }
+txgen = { workspace = true }
+network = { workspace = true }
+random-crash = { workspace = true }
+rlp = { workspace = true }
+parking_lot = { workspace = true }
