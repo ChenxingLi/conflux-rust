@@ -2,10 +2,11 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, thread, time::Duration};
 
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
+use blockgen::BlockGeneratorTestApi;
 use cfx_addr::Network;
 use cfx_execute_helper::estimation::{
     decode_error, EstimateExt, EstimateRequest,
@@ -25,7 +26,6 @@ use cfx_parameters::{
 };
 use cfx_rpc_cfx_api::{CfxDebugRpcServer, CfxRpcServer};
 use cfx_rpc_cfx_types::{
-    block::BlockTransactions,
     address::{check_rpc_address_network, check_two_rpc_address_network_match},
     pos::PoSEpochReward,
     receipt::Receipt as RpcReceipt,
@@ -41,7 +41,10 @@ use cfx_rpc_cfx_types::{
 use cfx_rpc_eth_types::FeeHistory;
 use cfx_rpc_primitives::U64 as HexU64;
 use cfx_rpc_utils::error::jsonrpsee_error_helpers::{
-    internal_error, invalid_params_check, invalid_params_rpc_err, invalid_params_msg,
+    call_execution_error, internal_error, internal_error_with_data,
+    invalid_params, invalid_params_check, invalid_params_msg,
+    invalid_params_rpc_err, pivot_assumption_failed,
+    request_rejected_in_catch_up_mode,
 };
 use cfx_statedb::{
     global_params::{
@@ -53,25 +56,27 @@ use cfx_statedb::{
 };
 use cfx_storage::state::StateDbGetOriginalMethods;
 use cfx_types::{
-    Address, AddressSpaceUtil, BigEndianHash, Space, H256, H520, U128, U256,
-    U64,
+    Address, AddressSpaceUtil, BigEndianHash, Space, H160, H256, H520, U128,
+    U256, U64,
 };
 use cfx_util_macros::bail;
 use cfx_vm_types::Error as VmError;
 use cfxcore::{
-    block_data_manager::{BlockDataManager, DataVersionTuple},
+    block_data_manager::BlockDataManager,
     consensus::{
         pos_handler::PosVerifier, MaybeExecutedTxExtraInfo, TransactionInfo,
     },
-    errors::{Result as CoreResult, Error as CoreError, account_result_to_rpc_result},
-    pow, ConsensusGraph, SharedConsensusGraph, SharedSynchronizationService,
+    consensus_parameters::DEFERRED_STATE_EPOCH_COUNT,
+    errors::{
+        account_result_to_rpc_result, Error as CoreError, Result as CoreResult,
+    },
+    ConsensusGraph, SharedConsensusGraph, SharedSynchronizationService,
     SharedTransactionPool,
 };
 use cfxcore_accounts::AccountProvider;
 use cfxkey::Password;
 use diem_crypto::hash::HashValue;
 use jsonrpsee::{core::RpcResult, types::ErrorObjectOwned};
-use keccak_hash::keccak;
 use log::{debug, info, trace, warn};
 use num_bigint::{BigInt, ToBigInt};
 use primitives::{
@@ -83,7 +88,10 @@ use primitives::{
 use rustc_hex::ToHex;
 use storage_interface::DBReaderForPoW;
 
-use crate::pos_handler::convert_to_pos_epoch_reward;
+use crate::{
+    eth_data_hash, helpers::build_block,
+    pos_handler::convert_to_pos_epoch_reward,
+};
 
 fn into_rpc_err<E>(e: E) -> ErrorObjectOwned
 where CoreError: From<E> {
@@ -109,6 +117,7 @@ pub struct CfxHandler {
     pub data_man: Arc<BlockDataManager>,
     pub network_type: Network,
     pub pos_handler: Arc<PosVerifier>,
+    block_gen: BlockGeneratorTestApi,
 }
 
 impl CfxHandler {
@@ -116,6 +125,7 @@ impl CfxHandler {
         config: RpcImplConfiguration, consensus: SharedConsensusGraph,
         sync: SharedSynchronizationService, tx_pool: SharedTransactionPool,
         accounts: Arc<AccountProvider>, pos_handler: Arc<PosVerifier>,
+        block_gen: BlockGeneratorTestApi,
     ) -> Self {
         let data_man = consensus.data_manager().clone();
         let network_type = *sync.network.get_network_type();
@@ -128,6 +138,7 @@ impl CfxHandler {
             data_man,
             network_type,
             pos_handler,
+            block_gen,
         }
     }
 
@@ -135,7 +146,7 @@ impl CfxHandler {
 
     fn check_address_network(&self, network: Network) -> RpcResult<()> {
         check_rpc_address_network(Some(network), &self.network_type)
-            .map_err(|e| invalid_params_msg(&e.to_string()))
+            .map_err(|e| into_rpc_err(e.to_string()))
     }
 
     fn get_epoch_number_with_pivot_check(
@@ -179,29 +190,6 @@ impl CfxHandler {
             }
             None => Ok(EpochNumber::LatestState),
         }
-    }
-
-    fn get_block_epoch_number(&self, h: &H256) -> Option<u64> {
-        if let Some(e) = self.consensus.get_block_epoch_number(h) {
-            return Some(e);
-        }
-        self.consensus.data_manager().block_epoch_number(h)
-    }
-
-    fn build_rpc_block(
-        &self, b: &Block, include_txs: bool,
-    ) -> Result<RpcBlock, String> {
-        let consensus_graph = self.consensus_graph();
-        let inner = &*consensus_graph.inner.read();
-        build_block(
-            b,
-            self.network_type,
-            consensus_graph,
-            inner,
-            &self.data_man,
-            include_txs,
-            Some(Space::Native),
-        )
     }
 
     fn get_block_execution_info(
@@ -352,11 +340,10 @@ impl CfxHandler {
         };
 
         if pivot_assumption != exec_info.pivot_header.hash() {
-            bail!(CoreError::Custom(format!(
-                "pivot assumption mismatch: expected {:?}, got {:?}",
+            bail!(pivot_assumption_failed(
                 pivot_assumption,
                 exec_info.pivot_header.hash()
-            )));
+            ));
         }
 
         let mut rpc_receipts = vec![];
@@ -403,14 +390,12 @@ impl CfxHandler {
                 request.from.as_ref(),
                 request.to.as_ref(),
             ),
-        )
-        .map_err(CoreError::from)?;
+        )?;
 
         invalid_params_check(
             "request",
             check_rpc_address_network(rpc_request_network, &self.network_type),
-        )
-        .map_err(CoreError::from)?;
+        )?;
 
         let consensus_graph = self.consensus_graph();
         let epoch = epoch.unwrap_or(EpochNumber::LatestState);
@@ -426,13 +411,11 @@ impl CfxHandler {
         let epoch_height = consensus_graph
             .get_height_from_epoch_number(epoch.clone().into())?;
         let chain_id = consensus_graph.best_chain_id();
-        let signed_tx = request
-            .sign_call(
-                epoch_height,
-                chain_id.in_native_space(),
-                self.config.max_estimation_gas_limit,
-            )
-            .map_err(CoreError::from)?;
+        let signed_tx = request.sign_call(
+            epoch_height,
+            chain_id.in_native_space(),
+            self.config.max_estimation_gas_limit,
+        )?;
         trace!("call tx {:?}", signed_tx);
 
         consensus_graph.call_virtual(
@@ -448,9 +431,7 @@ impl CfxHandler {
     ) -> CoreResult<H256> {
         if self.sync.catch_up_mode() {
             warn!("Ignore send_transaction request {}. Cannot send transaction when the node is still in catch-up mode.", tx.hash());
-            bail!(CoreError::Custom(
-                "Request rejected due to still in the catch-up mode.".into()
-            ));
+            bail!(request_rejected_in_catch_up_mode(None));
         }
         let (signed_trans, failed_trans) =
             self.tx_pool.insert_new_transactions(vec![tx]);
@@ -458,11 +439,11 @@ impl CfxHandler {
         match (signed_trans.len(), failed_trans.len()) {
             (0, 0) => {
                 debug!("insert_new_transactions ignores inserted transactions");
-                bail!(CoreError::Custom("tx already exist".into()))
+                bail!(invalid_params("tx", Some("tx already exist")))
             }
             (0, 1) => {
                 let tx_err = failed_trans.values().next().unwrap();
-                bail!(CoreError::Custom(tx_err.to_string()))
+                bail!(invalid_params("tx", Some(tx_err.to_string())))
             }
             (1, 0) => {
                 let tx_hash = signed_trans[0].hash();
@@ -470,7 +451,7 @@ impl CfxHandler {
                 Ok(tx_hash)
             }
             _ => {
-                bail!(CoreError::Custom(format!(
+                bail!(internal_error_with_data(format!(
                     "unexpected insert result, {} returned items",
                     signed_trans.len() + failed_trans.len()
                 )))
@@ -482,8 +463,7 @@ impl CfxHandler {
         &self, mut tx: TransactionRequest, password: Option<String>,
     ) -> CoreResult<TransactionWithSignature> {
         let consensus_graph = self.consensus_graph();
-        tx.check_rpc_address_network("tx", &self.network_type)
-            .map_err(CoreError::from)?;
+        tx.check_rpc_address_network("tx", &self.network_type)?;
 
         if tx.nonce.is_none() {
             let nonce = consensus_graph.next_nonce(
@@ -527,7 +507,7 @@ impl CfxHandler {
             password,
             self.accounts.clone(),
         )
-        .map_err(|e| CoreError::Custom(e.to_string()))
+        .map_err(Into::into)
     }
 
     fn estimate_gas_and_collateral_impl(
@@ -539,34 +519,34 @@ impl CfxHandler {
             ExecutionOutcome::NotExecutedDrop(TxDropError::OldNonce(
                 expected,
                 got,
-            )) => bail!(CoreError::Custom(format!(
-                "Can not estimate: nonce is too old expected {:?} got {:?}",
-                expected, got
-            ))),
+            )) => bail!(call_execution_error(
+                "Can not estimate: transaction can not be executed".into(),
+                format! {"nonce is too old expected {:?} got {:?}", expected, got}
+            )),
             ExecutionOutcome::NotExecutedDrop(
                 TxDropError::InvalidRecipientAddress(recipient),
-            ) => bail!(CoreError::Custom(format!(
-                "Can not estimate: invalid recipient address {:?}",
-                recipient
-            ))),
+            ) => bail!(call_execution_error(
+                "Can not estimate: transaction can not be executed".into(),
+                format! {"invalid recipient address {:?}", recipient}
+            )),
             ExecutionOutcome::NotExecutedDrop(TxDropError::SenderWithCode(
                 address,
-            )) => bail!(CoreError::Custom(format!(
-                "Can not estimate: transaction sender has code {:?}",
-                address
-            ))),
+            )) => bail!(call_execution_error(
+                "Can not estimate: transaction sender has code".into(),
+                format! {"transaction sender has code {:?}", address}
+            )),
             ExecutionOutcome::NotExecutedToReconsiderPacking(e) => {
-                bail!(CoreError::Custom(format!(
-                    "Can not estimate: transaction can not be executed {:?}",
-                    e
-                )))
+                bail!(call_execution_error(
+                    "Can not estimate: transaction can not be executed".into(),
+                    format! {"{:?}", e}
+                ))
             }
             ExecutionOutcome::NotExecutedDrop(
                 TxDropError::NotEnoughGasLimit { expected, got },
-            ) => bail!(CoreError::Custom(format!(
-                "Can not estimate: not enough gas limit expected {:?} got {:?}",
-                expected, got
-            ))),
+            ) => bail!(call_execution_error(
+                "Can not estimate: transaction can not be executed".into(),
+                format! {"not enough gas limit with respected to tx size: expected {:?} got {:?}", expected, got}
+            )),
             ExecutionOutcome::ExecutionErrorBumpNonce(
                 ExecutionError::VmError(VmError::Reverted),
                 executed,
@@ -580,18 +560,19 @@ impl CfxHandler {
                         .unwrap()
                         .base32_address
                     });
-                bail!(CoreError::Custom(format!(
-                    "Estimation isn't accurate: transaction is reverted{}{}\n{}",
-                    revert_error,
-                    innermost_error,
-                    errors.join("\n")
-                )))
+                bail!(call_execution_error(
+                    format!("Estimation isn't accurate: transaction is reverted{}{}",
+                        revert_error, innermost_error),
+                    errors.join("\n"),
+                ))
             }
             ExecutionOutcome::ExecutionErrorBumpNonce(e, _) => {
-                bail!(CoreError::Custom(format!(
-                    "Can not estimate: transaction execution failed {:?}",
-                    e
-                )))
+                bail!(call_execution_error(
+                    format! {"Can not estimate: transaction execution failed, \
+                    all gas will be charged (execution error: {:?})", e}
+                    .into(),
+                    format! {"{:?}", e}
+                ))
             }
             ExecutionOutcome::Finished(_) => {}
         };
@@ -614,233 +595,25 @@ impl CfxHandler {
             .len();
 
         if payload_size > max_size {
-            bail!(CoreError::Custom(format!(
-                "Oversized payload: size = {}, max = {}",
-                payload_size, max_size
-            )));
+            bail!(invalid_params(
+                "epoch",
+                Some(format!(
+                    "Oversized payload: size = {}, max = {}",
+                    payload_size, max_size
+                ))
+            ));
         }
         Ok(())
     }
-}
 
-/// Build an RPC Block from a primitive Block
-fn build_block(
-    b: &Block, network: Network, consensus: &ConsensusGraph,
-    consensus_inner: &cfxcore::consensus::ConsensusGraphInner,
-    data_man: &Arc<BlockDataManager>, include_txs: bool,
-    tx_space_filter: Option<Space>,
-) -> Result<RpcBlock, String> {
-
-    let block_hash = b.block_header.hash();
-
-    let epoch_number = consensus_inner
-        .get_block_epoch_number(&block_hash)
-        .or_else(|| data_man.block_epoch_number(&block_hash))
-        .map(Into::into);
-
-    let block_number = consensus.get_block_number(&block_hash)?.map(Into::into);
-
-    let tx_len = b.transactions.len();
-
-    let (gas_used, transactions) = {
-        let maybe_results =
-            consensus_inner.block_execution_results_by_hash(&b.hash(), false);
-
-        let gas_used_sum = match maybe_results {
-            Some(DataVersionTuple(_, ref execution_result)) => {
-                match tx_space_filter {
-                    Some(space_filter) => {
-                        let mut total_gas_used = U256::zero();
-                        let mut prev_acc_gas_used = U256::zero();
-                        for (idx, tx) in b.transactions.iter().enumerate() {
-                            let receipt =
-                                &execution_result.block_receipts.receipts[idx];
-                            if tx.space() == space_filter {
-                                total_gas_used += receipt.accumulated_gas_used
-                                    - prev_acc_gas_used;
-                            }
-                            prev_acc_gas_used = receipt.accumulated_gas_used;
-                        }
-                        Some(total_gas_used)
-                    }
-                    None => {
-                        if tx_len > 0 {
-                            Some(
-                                execution_result.block_receipts.receipts
-                                    [tx_len - 1]
-                                    .accumulated_gas_used,
-                            )
-                        } else {
-                            Some(U256::zero())
-                        }
-                    }
-                }
-            }
-            None => None,
-        };
-
-        let transactions = match include_txs {
-            false => BlockTransactions::Hashes(
-                b.transaction_hashes(Some(Space::Native)),
-            ),
-            true => {
-                let tx_vec = match maybe_results {
-                    Some(DataVersionTuple(_, ref execution_result)) => {
-                        let maybe_state_root =
-                            data_man.get_executed_state_root(&b.hash());
-
-                        b.transactions
-                            .iter()
-                            .enumerate()
-                            .filter(|(_idx, tx)| {
-                                tx_space_filter.is_none()
-                                    || tx.space() == tx_space_filter.unwrap()
-                            })
-                            .enumerate()
-                            .map(|(new_index, (original_index, tx))| {
-                                let receipt = execution_result
-                                    .block_receipts
-                                    .receipts
-                                    .get(original_index)
-                                    .unwrap();
-                                let prior_gas_used = if original_index == 0 {
-                                    U256::zero()
-                                } else {
-                                    execution_result.block_receipts.receipts
-                                        [original_index - 1]
-                                        .accumulated_gas_used
-                                };
-                                let tx_exec_error_msg = &execution_result
-                                    .block_receipts
-                                    .tx_execution_error_messages
-                                    [original_index];
-                                match receipt.outcome_status {
-                                    TransactionStatus::Success
-                                    | TransactionStatus::Failure => {
-                                        let tx_index = TransactionIndex {
-                                            block_hash: b.hash(),
-                                            real_index: original_index,
-                                            is_phantom: false,
-                                            rpc_index: Some(new_index),
-                                        };
-                                        RpcTransaction::from_signed(
-                                            tx,
-                                            Some(PackedOrExecuted::Executed(
-                                                RpcReceipt::new(
-                                                    (**tx).clone(),
-                                                    receipt.clone(),
-                                                    tx_index,
-                                                    prior_gas_used,
-                                                    epoch_number,
-                                                    execution_result
-                                                        .block_receipts
-                                                        .block_number,
-                                                    b.block_header.base_price(),
-                                                    maybe_state_root,
-                                                    if tx_exec_error_msg
-                                                        .is_empty()
-                                                    {
-                                                        None
-                                                    } else {
-                                                        Some(
-                                                            tx_exec_error_msg
-                                                                .clone(),
-                                                        )
-                                                    },
-                                                    network,
-                                                    false,
-                                                    false,
-                                                )?,
-                                            )),
-                                            network,
-                                        )
-                                    }
-                                    TransactionStatus::Skipped => {
-                                        RpcTransaction::from_signed(
-                                            tx, None, network,
-                                        )
-                                    }
-                                }
-                            })
-                            .collect::<Result<_, _>>()?
-                    }
-                    None => b
-                        .transactions
-                        .iter()
-                        .filter(|tx| {
-                            tx_space_filter.is_none()
-                                || tx.space() == tx_space_filter.unwrap()
-                        })
-                        .map(|x| RpcTransaction::from_signed(x, None, network))
-                        .collect::<Result<_, _>>()?,
-                };
-                BlockTransactions::Full(tx_vec)
-            }
-        };
-
-        (gas_used_sum, transactions)
-    };
-
-    let base_fee_per_gas: Option<U256> =
-        b.block_header.base_price().map(|x| x[Space::Native]).into();
-    let gas_limit: U256 = b.block_header.core_space_gas_limit();
-
-    Ok(RpcBlock {
-        hash: H256::from(block_hash),
-        parent_hash: H256::from(b.block_header.parent_hash().clone()),
-        height: b.block_header.height().into(),
-        miner: RpcAddress::try_from_h160(*b.block_header.author(), network)?,
-        deferred_state_root: H256::from(
-            b.block_header.deferred_state_root().clone(),
-        ),
-        deferred_receipts_root: H256::from(
-            b.block_header.deferred_receipts_root().clone(),
-        ),
-        deferred_logs_bloom_hash: H256::from(
-            b.block_header.deferred_logs_bloom_hash().clone(),
-        ),
-        blame: U64::from(b.block_header.blame()),
-        transactions_root: H256::from(
-            b.block_header.transactions_root().clone(),
-        ),
-        epoch_number: epoch_number.map(|e| U256::from(e)),
-        block_number,
-        gas_used,
-        gas_limit,
-        base_fee_per_gas,
-        timestamp: b.block_header.timestamp().into(),
-        difficulty: b.block_header.difficulty().clone().into(),
-        pow_quality: b
-            .block_header
-            .pow_hash
-            .map(|h| pow::pow_hash_to_quality(&h, &b.block_header.nonce())),
-        adaptive: b.block_header.adaptive(),
-        referee_hashes: b
-            .block_header
-            .referee_hashes()
-            .iter()
-            .map(|x| H256::from(*x))
-            .collect(),
-        nonce: b.block_header.nonce().into(),
-        transactions,
-        custom: b
-            .block_header
-            .custom()
-            .clone()
-            .into_iter()
-            .map(Into::into)
-            .collect(),
-        size: Some(b.size().into()),
-        pos_reference: b.block_header.pos_reference().clone(),
-    })
-}
-
-/// Returns a eth_sign-compatible hash of data to sign.
-fn eth_data_hash(mut data: Vec<u8>) -> H256 {
-    let mut message_data =
-        format!("\x19Ethereum Signed Message:\n{}", data.len()).into_bytes();
-    message_data.append(&mut data);
-    keccak(message_data)
+    fn generate_one_block(
+        &self, num_txs: usize, block_size_limit: usize,
+    ) -> CoreResult<H256> {
+        info!("RPC Request: generate_one_block()");
+        Ok(self
+            .block_gen
+            .generate_block(num_txs, block_size_limit, vec![]))
+    }
 }
 
 #[async_trait]
@@ -884,7 +657,7 @@ impl CfxRpcServer for CfxHandler {
         consensus_graph
             .get_height_from_epoch_number(epoch_num.into())
             .map(|h| h.into())
-            .map_err(|e| invalid_params_rpc_err(e, None::<bool>))
+            .map_err(|e| into_rpc_err(e.to_string()))
     }
 
     async fn balance(
@@ -920,8 +693,7 @@ impl CfxRpcServer for CfxHandler {
         );
         let state_db = self
             .consensus
-            .get_state_db_by_epoch_number(epoch_num, "num")
-            .map_err(into_rpc_err)?;
+            .get_state_db_by_epoch_number(epoch_num, "num")?;
         match state_db
             .get_account(&addr.hex_address.with_native_space())
             .map_err(into_rpc_err)?
@@ -929,7 +701,7 @@ impl CfxRpcServer for CfxHandler {
             None => Ok(None),
             Some(acc) => Ok(Some(
                 RpcAddress::try_from_h160(acc.admin, network)
-                    .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?,
+                    .map_err(into_rpc_err)?,
             )),
         }
     }
@@ -946,16 +718,14 @@ impl CfxRpcServer for CfxHandler {
         );
         let state_db = self
             .consensus
-            .get_state_db_by_epoch_number(epoch_num, "num")
-            .map_err(into_rpc_err)?;
+            .get_state_db_by_epoch_number(epoch_num, "num")?;
         match state_db
             .get_account(&addr.hex_address.with_native_space())
             .map_err(into_rpc_err)?
         {
-            None => SponsorInfo::default(network)
-                .map_err(|e| invalid_params_rpc_err(e, None::<bool>)),
+            None => SponsorInfo::default(network).map_err(into_rpc_err),
             Some(acc) => SponsorInfo::try_from(acc.sponsor_info, network)
-                .map_err(|e| invalid_params_rpc_err(e, None::<bool>)),
+                .map_err(into_rpc_err),
         }
     }
 
@@ -970,8 +740,7 @@ impl CfxRpcServer for CfxHandler {
         );
         let state_db = self
             .consensus
-            .get_state_db_by_epoch_number(epoch_num, "num")
-            .map_err(into_rpc_err)?;
+            .get_state_db_by_epoch_number(epoch_num, "num")?;
         let acc = state_db
             .get_account(&addr.hex_address.with_native_space())
             .map_err(into_rpc_err)?;
@@ -989,8 +758,7 @@ impl CfxRpcServer for CfxHandler {
         );
         let state_db = self
             .consensus
-            .get_state_db_by_epoch_number(epoch_num, "num")
-            .map_err(into_rpc_err)?;
+            .get_state_db_by_epoch_number(epoch_num, "num")?;
         match state_db
             .get_deposit_list(&addr.hex_address.with_native_space())
             .map_err(into_rpc_err)?
@@ -1011,8 +779,7 @@ impl CfxRpcServer for CfxHandler {
         );
         let state_db = self
             .consensus
-            .get_state_db_by_epoch_number(epoch_num, "num")
-            .map_err(into_rpc_err)?;
+            .get_state_db_by_epoch_number(epoch_num, "num")?;
         match state_db
             .get_vote_list(&addr.hex_address.with_native_space())
             .map_err(into_rpc_err)?
@@ -1033,8 +800,7 @@ impl CfxRpcServer for CfxHandler {
         );
         let state_db = self
             .consensus
-            .get_state_db_by_epoch_number(epoch_num, "num")
-            .map_err(into_rpc_err)?;
+            .get_state_db_by_epoch_number(epoch_num, "num")?;
         let acc = state_db
             .get_account(&addr.hex_address.with_native_space())
             .map_err(into_rpc_err)?;
@@ -1058,8 +824,7 @@ impl CfxRpcServer for CfxHandler {
         );
         let state_db = self
             .consensus
-            .get_state_db_by_epoch_number(epoch_num, "num")
-            .map_err(into_rpc_err)?;
+            .get_state_db_by_epoch_number(epoch_num, "num")?;
         let address = addr.hex_address.with_native_space();
         let code = match state_db.get_account(&address).map_err(into_rpc_err)? {
             Some(acc) => match state_db
@@ -1089,16 +854,15 @@ impl CfxRpcServer for CfxHandler {
         );
         let state_db = self
             .consensus
-            .get_state_db_by_epoch_number(epoch_num, "epoch_num")
-            .map_err(into_rpc_err)?;
-        let position: H256 = BigEndianHash::from_uint(&pos);
+            .get_state_db_by_epoch_number(epoch_num, "epoch_num")?;
+        let position: H256 = H256::from_uint(&pos);
         let key =
             StorageKey::new_storage_key(&addr.hex_address, position.as_ref())
                 .with_native_space();
         Ok(
             match state_db.get::<StorageValue>(key).map_err(into_rpc_err)? {
                 Some(entry) => {
-                    let h: H256 = BigEndianHash::from_uint(&entry.value);
+                    let h: H256 = H256::from_uint(&entry.value);
                     Some(h.into())
                 }
                 None => None,
@@ -1117,8 +881,7 @@ impl CfxRpcServer for CfxHandler {
         );
         let root = self
             .consensus
-            .get_storage_state_by_epoch_number(epoch_num, "epoch_num")
-            .map_err(into_rpc_err)?
+            .get_storage_state_by_epoch_number(epoch_num, "epoch_num")?
             .get_original_storage_root(&address.hex_address.with_native_space())
             .map_err(into_rpc_err)?;
         Ok(Some(root))
@@ -1146,7 +909,7 @@ impl CfxRpcServer for CfxHandler {
                     include_txs,
                     Some(Space::Native),
                 )
-                .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?,
+                .map_err(into_rpc_err)?,
             )),
         }
     }
@@ -1166,30 +929,24 @@ impl CfxRpcServer for CfxHandler {
 
         if block_hash == genesis && (pivot_hash != genesis || epoch_number != 0)
         {
-            return Err(invalid_params_rpc_err(
-                "pivot chain assumption failed",
-                None::<bool>,
-            ));
+            return Err(invalid_params_msg("pivot chain assumption failed"));
         }
 
         if block_hash != genesis
             && (consensus_graph.get_block_epoch_number(&block_hash)
                 != epoch_number.into())
         {
-            return Err(invalid_params_rpc_err(
-                "pivot chain assumption failed",
-                None::<bool>,
-            ));
+            return Err(invalid_params_msg("pivot chain assumption failed"));
         }
 
         inner
             .check_block_pivot_assumption(&pivot_hash, epoch_number)
-            .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?;
+            .map_err(|e| invalid_params_msg(&e.to_string()))?;
 
-        let block =
-            self.data_man.block_by_hash(&block_hash, false).ok_or_else(
-                || invalid_params_rpc_err("Block not found", None::<bool>),
-            )?;
+        let block = self
+            .data_man
+            .block_by_hash(&block_hash, false)
+            .ok_or(invalid_params_msg("Block not found"))?;
 
         debug!("Build RpcBlock {}", block.hash());
         build_block(
@@ -1201,7 +958,7 @@ impl CfxRpcServer for CfxHandler {
             true,
             Some(Space::Native),
         )
-        .map_err(|e| invalid_params_rpc_err(e, None::<bool>))
+        .map_err(into_rpc_err)
     }
 
     async fn block_by_epoch_number(
@@ -1213,12 +970,11 @@ impl CfxRpcServer for CfxHandler {
 
         let epoch_height = consensus_graph
             .get_height_from_epoch_number(epoch_number.into())
-            .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?;
+            .map_err(|e| invalid_params_msg(&e.to_string()))?;
 
-        let pivot_hash =
-            inner
-                .get_pivot_hash_from_epoch_number(epoch_height)
-                .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?;
+        let pivot_hash = inner
+            .get_pivot_hash_from_epoch_number(epoch_height)
+            .map_err(|e| invalid_params_msg(&e.to_string()))?;
 
         let maybe_block = self.data_man.block_by_hash(&pivot_hash, false);
         match maybe_block {
@@ -1233,7 +989,7 @@ impl CfxRpcServer for CfxHandler {
                     include_txs,
                     Some(Space::Native),
                 )
-                .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?,
+                .map_err(into_rpc_err)?,
             )),
         }
     }
@@ -1266,7 +1022,7 @@ impl CfxRpcServer for CfxHandler {
                     include_txs,
                     Some(Space::Native),
                 )
-                .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?,
+                .map_err(into_rpc_err)?,
             )),
         }
     }
@@ -1303,21 +1059,43 @@ impl CfxRpcServer for CfxHandler {
         let tx: TransactionWithSignature = invalid_params_check(
             "raw",
             TransactionWithSignature::from_raw(&raw_tx.into_vec()),
-        )
-        .map_err(|e| e)?;
+        )?;
 
         if tx.recover_public().is_err() {
             return Err(invalid_params_rpc_err(
-                "Can not recover pubkey for Ethereum like tx",
-                None::<bool>,
+                "tx",
+                Some("Can not recover pubkey for Ethereum like tx"),
             ));
         }
 
-        let hash = self
+        let r = self
             .send_transaction_with_signature(tx)
-            .map_err(into_rpc_err)?;
+            .map_err(into_rpc_err);
 
-        Ok(hash)
+        if r.is_ok() && self.config.dev_pack_tx_immediately {
+            // Try to pack and execute this new tx.
+            for _ in 0..DEFERRED_STATE_EPOCH_COUNT {
+                let generated = self.generate_one_block(
+                    1, /* num_txs */
+                    self.sync
+                        .get_synchronization_graph()
+                        .verification_config
+                        .max_block_size_in_bytes,
+                )?;
+                loop {
+                    // Wait for the new block to be fully processed, so all
+                    // generated blocks form a chain for
+                    // `tx` to be executed.
+                    if self.consensus.best_block_hash() == generated {
+                        break;
+                    } else {
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                }
+            }
+        }
+
+        r
     }
 
     async fn call(
@@ -1334,68 +1112,48 @@ impl CfxRpcServer for CfxHandler {
             ExecutionOutcome::NotExecutedDrop(TxDropError::OldNonce(
                 expected,
                 got,
-            )) => Err(invalid_params_rpc_err(
-                format!(
-                    "Transaction can not be executed: nonce is too old expected {:?} got {:?}",
-                    expected, got
-                ),
-                None::<bool>,
+            )) => Err(call_execution_error(
+                "Transaction can not be executed".into(),
+                format! {"nonce is too old expected {:?} got {:?}", expected, got},
             )),
             ExecutionOutcome::NotExecutedDrop(
                 TxDropError::InvalidRecipientAddress(recipient),
-            ) => Err(invalid_params_rpc_err(
-                format!(
-                    "Transaction can not be executed: invalid recipient address {:?}",
-                    recipient
-                ),
-                None::<bool>,
+            ) => Err(call_execution_error(
+                "Transaction can not be executed".into(),
+                format! {"invalid recipient address {:?}", recipient},
             )),
             ExecutionOutcome::NotExecutedDrop(
                 TxDropError::NotEnoughGasLimit { expected, got },
-            ) => Err(invalid_params_rpc_err(
-                format!(
-                    "Transaction can not be executed: not enough gas limit expected {:?} got {:?}",
-                    expected, got
-                ),
-                None::<bool>,
+            ) => Err(call_execution_error(
+                "Transaction can not be executed".into(),
+                format! {"not enough gas limit with respected to tx size: expected {:?} got {:?}", expected, got},
             )),
             ExecutionOutcome::NotExecutedDrop(TxDropError::SenderWithCode(
                 address,
-            )) => Err(invalid_params_rpc_err(
-                format!(
-                    "Transaction can not be executed: tx sender has contract code: {:?}",
-                    address
-                ),
-                None::<bool>,
+            )) => Err(call_execution_error(
+                "Transaction can not be executed".into(),
+                format! {"tx sender has contract code: {:?}", address},
             )),
             ExecutionOutcome::NotExecutedToReconsiderPacking(e) => {
-                Err(invalid_params_rpc_err(
-                    format!(
-                        "Transaction can not be executed: {:?}",
-                        e
-                    ),
-                    None::<bool>,
+                Err(call_execution_error(
+                    "Transaction can not be executed".into(),
+                    format! {"{:?}", e},
                 ))
             }
             ExecutionOutcome::ExecutionErrorBumpNonce(
                 ExecutionError::VmError(VmError::Reverted),
                 executed,
-            ) => Err(invalid_params_rpc_err(
-                format!(
-                    "Transaction reverted: 0x{}",
-                    executed.output.to_hex::<String>()
-                ),
-                None::<bool>,
+            ) => Err(call_execution_error(
+                "Transaction reverted".into(),
+                format!("0x{}", executed.output.to_hex::<String>()),
             )),
             ExecutionOutcome::ExecutionErrorBumpNonce(e, _) => {
-                Err(invalid_params_rpc_err(
-                    format!("Transaction execution failed: {:?}", e),
-                    None::<bool>,
+                Err(call_execution_error(
+                    "Transaction execution failed".into(),
+                    format! {"{:?}", e},
                 ))
             }
-            ExecutionOutcome::Finished(executed) => {
-                Ok(executed.output.into())
-            }
+            ExecutionOutcome::Finished(executed) => Ok(executed.output.into()),
         }
     }
 
@@ -1404,20 +1162,20 @@ impl CfxRpcServer for CfxHandler {
     ) -> RpcResult<Vec<RpcLog>> {
         if let Some(addresses) = &filter.address {
             for address in addresses.iter() {
-                check_rpc_address_network(
-                    Some(address.network),
-                    &self.network_type,
-                )
-                .map_err(|e| {
-                    invalid_params_rpc_err(e.to_string(), None::<bool>)
-                })?;
+                invalid_params_check(
+                    "filter.address",
+                    check_rpc_address_network(
+                        Some(address.network),
+                        &self.network_type,
+                    ),
+                )?;
             }
         }
 
         let consensus_graph = self.consensus_graph();
         info!("RPC Request: cfx_getLogs({:?})", filter);
 
-        let filter: LogFilter = filter.into_primitive().map_err(|e| e)?;
+        let filter: LogFilter = filter.into_primitive()?;
 
         let logs = consensus_graph
             .logs(filter)
@@ -1426,16 +1184,16 @@ impl CfxRpcServer for CfxHandler {
             .cloned()
             .map(|l| RpcLog::try_from_localized(l, self.network_type))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?;
+            .map_err(into_rpc_err)?;
 
         if let Some(max_limit) = self.config.get_logs_filter_max_limit {
             if logs.len() > max_limit {
                 return Err(invalid_params_rpc_err(
-                    format!(
+                    "filter",
+                    Some(format!(
                         "This query results in too many logs, max limitation is {}, please filter results by a smaller epoch/block range",
                         max_limit
-                    ),
-                    None::<bool>,
+                    )),
                 ));
             }
         }
@@ -1498,7 +1256,7 @@ impl CfxRpcServer for CfxHandler {
                             false,
                             false,
                         )
-                        .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?,
+                        .map_err(into_rpc_err)?,
                     )
                 }
             };
@@ -1508,7 +1266,7 @@ impl CfxRpcServer for CfxHandler {
                 Some(packed_or_executed),
                 self.network_type,
             )
-            .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?;
+            .map_err(into_rpc_err)?;
 
             return Ok(Some(rpc_tx));
         }
@@ -1519,7 +1277,7 @@ impl CfxRpcServer for CfxHandler {
             }
             let rpc_tx =
                 RpcTransaction::from_signed(&tx, None, self.network_type)
-                    .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?;
+                    .map_err(into_rpc_err)?;
             return Ok(Some(rpc_tx));
         }
 
@@ -2217,35 +1975,35 @@ impl CfxDebugRpcServer for CfxHandler {
 
     async fn accounts(&self) -> RpcResult<Vec<RpcAddress>> {
         let accounts: Vec<Address> = self.accounts.accounts().map_err(|e| {
-            invalid_params_rpc_err(
-                format!("Could not fetch accounts. With error {:?}", e),
-                None::<bool>,
-            )
+            into_rpc_err(format!(
+                "Could not fetch accounts. With error {:?}",
+                e
+            ))
         })?;
         Ok(accounts
             .into_iter()
             .map(|addr| RpcAddress::try_from_h160(addr, self.network_type))
             .collect::<Result<_, _>>()
-            .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?)
+            .map_err(|e| into_rpc_err(e))?)
     }
 
     async fn new_account(&self, password: String) -> RpcResult<RpcAddress> {
         let address =
             self.accounts.new_account(&password.into()).map_err(|e| {
-                invalid_params_rpc_err(
-                    format!("Could not create account. With error {:?}", e),
-                    None::<bool>,
-                )
+                into_rpc_err(format!(
+                    "Could not create account. With error {:?}",
+                    e
+                ))
             })?;
         RpcAddress::try_from_h160(address, self.network_type)
-            .map_err(|e| invalid_params_rpc_err(e, None::<bool>))
+            .map_err(into_rpc_err)
     }
 
     async fn unlock_account(
         &self, address: RpcAddress, password: String, duration: Option<U128>,
     ) -> RpcResult<bool> {
         self.check_address_network(address.network)?;
-        let account: cfx_types::H160 = address.into();
+        let account: H160 = address.into();
         let store = self.accounts.clone();
 
         let duration = match duration {
@@ -2254,10 +2012,7 @@ impl CfxDebugRpcServer for CfxHandler {
                 let duration: U128 = duration.into();
                 let v = duration.low_u64() as u32;
                 if duration != v.into() {
-                    return Err(invalid_params_rpc_err(
-                        "invalid duration number",
-                        None::<bool>,
-                    ));
+                    return Err(invalid_params_msg("invalid duration number"));
                 } else {
                     Some(v)
                 }
@@ -2320,9 +2075,9 @@ impl CfxDebugRpcServer for CfxHandler {
         &self, tx: TransactionRequest, password: Option<String>,
     ) -> RpcResult<String> {
         let tx = self.prepare_transaction(tx, password).map_err(|e| {
-            invalid_params_rpc_err(
-                format!("failed to sign transaction: {:?}", e),
-                None::<bool>,
+            invalid_params(
+                "tx",
+                Some(format!("failed to sign transaction: {:?}", e)),
             )
         })?;
         let raw_tx = rlp::encode(&tx);
@@ -2340,7 +2095,8 @@ impl CfxDebugRpcServer for CfxHandler {
             .get_block_hashes_by_epoch_or_block_hash(epoch.into())
             .map_err(into_rpc_err)?;
 
-        let pivot_hash = *hashes.last().ok_or_else(|| internal_error())?;
+        let pivot_hash =
+            *hashes.last().ok_or(into_rpc_err("Inconsistent state"))?;
         let mut epoch_receipts = vec![];
 
         for h in hashes {
@@ -2416,7 +2172,7 @@ impl CfxDebugRpcServer for CfxHandler {
                     RpcTransaction::from_signed(&tx, None, self.network_type)
                 })
                 .collect::<Result<Vec<RpcTransaction>, String>>()
-                .map_err(|e| invalid_params_rpc_err(e, None::<bool>))?,
+                .map_err(|e| into_rpc_err(e))?,
             first_tx_status: tx_status,
             pending_count: pending_count.into(),
         })

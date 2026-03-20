@@ -2,7 +2,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-mod block_provider;
+use cfx_rpc_cfx_impl::helpers::block_provider;
 mod subscribers;
 
 pub use block_provider::{build_block, build_header};
