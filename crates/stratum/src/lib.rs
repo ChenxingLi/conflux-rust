@@ -30,6 +30,7 @@ pub use traits::{Error, JobDispatcher, PushWorkHandler, ServiceConfiguration};
 use cfx_types::H256;
 use hash::keccak;
 use jsonrpsee::{
+    core::RpcResult,
     server::RpcModule,
     types::{ErrorObjectOwned, Id, Params, Request, Response, ResponsePayload},
 };
@@ -50,8 +51,6 @@ use tokio::{
 thread_local! {
     static CURRENT_PEER_ADDR: RefCell<Option<SocketAddr>> = RefCell::new(None);
 }
-
-type RpcResult<T> = Result<T, ErrorObjectOwned>;
 
 const NOTIFY_COUNTER_INITIAL: u32 = 16;
 
