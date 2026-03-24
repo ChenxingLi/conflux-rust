@@ -5225,12 +5225,10 @@ dependencies = [
  "anyhow",
  "bcs",
  "hex",
- "mirai-annotations",
  "once_cell",
  "rand 0.8.5",
  "ref-cast",
  "serde",
- "serde_bytes",
 ]
 
 [[package]]
