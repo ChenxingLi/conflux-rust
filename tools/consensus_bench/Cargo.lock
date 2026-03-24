@@ -2740,7 +2740,6 @@ dependencies = [
  "anyhow",
  "bcs",
  "cfx-types",
- "chrono",
  "diem-crypto",
  "diem-crypto-derive",
  "diem-logger",

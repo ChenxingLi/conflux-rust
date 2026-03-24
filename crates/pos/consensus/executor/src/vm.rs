@@ -140,14 +140,10 @@ impl PosVM {
     }
 
     fn process_genesis_transction(
-        change_set: &WriteSetPayload,
+        write_set: &WriteSetPayload,
     ) -> Result<TransactionOutput, VMStatus> {
-        let events = match change_set {
-            WriteSetPayload::Direct(change_set) => change_set.events().to_vec(),
-            _ => return Err(VMStatus::Error(StatusCode::CFX_UNEXPECTED_TX)),
-        };
-
-        Ok(Self::gen_output(events))
+        let WriteSetPayload::Direct(change_set) = write_set;
+        Ok(Self::gen_output(change_set.events().to_vec()))
     }
 
     fn gen_output(events: Vec<ContractEvent>) -> TransactionOutput {

@@ -18,10 +18,10 @@ use crate::{
     on_chain_config::ValidatorSet,
     proof::TransactionListProof,
     transaction::{
-        ChangeSet, Module, RawTransaction, Script, SignatureCheckedTransaction,
-        SignedTransaction, Transaction, TransactionArgument,
-        TransactionListWithProof, TransactionPayload, TransactionStatus,
-        TransactionToCommit, Version, WriteSetPayload,
+        ChangeSet, RawTransaction, SignatureCheckedTransaction,
+        SignedTransaction, Transaction, TransactionListWithProof,
+        TransactionPayload, TransactionStatus, TransactionToCommit, Version,
+        WriteSetPayload,
     },
     validator_config::{
         ConsensusPrivateKey, ConsensusPublicKey, ConsensusSignature,
@@ -33,7 +33,6 @@ use crate::{
     write_set::{WriteOp, WriteSet, WriteSetMut},
 };
 use diem_crypto::{bls, ec_vrf, test_utils::KeyPair, traits::*, HashValue};
-use move_core_types::language_storage::TypeTag;
 use proptest::{
     collection::{vec, SizeRange},
     option,
@@ -320,66 +319,7 @@ fn new_raw_transaction(
     expiration_time_secs: u64,
 ) -> RawTransaction {
     let chain_id = ChainId::test();
-    match payload {
-        TransactionPayload::Module(module) => RawTransaction::new_module(
-            sender,
-            module,
-            expiration_time_secs,
-            chain_id,
-        ),
-        TransactionPayload::Script(script) => RawTransaction::new_script(
-            sender,
-            script,
-            expiration_time_secs,
-            chain_id,
-        ),
-        TransactionPayload::ScriptFunction(script_fn) => {
-            RawTransaction::new_script_function(
-                sender,
-                script_fn,
-                expiration_time_secs,
-                chain_id,
-            )
-        }
-        TransactionPayload::WriteSet(_) => {
-            // WriteSet transactions are only used for genesis, not for
-            // user transactions. Generate a no-op script instead.
-            RawTransaction::new_script(
-                sender,
-                Script::new(vec![], vec![], vec![]),
-                expiration_time_secs,
-                chain_id,
-            )
-        }
-        TransactionPayload::Election(election_payload) => {
-            RawTransaction::new_election(sender, election_payload, chain_id)
-        }
-        TransactionPayload::Retire(retire_payload) => {
-            RawTransaction::new_retire(sender, retire_payload)
-        }
-        TransactionPayload::Register(register_payload) => RawTransaction::new(
-            sender,
-            TransactionPayload::Register(register_payload),
-            0,
-            chain_id,
-        ),
-        TransactionPayload::UpdateVotingPower(update_voting_power_payload) => {
-            RawTransaction::new(
-                sender,
-                TransactionPayload::UpdateVotingPower(
-                    update_voting_power_payload,
-                ),
-                0,
-                chain_id,
-            )
-        }
-        TransactionPayload::PivotDecision(pivot_decision) => {
-            RawTransaction::new_pivot_decision(sender, pivot_decision, chain_id)
-        }
-        TransactionPayload::Dispute(dispute_payload) => {
-            RawTransaction::new_dispute(sender, dispute_payload)
-        }
-    }
+    RawTransaction::new(sender, payload, expiration_time_secs, chain_id)
 }
 
 impl Arbitrary for RawTransaction {
@@ -488,14 +428,6 @@ impl Arbitrary for SignedTransaction {
 }
 
 impl TransactionPayload {
-    pub fn script_strategy() -> impl Strategy<Value = Self> {
-        any::<Script>().prop_map(TransactionPayload::Script)
-    }
-
-    pub fn module_strategy() -> impl Strategy<Value = Self> {
-        any::<Module>().prop_map(TransactionPayload::Module)
-    }
-
     pub fn write_set_strategy() -> impl Strategy<Value = Self> {
         any::<WriteSet>().prop_map(|ws| {
             TransactionPayload::WriteSet(WriteSetPayload::Direct(
@@ -541,44 +473,7 @@ impl Arbitrary for TransactionPayload {
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_args: ()) -> Self::Strategy {
-        // Most transactions in practice will be programs, but other parts of
-        // the system should at least not choke on write set strategies
-        // so introduce them with decent probability. The figures below
-        // are probability weights.
-        prop_oneof![
-            4 => Self::script_strategy(),
-            1 => Self::module_strategy(),
-            1 => Self::write_set_strategy(),
-        ]
-        .boxed()
-    }
-}
-
-impl Arbitrary for Script {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: ()) -> Self::Strategy {
-        // XXX This should eventually be an actually valid program, maybe?
-        // The vector sizes are picked out of thin air.
-        (
-            vec(any::<u8>(), 0..100),
-            vec(any::<TypeTag>(), 0..4),
-            vec(any::<TransactionArgument>(), 0..10),
-        )
-            .prop_map(|(code, ty_args, args)| Script::new(code, ty_args, args))
-            .boxed()
-    }
-}
-
-impl Arbitrary for Module {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: ()) -> Self::Strategy {
-        // XXX How should we generate random modules?
-        // The vector sizes are picked out of thin air.
-        vec(any::<u8>(), 0..100).prop_map(Module::new).boxed()
+        Self::write_set_strategy().boxed()
     }
 }
 

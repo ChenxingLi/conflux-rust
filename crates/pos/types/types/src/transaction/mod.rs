@@ -23,16 +23,7 @@ use diem_crypto::{
     HashValue, PrivateKey, VRFProof,
 };
 use diem_crypto_derive::{BCSCryptoHash, CryptoHasher};
-pub use module::Module;
-use move_core_types::transaction_argument::convert_txn_args;
 use pow_types::StakingEvent;
-pub use script::{
-    ArgumentABI, Script, ScriptABI, ScriptFunction, ScriptFunctionABI,
-    TransactionScriptABI, TypeArgumentABI,
-};
-pub use transaction_argument::{
-    parse_transaction_argument, TransactionArgument,
-};
 
 use crate::{
     account_address::AccountAddress,
@@ -63,11 +54,6 @@ use crate::{
 
 pub mod authenticator;
 mod change_set;
-pub mod helpers;
-pub mod metadata;
-mod module;
-mod script;
-mod transaction_argument;
 
 pub type Version = u64; // Height - also used for MVCC in StateDB
 
@@ -117,54 +103,6 @@ impl RawTransaction {
         RawTransaction {
             sender,
             payload,
-            expiration_timestamp_secs,
-            chain_id,
-        }
-    }
-
-    /// Create a new `RawTransaction` with a script.
-    ///
-    /// A script transaction contains only code to execute. No publishing is
-    /// allowed in scripts.
-    pub fn new_script(
-        sender: AccountAddress, script: Script, expiration_timestamp_secs: u64,
-        chain_id: ChainId,
-    ) -> Self {
-        RawTransaction {
-            sender,
-            payload: TransactionPayload::Script(script),
-            expiration_timestamp_secs,
-            chain_id,
-        }
-    }
-
-    /// Create a new `RawTransaction` with a script function.
-    ///
-    /// A script transaction contains only code to execute. No publishing is
-    /// allowed in scripts.
-    pub fn new_script_function(
-        sender: AccountAddress, script_function: ScriptFunction,
-        expiration_timestamp_secs: u64, chain_id: ChainId,
-    ) -> Self {
-        RawTransaction {
-            sender,
-            payload: TransactionPayload::ScriptFunction(script_function),
-            expiration_timestamp_secs,
-            chain_id,
-        }
-    }
-
-    /// Create a new `RawTransaction` with a module to publish.
-    ///
-    /// A module transaction is the only way to publish code. Only one module
-    /// per transaction can be published.
-    pub fn new_module(
-        sender: AccountAddress, module: Module, expiration_timestamp_secs: u64,
-        chain_id: ChainId,
-    ) -> Self {
-        RawTransaction {
-            sender,
-            payload: TransactionPayload::Module(module),
             expiration_timestamp_secs,
             chain_id,
         }
@@ -298,72 +236,28 @@ impl RawTransaction {
 
     pub fn into_payload(self) -> TransactionPayload { self.payload }
 
-    pub fn format_for_client(
-        &self, get_transaction_name: impl Fn(&[u8]) -> String,
-    ) -> String {
-        let (code, args) = match &self.payload {
-            TransactionPayload::WriteSet(_) => ("genesis".to_string(), vec![]),
-            TransactionPayload::Script(script) => (
-                get_transaction_name(script.code()),
-                convert_txn_args(script.args()),
-            ),
-            TransactionPayload::ScriptFunction(script_fn) => (
-                format!("{}::{}", script_fn.module(), script_fn.function()),
-                script_fn.args().to_vec(),
-            ),
-            TransactionPayload::Module(_) => {
-                ("module publishing".to_string(), vec![])
-            }
-            TransactionPayload::Election(_) => ("election".to_string(), vec![]),
-            TransactionPayload::Retire(_) => ("retire".to_string(), vec![]),
-            TransactionPayload::PivotDecision(_) => {
-                ("pivot_decision".to_string(), vec![])
-            }
-            TransactionPayload::Register(_) => ("register".to_string(), vec![]),
-            TransactionPayload::UpdateVotingPower(_) => {
-                ("update_voting_power".to_string(), vec![])
-            }
-            TransactionPayload::Dispute(_) => ("dispute".to_string(), vec![]),
-        };
-        let mut f_args: String = "".to_string();
-        for arg in args {
-            f_args = format!("{}\n\t\t\t{:02X?},", f_args, arg);
-        }
-        format!(
-            "RawTransaction {{ \n\
-             \tsender: {}, \n\
-             \tpayload: {{, \n\
-             \t\ttransaction: {}, \n\
-             \t\targs: [ {} \n\
-             \t\t]\n\
-             \t}}, \n\
-             \texpiration_timestamp_secs: {:#?}, \n\
-             \tchain_id: {},
-             }}",
-            self.sender,
-            code,
-            f_args,
-            self.expiration_timestamp_secs,
-            self.chain_id,
-        )
-    }
-
     /// Return the sender of this transaction.
     pub fn sender(&self) -> AccountAddress { self.sender }
 }
 
 /// Different kinds of transactions.
+///
+/// **BCS serialization note:** Variant indices must remain stable for
+/// database compatibility. Indices 1-3 are legacy Diem Move variants that
+/// were never used in Conflux PoS but must be preserved as placeholders.
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TransactionPayload {
     /// A system maintenance transaction.
     WriteSet(WriteSetPayload),
-    /// A transaction that executes code.
-    Script(Script),
-    /// A transaction that publishes code.
-    Module(Module),
-    /// A transaction that executes an existing script function published
-    /// on-chain.
-    ScriptFunction(ScriptFunction),
+    /// Legacy Diem variant (index 1). Never used in Conflux PoS.
+    #[doc(hidden)]
+    _LegacyScript,
+    /// Legacy Diem variant (index 2). Never used in Conflux PoS.
+    #[doc(hidden)]
+    _LegacyModule,
+    /// Legacy Diem variant (index 3). Never used in Conflux PoS.
+    #[doc(hidden)]
+    _LegacyScriptFunction,
 
     /// A transaction that add a node to committee candidates.
     Election(ElectionPayload),
@@ -383,22 +277,7 @@ pub enum TransactionPayload {
 
 impl TransactionPayload {
     pub fn should_trigger_reconfiguration_by_default(&self) -> bool {
-        match self {
-            Self::WriteSet(ws) => {
-                ws.should_trigger_reconfiguration_by_default()
-            }
-            _ => false,
-        }
-    }
-
-    pub fn into_script_function(self) -> ScriptFunction {
-        match self {
-            Self::ScriptFunction(f) => f,
-            payload => panic!(
-                "Expected ScriptFunction(_) payload, found: {:#?}",
-                payload
-            ),
-        }
+        matches!(self, Self::WriteSet(WriteSetPayload::Direct(_)))
     }
 }
 
@@ -511,27 +390,11 @@ impl DisputePayload {
     }
 }
 
-/// Two different kinds of WriteSet transactions.
+/// WriteSet transaction payload.
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub enum WriteSetPayload {
     /// Directly passing in the WriteSet.
     Direct(ChangeSet),
-    /// Generate the WriteSet by running a script.
-    Script {
-        /// Execute the script as the designated signer.
-        execute_as: AccountAddress,
-        /// Script body that gets executed.
-        script: Script,
-    },
-}
-
-impl WriteSetPayload {
-    pub fn should_trigger_reconfiguration_by_default(&self) -> bool {
-        match self {
-            Self::Direct(_) => true,
-            Self::Script { .. } => false,
-        }
-    }
 }
 
 /// A transaction that has been signed.
@@ -662,19 +525,6 @@ impl SignedTransaction {
             _ => self.authenticator.verify(&self.raw_txn)?,
         }
         Ok(SignatureCheckedTransaction(self))
-    }
-
-    pub fn format_for_client(
-        &self, get_transaction_name: impl Fn(&[u8]) -> String,
-    ) -> String {
-        format!(
-            "SignedTransaction {{ \n \
-             raw_txn: {}, \n \
-             authenticator: {:#?}, \n \
-             }}",
-            self.raw_txn.format_for_client(get_transaction_name),
-            self.authenticator
-        )
     }
 }
 
@@ -1193,24 +1043,6 @@ impl Transaction {
         match self {
             Transaction::UserTransaction(txn) => Ok(txn),
             _ => Err(format_err!("Not a user transaction.")),
-        }
-    }
-
-    pub fn format_for_client(
-        &self, get_transaction_name: impl Fn(&[u8]) -> String,
-    ) -> String {
-        match self {
-            Transaction::UserTransaction(user_txn) => {
-                user_txn.format_for_client(get_transaction_name)
-            }
-            // TODO: display proper information for client
-            Transaction::GenesisTransaction(_write_set) => {
-                String::from("genesis")
-            }
-            // TODO: display proper information for client
-            Transaction::BlockMetadata(_block_metadata) => {
-                String::from("block_metadata")
-            }
         }
     }
 }
