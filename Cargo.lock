@@ -3447,7 +3447,6 @@ dependencies = [
 name = "diem-state-view"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "diem-crypto",
  "diem-types",
 ]
