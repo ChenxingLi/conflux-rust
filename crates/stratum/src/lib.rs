@@ -414,7 +414,7 @@ impl StratumImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{net::SocketAddr, sync::Arc};
+    use std::{net::SocketAddr, sync::Arc, time::Duration};
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpStream,
@@ -538,7 +538,7 @@ mod tests {
             .to_vec();
         auth_request.extend(b"\n");
 
-        let auth_response = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":1}\n";
+        let auth_response = r#"{"jsonrpc":"2.0","result":true,"id":1}"#;
 
         let response = {
             let mut stream = TcpStream::connect(&addr)
@@ -571,7 +571,7 @@ mod tests {
             trace!(target: "stratum", "Received authorization confirmation");
 
             // Wait a bit
-            sleep(std::time::Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
 
             // Push work
             trace!(target: "stratum", "Pushing work to peers");
@@ -580,10 +580,10 @@ mod tests {
                 .expect("Pushing work should produce no errors");
 
             // Wait a bit
-            sleep(std::time::Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
 
             trace!(target: "stratum", "Ready to read work from server");
-            sleep(std::time::Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
 
             stream.shutdown().await.expect("Should shutdown write half");
 
