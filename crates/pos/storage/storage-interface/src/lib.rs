@@ -309,34 +309,6 @@ where D: 'static + DbReader + DbWriter
     fn from(db: D) -> Self { Self::new(db) }
 }
 
-/// Network types for storage service
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum StorageRequest {
-    GetStartupInfoRequest,
-    SaveTransactionsRequest(Box<SaveTransactionsRequest>),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct SaveTransactionsRequest {
-    pub txns_to_commit: Vec<TransactionToCommit>,
-    pub first_version: Version,
-    pub ledger_info_with_signatures: Option<LedgerInfoWithSignatures>,
-}
-
-impl SaveTransactionsRequest {
-    /// Constructor.
-    pub fn new(
-        txns_to_commit: Vec<TransactionToCommit>, first_version: Version,
-        ledger_info_with_signatures: Option<LedgerInfoWithSignatures>,
-    ) -> Self {
-        SaveTransactionsRequest {
-            txns_to_commit,
-            first_version,
-            ledger_info_with_signatures,
-        }
-    }
-}
-
 pub trait DBReaderForPoW: Send + Sync + DbReader {
     fn get_latest_ledger_info_option(&self)
         -> Option<LedgerInfoWithSignatures>;

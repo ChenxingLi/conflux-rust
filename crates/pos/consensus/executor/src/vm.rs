@@ -21,26 +21,13 @@ use diem_types::{
     vm_status::{KeptVMStatus, StatusCode, VMStatus},
 };
 
-/// This trait describes the VM's execution interface.
-pub trait VMExecutor: Send {
-    // NOTE: At the moment there are no persistent caches that live past the end
-    // of a block (that's why execute_block doesn't take &self.)
-    // There are some cache invalidation issues around transactions publishing
-    // code that need to be sorted out before that's possible.
-
-    /// Executes a block of transactions and returns output for each one of
-    /// them.
-    fn execute_block(
-        transactions: Vec<Transaction>, state_view: &dyn StateView,
-        catch_up_mode: bool,
-    ) -> Result<Vec<TransactionOutput>, VMStatus>;
-}
-
 /// A VM for Conflux PoS chain.
 pub struct PosVM;
 
-impl VMExecutor for PosVM {
-    fn execute_block(
+impl PosVM {
+    /// Executes a block of transactions and returns output for each one of
+    /// them.
+    pub fn execute_block(
         transactions: Vec<Transaction>, state_view: &dyn StateView,
         catch_up_mode: bool,
     ) -> Result<Vec<TransactionOutput>, VMStatus> {
