@@ -17,7 +17,7 @@ use std::{convert::TryInto, sync::Arc};
 
 use primitives::pos::PosBlockId;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum BlockTransactions {
     /// Only hashes
     Hashes(Vec<H256>),
@@ -71,7 +71,7 @@ impl<'a> Deserialize<'a> for BlockTransactions {
     }
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Block {
     /// Hash of the block
