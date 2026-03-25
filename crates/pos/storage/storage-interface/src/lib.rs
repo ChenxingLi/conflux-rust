@@ -182,16 +182,6 @@ pub trait DbReader: Send + Sync {
     /// ../pos-ledger-db/struct.DiemDB.html#method.get_block_timestamp
     fn get_block_timestamp(&self, version: u64) -> Result<u64>;
 
-    /// Gets the version of the last transaction committed before timestamp,
-    /// a committed block at or after the required timestamp must exist
-    /// (otherwise it's possible the next block committed as a timestamp
-    /// smaller than the one in the request).
-    fn get_last_version_before_timestamp(
-        &self, _timestamp: u64, _ledger_version: Version,
-    ) -> Result<Version> {
-        unimplemented!()
-    }
-
     /// Returns the latest ledger info.
     fn get_latest_ledger_info(&self) -> Result<LedgerInfoWithSignatures>;
 
