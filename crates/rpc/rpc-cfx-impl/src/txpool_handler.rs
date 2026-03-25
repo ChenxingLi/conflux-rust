@@ -11,11 +11,13 @@ use cfx_rpc_cfx_types::{
     TxPoolPendingNonceRange, TxPoolStatus, TxWithPoolInfo,
 };
 use cfx_rpc_utils::error::jsonrpsee_error_helpers::{
-    internal_rpc_err, invalid_params_rpc_err,
+    internal_rpc_err, invalid_params_check,
 };
 use cfx_types::{Address, AddressSpaceUtil, H256, U256, U64};
-use cfxcore::{SharedConsensusGraph, SharedTransactionPool};
-use jsonrpsee::core::RpcResult;
+use cfxcore::{
+    errors::Error as CoreError, SharedConsensusGraph, SharedTransactionPool,
+};
+use jsonrpsee::{core::RpcResult, types::ErrorObjectOwned};
 use primitives::transaction::Transaction;
 
 pub struct TxPoolHandler {
@@ -37,8 +39,10 @@ impl TxPoolHandler {
     }
 
     fn check_address_network(&self, address: &RpcAddress) -> RpcResult<()> {
-        check_rpc_address_network(Some(address.network), &self.network)
-            .map_err(|e| invalid_params_rpc_err(e.to_string(), None::<bool>))
+        invalid_params_check(
+            "address",
+            check_rpc_address_network(Some(address.network), &self.network),
+        )
     }
 }
 
@@ -92,7 +96,7 @@ impl TxPoolServer for TxPoolHandler {
                 None,
                 self.consensus.best_epoch_number(),
             )
-            .map_err(|e| internal_rpc_err(e.to_string()))?;
+            .map_err(|e| ErrorObjectOwned::from(CoreError::from(e)))?;
 
         let mut max_nonce: U256 = U256::from(0);
         let mut min_nonce: U256 = U256::max_value();
@@ -181,13 +185,13 @@ impl TxPoolServer for TxPoolHandler {
                 maybe_limit.map(|limit| limit.as_usize()),
                 self.consensus.best_epoch_number(),
             )
-            .map_err(|e| internal_rpc_err(e.to_string()))?;
+            .map_err(|e| ErrorObjectOwned::from(CoreError::from(e)))?;
 
         let pending_transactions = pending_txs
             .into_iter()
             .map(|tx| {
                 RpcTransaction::from_signed(&tx, None, self.network)
-                    .map_err(|e| internal_rpc_err(e))
+                    .map_err(|e| ErrorObjectOwned::from(CoreError::from(e)))
             })
             .collect::<Result<Vec<RpcTransaction>, _>>()?;
 
