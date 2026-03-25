@@ -8,10 +8,4 @@
 //! Core types for Move.
 
 pub mod account_address;
-pub mod identifier;
-pub mod language_storage;
-#[cfg(any(test, feature = "fuzzing"))]
-pub mod proptest_types;
-#[cfg(test)]
-mod unit_tests;
 pub mod vm_status;
