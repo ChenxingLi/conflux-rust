@@ -722,8 +722,6 @@ impl VMValidatorResult {
                 Some(status) => {
                     status.status_type() == StatusType::Unknown
                         || status.status_type() == StatusType::Validation
-                        || status.status_type()
-                            == StatusType::InvariantViolation
                 }
             },
             "Unexpected discarded status: {:?}",
