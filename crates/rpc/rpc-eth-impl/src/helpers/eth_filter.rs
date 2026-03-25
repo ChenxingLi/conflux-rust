@@ -10,7 +10,10 @@ use crate::{
 };
 use cfx_rpc_cfx_types::traits::BlockProvider;
 use cfx_rpc_eth_types::{EthRpcLogFilter, Log};
-use cfx_rpc_utils::error::error_codes as codes;
+use cfx_rpc_utils::error::{
+    error_codes as codes,
+    jsonrpc_error_helpers::error_object_owned_to_jsonrpc_error,
+};
 use cfx_tasks::TaskExecutor;
 use cfx_types::{Space, H256};
 use cfx_util_macros::bail;
@@ -211,7 +214,8 @@ impl Filterable for EthFilterHelper {
             .iter()
             .cloned()
             .map(|l| Log::try_from_localized(l, self, false))
-            .collect::<Result<_, _>>()?)
+            .collect::<Result<_, _>>()
+            .map_err(|e| error_object_owned_to_jsonrpc_error(e.into()))?)
     }
 
     fn logs_for_epoch(
@@ -234,7 +238,8 @@ impl Filterable for EthFilterHelper {
             .filter(|l| filter.matches(&l.entry))
             .cloned()
             .map(|l| Log::try_from_localized(l, self, removed))
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<_, _>>()
+            .map_err(|e| error_object_owned_to_jsonrpc_error(e.into()))?;
         result.extend(logs);
 
         Ok(result)
@@ -379,7 +384,9 @@ impl Filterable for EthFilterHelper {
     fn into_primitive_filter(
         &self, filter: EthRpcLogFilter,
     ) -> RpcResult<LogFilter> {
-        filter.into_primitive(self).map_err(|e| e.into())
+        filter
+            .into_primitive(self)
+            .map_err(|e| error_object_owned_to_jsonrpc_error(e.into()))
     }
 }
 

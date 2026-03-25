@@ -12,6 +12,7 @@ use cfx_rpc_eth_types::{
     trace::{LocalizedSetAuthTrace, LocalizedTrace as EthLocalizedTrace},
     BlockId, Index, LocalizedTrace, TraceFilter,
 };
+use cfx_rpc_utils::error::jsonrpc_error_helpers::error_object_owned_to_jsonrpc_error;
 use cfx_types::H256;
 use cfx_util_macros::unwrap_option_or_return_result_none as unwrap_or_return;
 use cfxcore::{errors::Result as CoreResult, SharedConsensusGraph};
@@ -125,7 +126,9 @@ impl TraceApi {
     pub fn filter_traces(
         &self, filter: TraceFilter,
     ) -> CoreResult<Vec<LocalizedTrace>> {
-        let primitive_filter = filter.into_primitive()?;
+        let primitive_filter = filter
+            .into_primitive()
+            .map_err(error_object_owned_to_jsonrpc_error)?;
 
         let Some(primitive_traces) = self
             .trace_handler
