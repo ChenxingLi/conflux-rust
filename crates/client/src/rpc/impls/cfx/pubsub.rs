@@ -316,7 +316,6 @@ impl ChainNotificationHandler {
         trace!("notify_epoch({:?})", epoch);
 
         let (epoch, hashes) = epoch;
-        let hashes = hashes.into_iter().map(H256::from).collect();
 
         notify(
             &subscriber,
