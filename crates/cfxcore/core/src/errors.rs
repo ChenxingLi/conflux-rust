@@ -37,6 +37,10 @@ pub enum Error {
         "JsonRpcError directly constructed to return to Rpc peer. Error: {0}"
     )]
     JsonRpcError(#[from] JsonRpcError),
+    #[error(
+        "JsonRpseeError directly constructed to return to Rpc peer. Error: {0}"
+    )]
+    JsonRpseeError(#[from] ErrorObjectOwned),
     #[error("Jsonrpc error InvalidParam {0}: {1}.")]
     InvalidParam(String, String),
     #[error("Custom error detail: {0}")]
@@ -53,6 +57,7 @@ impl From<Error> for JsonRpcError {
     fn from(e: Error) -> JsonRpcError {
         match e {
             Error::JsonRpcError(j) => j,
+            Error::JsonRpseeError(e) => error_object_owned_to_jsonrpc_error(e),
             Error::InvalidParam(param, details) => {
                 JsonRpcError {
                     code: ErrorCode::InvalidParams,

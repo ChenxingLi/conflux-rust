@@ -10,10 +10,7 @@ use crate::{
 };
 use cfx_rpc_cfx_types::traits::BlockProvider;
 use cfx_rpc_eth_types::{EthRpcLogFilter, Log};
-use cfx_rpc_utils::error::{
-    error_codes as codes,
-    jsonrpc_error_helpers::error_object_owned_to_jsonrpc_error,
-};
+use cfx_rpc_utils::error::error_codes as codes;
 use cfx_tasks::TaskExecutor;
 use cfx_types::{Space, H256};
 use cfx_util_macros::bail;
@@ -21,7 +18,7 @@ use cfxcore::{
     channel::Channel, errors::Error as CfxRpcError, ConsensusGraph,
     SharedConsensusGraph, SharedTransactionPool,
 };
-use jsonrpc_core::{Error as RpcError, ErrorCode, Result as RpcResult};
+use jsonrpsee::{core::RpcResult, types::ErrorObjectOwned as RpcError};
 use log::{debug, error, info};
 use parking_lot::{Mutex, RwLock};
 use primitives::{
@@ -215,7 +212,7 @@ impl Filterable for EthFilterHelper {
             .cloned()
             .map(|l| Log::try_from_localized(l, self, false))
             .collect::<Result<_, _>>()
-            .map_err(|e| error_object_owned_to_jsonrpc_error(e.into()))?)
+            .map_err(RpcError::from)?)
     }
 
     fn logs_for_epoch(
@@ -225,11 +222,11 @@ impl Filterable for EthFilterHelper {
         let logs =
             match Self::retrieve_epoch_logs(epoch, self.consensus_graph()) {
                 Some(logs) => logs,
-                None => bail!(RpcError {
-                    code: ErrorCode::ServerError(codes::UNSUPPORTED),
-                    message: "Unable to retrieve logs for epoch".into(),
-                    data: None,
-                }),
+                None => bail!(RpcError::owned(
+                    codes::UNSUPPORTED as i32,
+                    "Unable to retrieve logs for epoch",
+                    None::<()>
+                )),
             };
 
         // apply filter to logs
@@ -239,7 +236,7 @@ impl Filterable for EthFilterHelper {
             .cloned()
             .map(|l| Log::try_from_localized(l, self, removed))
             .collect::<Result<_, _>>()
-            .map_err(|e| error_object_owned_to_jsonrpc_error(e.into()))?;
+            .map_err(RpcError::from)?;
         result.extend(logs);
 
         Ok(result)
@@ -266,11 +263,11 @@ impl Filterable for EthFilterHelper {
             recent_reported_epochs.front().cloned()
         {
             if last_epoch_number != num {
-                bail!(RpcError {
-                    code: ErrorCode::ServerError(codes::UNSUPPORTED),
-                    message: "Last block number does not match".into(),
-                    data: None,
-                });
+                bail!(RpcError::owned(
+                    codes::UNSUPPORTED as i32,
+                    "Last block number does not match",
+                    None::<()>
+                ));
             }
             Some(hash)
         } else {
@@ -384,9 +381,7 @@ impl Filterable for EthFilterHelper {
     fn into_primitive_filter(
         &self, filter: EthRpcLogFilter,
     ) -> RpcResult<LogFilter> {
-        filter
-            .into_primitive(self)
-            .map_err(|e| error_object_owned_to_jsonrpc_error(e.into()))
+        filter.into_primitive(self).map_err(RpcError::from)
     }
 }
 

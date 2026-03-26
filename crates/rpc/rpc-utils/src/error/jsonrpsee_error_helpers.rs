@@ -1,15 +1,9 @@
-use jsonrpc_core::Error as JsonRpcError;
+use alloy_rpc_types::error::EthRpcErrorCode;
 use jsonrpsee::types::error::{
     ErrorObjectOwned, INTERNAL_ERROR_CODE, INTERNAL_ERROR_MSG,
     INVALID_PARAMS_CODE, INVALID_REQUEST_CODE,
 };
 use serde::Serialize;
-
-pub fn jsonrpc_error_to_error_object_owned(
-    e: JsonRpcError,
-) -> ErrorObjectOwned {
-    ErrorObjectOwned::owned(e.code.code() as i32, e.message, e.data)
-}
 
 pub fn invalid_params_msg(param: &str) -> ErrorObjectOwned {
     let data: Option<bool> = None;
@@ -20,6 +14,17 @@ pub fn invalid_params<S: Serialize>(
     param: &str, data: Option<S>,
 ) -> ErrorObjectOwned {
     invalid_params_rpc_err(format!("Invalid parameters: {}", param), data)
+}
+
+pub fn invalid_params_rpc_err<S: Serialize>(
+    msg: impl Into<String>, data: Option<S>,
+) -> ErrorObjectOwned {
+    ErrorObjectOwned::owned(INVALID_PARAMS_CODE, msg, data)
+}
+
+// code is -32000
+pub fn invalid_input_rpc_err(msg: impl Into<String>) -> ErrorObjectOwned {
+    rpc_err(EthRpcErrorCode::InvalidInput.code(), msg, None::<()>)
 }
 
 pub fn invalid_params_check<T, E: std::fmt::Display>(
@@ -36,12 +41,6 @@ pub fn invalid_params_check<T, E: std::fmt::Display>(
 pub fn invalid_request_msg(param: &str) -> ErrorObjectOwned {
     let data: Option<bool> = None;
     ErrorObjectOwned::owned(INVALID_REQUEST_CODE, param, data)
-}
-
-pub fn invalid_params_rpc_err<S: Serialize>(
-    msg: impl Into<String>, data: Option<S>,
-) -> ErrorObjectOwned {
-    ErrorObjectOwned::owned(INVALID_PARAMS_CODE, msg, data)
 }
 
 pub fn internal_error() -> ErrorObjectOwned {
