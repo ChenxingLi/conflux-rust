@@ -27,6 +27,12 @@ pub struct AccessPath {
     pub path: Vec<u8>,
 }
 
+impl AccessPath {
+    pub fn new(address: AccountAddress, path: Vec<u8>) -> Self {
+        AccessPath { address, path }
+    }
+}
+
 impl fmt::Debug for AccessPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         write!(

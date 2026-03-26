@@ -10,12 +10,13 @@
 //! This crate defines [`trait StateView`](StateView).
 
 use diem_crypto::HashValue;
-use diem_types::{term_state::PosState, transaction::Version};
+use diem_types::term_state::PosState;
 
 /// A read-only snapshot of the global PoS state, passed to the VM for
 /// transaction execution.
 pub trait StateView: Sync {
-    /// For logging and debugging purpose, identifies what this view is for.
+    /// For logging and debugging purpose, identifies what this view is
+    /// for.
     fn id(&self) -> StateViewId { StateViewId::Miscellaneous }
 
     /// Returns the PoS state for this view.
@@ -24,12 +25,8 @@ pub trait StateView: Sync {
 
 #[derive(Copy, Clone)]
 pub enum StateViewId {
-    /// State-sync applying a chunk of transactions.
-    ChunkExecution { first_version: Version },
-    /// LEC applying a block.
+    /// Executor applying a block.
     BlockExecution { block_id: HashValue },
-    /// VmValidator verifying incoming transaction.
-    TransactionValidation { base_version: Version },
-    /// For test, db-bootstrapper, etc. Usually not aimed to pass to VM.
+    /// For test, db-bootstrapper, etc.
     Miscellaneous,
 }

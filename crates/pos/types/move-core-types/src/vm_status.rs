@@ -202,16 +202,12 @@ pub enum StatusCode {
     // The pos transaction does not pass validation based on pos state
     CFX_INVALID_TX = 28,
     ELECTION_NON_EXISITENT_NODE = 29,
-    ELECTION_NON_ACCEPTED_NODE = 30,
     ELECTION_TERGET_TERM_NOT_OPEN = 31,
     ELECTION_WITHOUT_VOTES = 32,
     PIVOT_DECISION_HEIGHT_TOO_OLD = 33,
 
     // Runtime Errors: 4000-4999
-    UNKNOWN_RUNTIME_STATUS = 4000,
     EXECUTED = 4001,
-    OUT_OF_GAS = 4002,
-    ABORTED = 4016,
 
     // A reserved status to represent an unknown vm status.
     UNKNOWN_STATUS = 18446744073709551615,
@@ -276,13 +272,6 @@ impl<'de> de::Deserialize<'de> for StatusCode {
 
 impl From<StatusCode> for u64 {
     fn from(status: StatusCode) -> u64 { status as u64 }
-}
-
-pub mod sub_status {
-    // Native Function Error sub-codes
-    pub const NFE_VECTOR_ERROR_BASE: u64 = 0;
-    // Failure in BCS deserialization
-    pub const NFE_BCS_SERIALIZATION_FAILURE: u64 = 0x1C5;
 }
 
 /// The `Arbitrary` impl only generates validation statuses since the

@@ -32,10 +32,7 @@ use crate::{
     chain_id::ChainId,
     contract_event::ContractEvent,
     ledger_info::LedgerInfo,
-    proof::{
-        accumulator::InMemoryAccumulator, TransactionInfoWithProof,
-        TransactionListProof,
-    },
+    proof::{accumulator::InMemoryAccumulator, TransactionInfoWithProof},
     term_state::{
         DisputeEvent, ElectionEvent, NodeID, RegisterEvent, RetireEvent,
         UpdateVotingPowerEvent,
@@ -273,12 +270,6 @@ pub enum TransactionPayload {
     PivotDecision(PivotBlockDecision),
 
     Dispute(DisputePayload),
-}
-
-impl TransactionPayload {
-    pub fn should_trigger_reconfiguration_by_default(&self) -> bool {
-        matches!(self, Self::WriteSet(WriteSetPayload::Direct(_)))
-    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -879,106 +870,6 @@ impl TransactionToCommit {
     pub fn gas_used(&self) -> u64 { self.gas_used }
 
     pub fn status(&self) -> &KeptVMStatus { &self.status }
-}
-
-/// The list may have three states:
-/// 1. The list is empty. Both proofs must be `None`.
-/// 2. The list has only 1 transaction/transaction_info. Then
-/// `proof_of_first_transaction` must exist and `proof_of_last_transaction` must
-/// be `None`. 3. The list has 2+ transactions/transaction_infos. The both
-/// proofs must exist.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct TransactionListWithProof {
-    pub transactions: Vec<Transaction>,
-    pub events: Option<Vec<Vec<ContractEvent>>>,
-    pub first_transaction_version: Option<Version>,
-    pub proof: TransactionListProof,
-}
-
-impl TransactionListWithProof {
-    /// Constructor.
-    pub fn new(
-        transactions: Vec<Transaction>,
-        events: Option<Vec<Vec<ContractEvent>>>,
-        first_transaction_version: Option<Version>,
-        proof: TransactionListProof,
-    ) -> Self {
-        Self {
-            transactions,
-            events,
-            first_transaction_version,
-            proof,
-        }
-    }
-
-    /// Creates an empty transaction list.
-    pub fn new_empty() -> Self {
-        Self::new(vec![], None, None, TransactionListProof::new_empty())
-    }
-
-    /// Verifies the transaction list with the proofs, both carried on `self`.
-    ///
-    /// Two things are ensured if no error is raised:
-    ///   1. All the transactions exist on the ledger represented by
-    /// `ledger_info`.   2. And the transactions in the list has consecutive
-    /// versions starting from `first_transaction_version`. When
-    /// `first_transaction_version` is None, ensures the list is empty.
-    pub fn verify(
-        &self, ledger_info: &LedgerInfo,
-        first_transaction_version: Option<Version>,
-    ) -> Result<()> {
-        ensure!(
-            self.first_transaction_version == first_transaction_version,
-            "First transaction version ({}) not expected ({}).",
-            Self::display_option_version(self.first_transaction_version),
-            Self::display_option_version(first_transaction_version),
-        );
-
-        let txn_hashes: Vec<_> =
-            self.transactions.iter().map(CryptoHash::hash).collect();
-        self.proof.verify(
-            ledger_info,
-            self.first_transaction_version,
-            &txn_hashes,
-        )?;
-
-        // Verify the events if they exist.
-        if let Some(event_lists) = &self.events {
-            ensure!(
-                event_lists.len() == self.transactions.len(),
-                "The length of event_lists ({}) does not match the number of transactions ({}).",
-                event_lists.len(),
-                self.transactions.len(),
-            );
-            itertools::zip_eq(event_lists, self.proof.transaction_infos())
-                .map(|(events, txn_info)| {
-                    let event_hashes: Vec<_> = events.iter().map(ContractEvent::hash).collect();
-                    let event_root_hash =
-                        InMemoryAccumulator::<EventAccumulatorHasher>::from_leaves(&event_hashes)
-                            .root_hash();
-                    ensure!(
-                        event_root_hash == txn_info.event_root_hash(),
-                        "Some event root hash calculated doesn't match that carried on the \
-                         transaction info.",
-                    );
-                    Ok(())
-                })
-                .collect::<Result<Vec<_>>>()?;
-        }
-
-        Ok(())
-    }
-
-    pub fn is_empty(&self) -> bool { self.transactions.is_empty() }
-
-    pub fn len(&self) -> usize { self.transactions.len() }
-
-    fn display_option_version(version: Option<Version>) -> String {
-        match version {
-            Some(v) => format!("{}", v),
-            None => String::from("absent"),
-        }
-    }
 }
 
 /// `Transaction` will be the transaction type used internally in the diem node

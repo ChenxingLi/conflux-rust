@@ -16,12 +16,10 @@ use crate::{
     event::{EventHandle, EventKey},
     ledger_info::{LedgerInfo, LedgerInfoWithSignatures},
     on_chain_config::ValidatorSet,
-    proof::TransactionListProof,
     transaction::{
         ChangeSet, RawTransaction, SignatureCheckedTransaction,
-        SignedTransaction, Transaction, TransactionListWithProof,
-        TransactionPayload, TransactionStatus, TransactionToCommit, Version,
-        WriteSetPayload,
+        SignedTransaction, Transaction, TransactionPayload, TransactionStatus,
+        TransactionToCommit, Version, WriteSetPayload,
     },
     validator_config::{
         ConsensusPrivateKey, ConsensusPublicKey, ConsensusSignature,
@@ -35,7 +33,6 @@ use crate::{
 use diem_crypto::{bls, ec_vrf, test_utils::KeyPair, traits::*, HashValue};
 use proptest::{
     collection::{vec, SizeRange},
-    option,
     prelude::*,
     sample::Index,
 };
@@ -661,61 +658,6 @@ impl Arbitrary for TransactionToCommitGen {
                 }
             })
             .boxed()
-    }
-}
-
-fn arb_transaction_list_with_proof(
-) -> impl Strategy<Value = TransactionListWithProof> {
-    (
-        vec(
-            (
-                any::<SignedTransaction>(),
-                vec(any::<ContractEvent>(), 0..10),
-            ),
-            0..10,
-        ),
-        any::<TransactionListProof>(),
-    )
-        .prop_flat_map(|(transaction_and_events, proof)| {
-            let transactions: Vec<_> = transaction_and_events
-                .clone()
-                .into_iter()
-                .map(|(transaction, _event)| {
-                    Transaction::UserTransaction(transaction)
-                })
-                .collect();
-            let events: Vec<_> = transaction_and_events
-                .into_iter()
-                .map(|(_transaction, event)| event)
-                .collect();
-
-            (
-                Just(transactions.clone()),
-                option::of(Just(events)),
-                if transactions.is_empty() {
-                    Just(None).boxed()
-                } else {
-                    any::<Version>().prop_map(Some).boxed()
-                },
-                Just(proof),
-            )
-        })
-        .prop_map(|(transactions, events, first_txn_version, proof)| {
-            TransactionListWithProof::new(
-                transactions,
-                events,
-                first_txn_version,
-                proof,
-            )
-        })
-}
-
-impl Arbitrary for TransactionListWithProof {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        arb_transaction_list_with_proof().boxed()
     }
 }
 

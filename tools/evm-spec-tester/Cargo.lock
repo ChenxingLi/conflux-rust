@@ -5224,9 +5224,7 @@ dependencies = [
  "anyhow",
  "bcs",
  "hex",
- "once_cell",
  "rand 0.8.5",
- "ref-cast",
  "serde",
 ]
 
@@ -6406,26 +6404,6 @@ name = "reexport-proc-macro"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6fd6195683d528242d8b017810909f8aaf91f111fdc4dbe8b10e4dd50e0c7f4"
-
-[[package]]
-name = "ref-cast"
-version = "1.0.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f43faa91b1c8b36841ee70e97188a869d37ae21759da6846d4be66de5bf7b12c"
-dependencies = [
- "ref-cast-impl",
-]
-
-[[package]]
-name = "ref-cast-impl"
-version = "1.0.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d2275aab483050ab2a7364c1a46604865ee7d6906684e08db0f090acf74f9e7"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.111",
-]
 
 [[package]]
 name = "regex"
