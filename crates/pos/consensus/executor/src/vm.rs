@@ -8,7 +8,7 @@ use diem_types::{
     block_info::PivotBlockDecision,
     contract_event::ContractEvent,
     epoch_state::EpochState,
-    on_chain_config::{self, new_epoch_event_key, OnChainConfig, ValidatorSet},
+    on_chain_config::new_epoch_event_key,
     term_state::pos_state_config::{PosStateConfigTrait, POS_STATE_CONFIG},
     transaction::{
         authenticator::TransactionAuthenticator, ConflictSignature,
@@ -19,7 +19,6 @@ use diem_types::{
     },
     validator_verifier::{ValidatorConsensusInfo, ValidatorVerifier},
     vm_status::{KeptVMStatus, StatusCode, VMStatus},
-    write_set::{WriteOp, WriteSetMut},
 };
 
 /// This trait describes the VM's execution interface.
@@ -95,7 +94,7 @@ impl PosVM {
                 ContractEvent::new(new_epoch_event_key(), validator_bytes);
             events.push(contract_event);
         }
-        Ok(Self::gen_output(events, false))
+        Ok(Self::gen_output(events))
     }
 
     fn check_signature_for_user_tx(
@@ -137,7 +136,7 @@ impl PosVM {
             _ => return Err(VMStatus::Error(StatusCode::CFX_UNEXPECTED_TX)),
         };
 
-        Ok(Self::gen_output(events, false))
+        Ok(Self::gen_output(events))
     }
 
     fn process_genesis_transction(
@@ -148,29 +147,12 @@ impl PosVM {
             _ => return Err(VMStatus::Error(StatusCode::CFX_UNEXPECTED_TX)),
         };
 
-        Ok(Self::gen_output(events, true))
+        Ok(Self::gen_output(events))
     }
 
-    fn gen_output(
-        events: Vec<ContractEvent>, record_events_on_state: bool,
-    ) -> TransactionOutput {
-        let new_epoch_event_key = on_chain_config::new_epoch_event_key();
+    fn gen_output(events: Vec<ContractEvent>) -> TransactionOutput {
         let status = TransactionStatus::Keep(KeptVMStatus::Executed);
-        let mut write_set = WriteSetMut::default();
-
-        // TODO(linxi): support other event key
-        if record_events_on_state {
-            for event in &events {
-                if *event.key() == new_epoch_event_key {
-                    write_set.push((
-                        ValidatorSet::CONFIG_ID.access_path(),
-                        WriteOp::Value(event.event_data().to_vec()),
-                    ));
-                }
-            }
-        }
-
-        TransactionOutput::new(write_set.freeze().unwrap(), events, 0, status)
+        TransactionOutput::new(events, 0, status)
     }
 }
 

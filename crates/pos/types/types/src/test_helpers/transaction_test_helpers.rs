@@ -8,11 +8,7 @@
 use crate::{
     account_address::AccountAddress,
     chain_id::ChainId,
-    transaction::{
-        Module, RawTransaction, Script, SignatureCheckedTransaction,
-        SignedTransaction,
-    },
-    write_set::WriteSet,
+    transaction::{Module, RawTransaction, Script, SignedTransaction},
 };
 use diem_crypto::{bls::*, traits::*};
 
@@ -145,14 +141,4 @@ pub fn get_test_txn_with_chain_id(
         expiration_time,
         chain_id,
     )
-}
-
-pub fn get_write_set_txn(
-    sender: AccountAddress, private_key: &BLSPrivateKey,
-    _public_key: BLSPublicKey, write_set: Option<WriteSet>,
-) -> SignatureCheckedTransaction {
-    let write_set = write_set.unwrap_or_default();
-    RawTransaction::new_write_set(sender, write_set, ChainId::test())
-        .sign(&private_key)
-        .unwrap()
 }

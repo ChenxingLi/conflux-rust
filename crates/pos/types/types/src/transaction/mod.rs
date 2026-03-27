@@ -6,7 +6,6 @@
 // See http://www.gnu.org/licenses/
 
 use std::{
-    collections::HashMap,
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     ops::Deref,
@@ -37,7 +36,6 @@ pub use transaction_argument::{
 
 use crate::{
     account_address::AccountAddress,
-    account_state_blob::AccountStateBlob,
     block_info::PivotBlockDecision,
     block_metadata::BlockMetadata,
     chain_id::ChainId,
@@ -61,7 +59,6 @@ use crate::{
     vm_status::{
         DiscardedVMStatus, KeptVMStatus, StatusCode, StatusType, VMStatus,
     },
-    write_set::WriteSet,
 };
 
 pub mod authenticator;
@@ -169,48 +166,6 @@ impl RawTransaction {
             sender,
             payload: TransactionPayload::Module(module),
             expiration_timestamp_secs,
-            chain_id,
-        }
-    }
-
-    pub fn new_write_set(
-        sender: AccountAddress, write_set: WriteSet, chain_id: ChainId,
-    ) -> Self {
-        Self::new_change_set(
-            sender,
-            ChangeSet::new(write_set, vec![]),
-            chain_id,
-        )
-    }
-
-    pub fn new_change_set(
-        sender: AccountAddress, change_set: ChangeSet, chain_id: ChainId,
-    ) -> Self {
-        RawTransaction {
-            sender,
-            payload: TransactionPayload::WriteSet(WriteSetPayload::Direct(
-                change_set,
-            )),
-            // Write-set transactions are special and important and shouldn't
-            // expire.
-            expiration_timestamp_secs: u64::max_value(),
-            chain_id,
-        }
-    }
-
-    pub fn new_writeset_script(
-        sender: AccountAddress, script: Script, signer: AccountAddress,
-        chain_id: ChainId,
-    ) -> Self {
-        RawTransaction {
-            sender,
-            payload: TransactionPayload::WriteSet(WriteSetPayload::Script {
-                execute_as: signer,
-                script,
-            }),
-            // Write-set transactions are special and important and shouldn't
-            // expire.
-            expiration_timestamp_secs: u64::max_value(),
             chain_id,
         }
     }
@@ -941,9 +896,6 @@ impl VMValidatorResult {
 /// The output of executing a transaction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TransactionOutput {
-    /// The list of writes this transaction intends to do.
-    write_set: WriteSet,
-
     /// The list of events emitted during this transaction.
     events: Vec<ContractEvent>,
 
@@ -956,22 +908,14 @@ pub struct TransactionOutput {
 
 impl TransactionOutput {
     pub fn new(
-        write_set: WriteSet, events: Vec<ContractEvent>, gas_used: u64,
-        status: TransactionStatus,
+        events: Vec<ContractEvent>, gas_used: u64, status: TransactionStatus,
     ) -> Self {
         TransactionOutput {
-            write_set,
             events,
             gas_used,
             status,
         }
     }
-
-    pub fn into(self) -> (WriteSet, Vec<ContractEvent>) {
-        (self.write_set, self.events)
-    }
-
-    pub fn write_set(&self) -> &WriteSet { &self.write_set }
 
     pub fn events(&self) -> &[ContractEvent] { &self.events }
 
@@ -1062,7 +1006,6 @@ impl Display for TransactionInfo {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TransactionToCommit {
     transaction: Transaction,
-    account_states: HashMap<AccountAddress, AccountStateBlob>,
     events: Vec<ContractEvent>,
     gas_used: u64,
     status: KeptVMStatus,
@@ -1070,13 +1013,11 @@ pub struct TransactionToCommit {
 
 impl TransactionToCommit {
     pub fn new(
-        transaction: Transaction,
-        account_states: HashMap<AccountAddress, AccountStateBlob>,
-        events: Vec<ContractEvent>, gas_used: u64, status: KeptVMStatus,
+        transaction: Transaction, events: Vec<ContractEvent>, gas_used: u64,
+        status: KeptVMStatus,
     ) -> Self {
         TransactionToCommit {
             transaction,
-            account_states,
             events,
             gas_used,
             status,
@@ -1084,10 +1025,6 @@ impl TransactionToCommit {
     }
 
     pub fn transaction(&self) -> &Transaction { &self.transaction }
-
-    pub fn account_states(&self) -> &HashMap<AccountAddress, AccountStateBlob> {
-        &self.account_states
-    }
 
     pub fn events(&self) -> &[ContractEvent] { &self.events }
 

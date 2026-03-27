@@ -8,8 +8,7 @@
 use crate::{
     account_state_blob::AccountStateBlob,
     proof::{
-        AccountStateProof, AccumulatorConsistencyProof, EventProof,
-        SparseMerkleRangeProof, TestAccumulatorProof,
+        AccumulatorConsistencyProof, TestAccumulatorProof,
         TestAccumulatorRangeProof, TransactionInfoWithProof,
         TransactionListProof,
     },
@@ -51,27 +50,7 @@ proptest! {
 
 
     #[test]
-    fn test_sparse_merkle_range_bcs_roundtrip(
-        proof in any::<SparseMerkleRangeProof>(),
-    ) {
-        assert_canonical_encode_decode(proof);
-    }
-
-
-    #[test]
     fn test_transaction_proof_bcs_roundtrip(proof in any::<TransactionInfoWithProof>()) {
-        assert_canonical_encode_decode(proof);
-    }
-
-
-    #[test]
-    fn test_account_state_proof_bcs_roundtrip(proof in any::<AccountStateProof>()) {
-        assert_canonical_encode_decode(proof);
-    }
-
-
-    #[test]
-    fn test_event_proof_bcs_roundtrip(proof in any::<EventProof>()) {
         assert_canonical_encode_decode(proof);
     }
 
