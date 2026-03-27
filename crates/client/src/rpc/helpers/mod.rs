@@ -6,7 +6,7 @@ mod block_provider;
 mod subscribers;
 
 pub use block_provider::{build_block, build_header};
-pub use cfx_rpc::helpers::{
+pub use cfx_rpc_eth_impl::helpers::{
     poll_filter::{
         limit_logs, PollFilter, SyncPollFilter, MAX_BLOCK_HISTORY_SIZE,
     },

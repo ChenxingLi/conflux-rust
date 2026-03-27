@@ -200,7 +200,7 @@ cfx-parity-trace-types = { path = "./crates/execution/parity-trace-types" }
 cfx-rpc-eth-api = { path = "./crates/rpc/rpc-eth-api" }
 cfx-rpc-cfx-api = { path = "./crates/rpc/rpc-cfx-api" }
 cfx-util-macros = { path = "./crates/util/util-macros" }
-cfx-rpc = { path = "./crates/rpc/rpc-eth-impl" }
+cfx-rpc-eth-impl = { path = "./crates/rpc/rpc-eth-impl" }
 cfx-rpc-utils = { path = "./crates/rpc/rpc-utils" }
 cfx-rpc-builder = { path = "./crates/rpc/rpc-builder" }
 cfx-rpc-cfx-impl = { path = "./crates/rpc/rpc-cfx-impl" }
