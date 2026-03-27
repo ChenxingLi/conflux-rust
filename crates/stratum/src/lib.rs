@@ -37,20 +37,16 @@ use jsonrpsee::{
 use parking_lot::RwLock;
 use serde_json::Value;
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
+    io,
     net::SocketAddr,
     sync::Arc,
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
-    sync::mpsc,
+    sync::{mpsc, RwLock as AsyncRwLock},
 };
-
-thread_local! {
-    static CURRENT_PEER_ADDR: RefCell<Option<SocketAddr>> = RefCell::new(None);
-}
 
 const NOTIFY_COUNTER_INITIAL: u32 = 16;
 
@@ -71,47 +67,12 @@ impl Stratum {
 
         let implementation = Arc::new(StratumImpl {
             dispatcher,
-            workers: Arc::new(RwLock::default()),
             secret,
             notify_counter: RwLock::new(NOTIFY_COUNTER_INITIAL),
             connections: Arc::new(RwLock::default()),
         });
 
-        // Create RPC module
-        let mut module = RpcModule::new(());
-
-        // Register mining.subscribe method
-        {
-            let implementation = implementation.clone();
-            module
-                .register_async_method(
-                    "mining.subscribe",
-                    move |params: Params, _ctx: Arc<()>, _ext| {
-                        let implementation = implementation.clone();
-                        async move { implementation.subscribe(params).await }
-                    },
-                )
-                .map_err(|e| {
-                    Error::Dispatch(format!(
-                        "Failed to register mining.subscribe: {}",
-                        e
-                    ))
-                })?;
-        }
-
-        // Register mining.submit method
-        {
-            let implementation = implementation.clone();
-            module.register_async_method(
-                "mining.submit",
-                move |params: Params, _ctx: Arc<()>, _ext| {
-                    let implementation = implementation.clone();
-                    async move { implementation.submit(params).await }
-                },
-            )?;
-        }
-
-        let methods = Arc::new(module);
+        let implementation_for_methods = implementation.clone();
         let listener = TcpListener::bind(addr)
             .await
             .map_err(|e| Error::Io(e.to_string()))?;
@@ -122,7 +83,6 @@ impl Stratum {
         debug!("Stratum server started on {}", local_addr);
 
         // Spawn server task
-        let server_impl = implementation.clone();
         tokio::spawn(async move {
             loop {
                 tokio::select! {
@@ -130,11 +90,10 @@ impl Stratum {
                         match result {
                             Ok((stream, peer_addr)) => {
                                 debug!("Accepted connection from {}", peer_addr);
-                                let methods = methods.clone();
-                                let impl_clone = server_impl.clone();
+                                let impl_for_methods = implementation_for_methods.clone();
 
                                 tokio::spawn(async move {
-                                    if let Err(e) = handle_connection(stream, peer_addr, methods, impl_clone).await {
+                                    if let Err(e) = handle_connection(stream, peer_addr, impl_for_methods).await {
                                         debug!("Connection error for {}: {}", peer_addr, e);
                                     }
                                 });
@@ -175,12 +134,19 @@ impl PushWorkHandler for Stratum {
 }
 
 async fn handle_connection(
-    stream: TcpStream, peer_addr: SocketAddr, methods: Arc<RpcModule<()>>,
-    implementation: Arc<StratumImpl>,
-) -> std::io::Result<()> {
+    stream: TcpStream, peer_addr: SocketAddr,
+    implementation_for_methods: Arc<StratumImpl>,
+) -> io::Result<()> {
     let (reader, writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
-    let writer = Arc::new(tokio::sync::RwLock::new(BufWriter::new(writer)));
+    let writer = Arc::new(AsyncRwLock::new(BufWriter::new(writer)));
+
+    let implementation = implementation_for_methods.clone();
+
+    // Create RPC module with peer_addr as context
+    let module =
+        StratumImpl::build_rpc_methods(implementation_for_methods, peer_addr);
+    let methods = Arc::new(module);
 
     // Register connection for push notifications
     let (tx, mut rx) = mpsc::channel::<String>(100);
@@ -225,11 +191,7 @@ async fn handle_connection(
 
         debug!("Received request from {}: {}", peer_addr, trimmed);
 
-        // Set the current peer address in thread-local storage
-        CURRENT_PEER_ADDR.with(|addr| {
-            *addr.borrow_mut() = Some(peer_addr);
-        });
-
+        let mut subscribe_failed = false;
         // Parse the JSON-RPC request
         let request: Result<Request, _> = serde_json::from_str(trimmed);
 
@@ -243,6 +205,11 @@ async fn handle_connection(
                     Ok((response_raw, _rx)) => {
                         let response_str = response_raw.get();
                         debug!("Response for {}: {}", method, response_str);
+                        if method == "mining.subscribe"
+                            && parse_subscribe_result(response_str) == false
+                        {
+                            subscribe_failed = true;
+                        }
                         response_str.to_string()
                     }
                     Err(e) => {
@@ -273,16 +240,16 @@ async fn handle_connection(
             }
         };
 
-        // Clear the thread-local peer address
-        CURRENT_PEER_ADDR.with(|addr| {
-            *addr.borrow_mut() = None;
-        });
-
         // Write response
         let mut writer = writer.write().await;
         writer.write_all(response.as_bytes()).await?;
         writer.write_all(b"\n").await?;
         writer.flush().await?;
+
+        if subscribe_failed {
+            debug!("Closing connection {} due to failed subscribe", peer_addr);
+            break;
+        }
     }
 
     // Clean up on disconnect
@@ -295,11 +262,20 @@ async fn handle_connection(
     Ok(())
 }
 
+fn parse_subscribe_result(response_str: &str) -> bool {
+    let response_json: Value =
+        serde_json::from_str(response_str).unwrap_or_default();
+    if let Some(result) = response_json.get("result") {
+        if result.as_bool() != Some(true) {
+            return false;
+        }
+    }
+    true
+}
+
 struct StratumImpl {
     /// Payload manager
     dispatcher: Arc<dyn JobDispatcher>,
-    /// Authorized workers (socket - worker_id)
-    workers: Arc<RwLock<HashMap<SocketAddr, String>>>,
     /// Secret if any
     secret: Option<H256>,
     /// Dispatch notify counter
@@ -321,7 +297,7 @@ impl StratumImpl {
             ));
         }
 
-        let worker_id = &params_vec[0];
+        let _worker_id = &params_vec[0];
         let secret = &params_vec[1];
 
         if let Some(valid_secret) = self.secret {
@@ -330,14 +306,6 @@ impl StratumImpl {
                 return Ok(false);
             }
         }
-
-        // Register worker with peer address from thread-local
-        CURRENT_PEER_ADDR.with(|addr| {
-            if let Some(peer_addr) = *addr.borrow() {
-                self.workers.write().insert(peer_addr, worker_id.clone());
-                debug!(target: "stratum", "New worker #{} registered at {}", worker_id, peer_addr);
-            }
-        });
 
         Ok(true)
     }
@@ -361,7 +329,6 @@ impl StratumImpl {
 
     fn push_work_all(&self, payload: String) -> Result<(), Error> {
         let connections = self.connections.read();
-        let workers = self.workers.read();
 
         let next_request_id = {
             let mut counter = self.notify_counter.write();
@@ -379,35 +346,63 @@ impl StratumImpl {
             next_request_id, payload
         );
 
-        trace!(target: "stratum", "Pushing work for {} workers (payload: '{}')", workers.len(), &workers_msg);
+        trace!(target: "stratum", "Pushing work for {} workers (payload: '{}')", connections.len(), &workers_msg);
 
-        for (addr, worker_id) in workers.iter() {
-            trace!(target: "stratum", "Pushing work to {} at addr {}", &worker_id, &addr);
+        for (addr, tx) in connections.iter() {
+            trace!(target: "stratum", "Pushing work to addr {}", &addr);
 
-            if let Some(tx) = connections.get(addr) {
-                if let Err(e) = tx.try_send(workers_msg.clone()) {
-                    debug!(target: "stratum", "Worker no longer connected: {} addr {}, error: {:?}", &worker_id, &addr, e);
-                    hup_peers.insert(*addr);
-                }
-            } else {
-                debug!(target: "stratum", "No connection found for worker: {} addr {}", &worker_id, &addr);
+            if let Err(e) = tx.try_send(workers_msg.clone()) {
+                debug!(target: "stratum", "Worker no longer connected: addr {}, error: {:?}", &addr, e);
                 hup_peers.insert(*addr);
             }
         }
 
-        drop(workers);
         drop(connections);
 
         if !hup_peers.is_empty() {
-            let mut workers = self.workers.write();
             let mut connections = self.connections.write();
             for hup_peer in hup_peers {
-                workers.remove(&hup_peer);
                 connections.remove(&hup_peer);
             }
         }
 
         Ok(())
+    }
+
+    fn build_rpc_methods(
+        implementation_for_methods: Arc<StratumImpl>, peer_addr: SocketAddr,
+    ) -> RpcModule<SocketAddr> {
+        let mut module = RpcModule::new(peer_addr);
+
+        // Register mining.subscribe method
+        {
+            let implementation = implementation_for_methods.clone();
+            module
+                .register_async_method(
+                    "mining.subscribe",
+                    move |params: Params, _ctx: Arc<SocketAddr>, _ext| {
+                        let implementation = implementation.clone();
+                        async move { implementation.subscribe(params).await }
+                    },
+                )
+                .expect("successfully register mining.subscribe method");
+        }
+
+        // Register mining.submit method
+        {
+            let implementation = implementation_for_methods.clone();
+            module
+                .register_async_method(
+                    "mining.submit",
+                    move |params: Params, _ctx: Arc<SocketAddr>, _ext| {
+                        let implementation = implementation.clone();
+                        async move { implementation.submit(params).await }
+                    },
+                )
+                .expect("successfully register mining.submit method");
+        }
+
+        module
     }
 }
 
