@@ -69,6 +69,7 @@ impl Stratum {
             dispatcher,
             secret,
             notify_counter: RwLock::new(NOTIFY_COUNTER_INITIAL),
+            workers: Arc::new(RwLock::new(HashMap::new())),
             connections: Arc::new(RwLock::default()),
         });
 
@@ -191,7 +192,6 @@ async fn handle_connection(
 
         debug!("Received request from {}: {}", peer_addr, trimmed);
 
-        let mut subscribe_failed = false;
         // Parse the JSON-RPC request
         let request: Result<Request, _> = serde_json::from_str(trimmed);
 
@@ -205,11 +205,6 @@ async fn handle_connection(
                     Ok((response_raw, _rx)) => {
                         let response_str = response_raw.get();
                         debug!("Response for {}: {}", method, response_str);
-                        if method == "mining.subscribe"
-                            && parse_subscribe_result(response_str) == false
-                        {
-                            subscribe_failed = true;
-                        }
                         response_str.to_string()
                     }
                     Err(e) => {
@@ -245,11 +240,6 @@ async fn handle_connection(
         writer.write_all(response.as_bytes()).await?;
         writer.write_all(b"\n").await?;
         writer.flush().await?;
-
-        if subscribe_failed {
-            debug!("Closing connection {} due to failed subscribe", peer_addr);
-            break;
-        }
     }
 
     // Clean up on disconnect
@@ -262,17 +252,6 @@ async fn handle_connection(
     Ok(())
 }
 
-fn parse_subscribe_result(response_str: &str) -> bool {
-    let response_json: Value =
-        serde_json::from_str(response_str).unwrap_or_default();
-    if let Some(result) = response_json.get("result") {
-        if result.as_bool() != Some(true) {
-            return false;
-        }
-    }
-    true
-}
-
 struct StratumImpl {
     /// Payload manager
     dispatcher: Arc<dyn JobDispatcher>,
@@ -280,13 +259,17 @@ struct StratumImpl {
     secret: Option<H256>,
     /// Dispatch notify counter
     notify_counter: RwLock<u32>,
+    // socket addr to worker_id mapping for active workers
+    workers: Arc<RwLock<HashMap<SocketAddr, String>>>,
     /// Active connections for pushing notifications
     connections: Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<String>>>>,
 }
 
 impl StratumImpl {
     /// rpc method `mining.subscribe`
-    async fn subscribe(&self, params: Params<'_>) -> RpcResult<bool> {
+    async fn subscribe(
+        &self, params: Params<'_>, peer_addr: SocketAddr,
+    ) -> RpcResult<bool> {
         let params_vec: Vec<String> = params.parse()?;
 
         if params_vec.len() < 2 {
@@ -297,7 +280,7 @@ impl StratumImpl {
             ));
         }
 
-        let _worker_id = &params_vec[0];
+        let worker_id = &params_vec[0];
         let secret = &params_vec[1];
 
         if let Some(valid_secret) = self.secret {
@@ -306,6 +289,9 @@ impl StratumImpl {
                 return Ok(false);
             }
         }
+
+        let mut workers = self.workers.write();
+        workers.insert(peer_addr, worker_id.clone());
 
         Ok(true)
     }
@@ -329,6 +315,7 @@ impl StratumImpl {
 
     fn push_work_all(&self, payload: String) -> Result<(), Error> {
         let connections = self.connections.read();
+        let workers = self.workers.read();
 
         let next_request_id = {
             let mut counter = self.notify_counter.write();
@@ -346,23 +333,31 @@ impl StratumImpl {
             next_request_id, payload
         );
 
-        trace!(target: "stratum", "Pushing work for {} workers (payload: '{}')", connections.len(), &workers_msg);
+        trace!(target: "stratum", "Pushing work for {} workers (payload: '{}')", workers.len(), &workers_msg);
 
-        for (addr, tx) in connections.iter() {
-            trace!(target: "stratum", "Pushing work to addr {}", &addr);
+        for (addr, worker_id) in workers.iter() {
+            trace!(target: "stratum", "Pushing work to addr {} worker_id {}", &addr, &worker_id);
 
-            if let Err(e) = tx.try_send(workers_msg.clone()) {
-                debug!(target: "stratum", "Worker no longer connected: addr {}, error: {:?}", &addr, e);
+            if let Some(tx) = connections.get(addr) {
+                if let Err(e) = tx.try_send(workers_msg.clone()) {
+                    debug!(target: "stratum", "Worker no longer connected: addr {}, error: {:?}", &addr, e);
+                    hup_peers.insert(*addr);
+                }
+            } else {
+                debug!(target: "stratum", "Worker has no active connection: addr {}", &addr);
                 hup_peers.insert(*addr);
             }
         }
 
         drop(connections);
+        drop(workers);
 
         if !hup_peers.is_empty() {
             let mut connections = self.connections.write();
+            let mut workers = self.workers.write();
             for hup_peer in hup_peers {
                 connections.remove(&hup_peer);
+                workers.remove(&hup_peer);
             }
         }
 
@@ -382,7 +377,10 @@ impl StratumImpl {
                     "mining.subscribe",
                     move |params: Params, _ctx: Arc<SocketAddr>, _ext| {
                         let implementation = implementation.clone();
-                        async move { implementation.subscribe(params).await }
+                        let peer_addr = *(_ctx.as_ref());
+                        async move {
+                            implementation.subscribe(params, peer_addr).await
+                        }
                     },
                 )
                 .expect("successfully register mining.subscribe method");
@@ -506,7 +504,7 @@ mod tests {
             serde_json::from_str(r#"{"jsonrpc":"2.0","result":true,"id":1}"#)
                 .unwrap();
         assert_eq!(expected_json, response_json);
-        assert_eq!(1, stratum.implementation.connections.read().len());
+        assert_eq!(1, stratum.implementation.workers.read().len());
 
         let _ = stratum.stop().await;
     }
@@ -533,7 +531,7 @@ mod tests {
             .to_vec();
         auth_request.extend(b"\n");
 
-        let auth_response = r#"{"jsonrpc":"2.0","result":true,"id":1}"#;
+        let auth_response = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":1}\n";
 
         let response = {
             let mut stream = TcpStream::connect(&addr)
@@ -558,10 +556,8 @@ mod tests {
                 String::from_utf8(read_buf0).unwrap().trim(),
             )
             .unwrap();
-            let expected_json: Value = serde_json::from_str(
-                r#"{"jsonrpc":"2.0","result":true,"id":1}"#,
-            )
-            .unwrap();
+            let expected_json: Value =
+                serde_json::from_str(auth_response).unwrap();
             assert_eq!(expected_json, response_json);
             trace!(target: "stratum", "Received authorization confirmation");
 
@@ -630,7 +626,7 @@ mod tests {
             serde_json::from_str(r#"{"jsonrpc":"2.0","result":true,"id":1}"#)
                 .unwrap();
         assert_eq!(expected_json, response_json);
-        assert_eq!(1, stratum.implementation.connections.read().len());
+        assert_eq!(1, stratum.implementation.workers.read().len());
 
         let _ = stratum.stop().await;
     }
@@ -656,7 +652,7 @@ mod tests {
             serde_json::from_str(r#"{"jsonrpc":"2.0","result":false,"id":2}"#)
                 .unwrap();
         assert_eq!(expected_json, response_json);
-        assert_eq!(0, stratum.implementation.connections.read().len());
+        assert_eq!(0, stratum.implementation.workers.read().len());
 
         let _ = stratum.stop().await;
     }
@@ -725,7 +721,7 @@ mod tests {
             submissions.read()[0]
         );
 
-        assert_eq!(1, stratum.implementation.connections.read().len());
+        assert_eq!(1, stratum.implementation.workers.read().len());
 
         let _ = stratum.stop().await;
     }
