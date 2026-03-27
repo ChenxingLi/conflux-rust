@@ -8,10 +8,7 @@
 use crate::keys::ConfigKey;
 use diem_crypto::{ed25519::Ed25519PrivateKey, PrivateKey, Uniform};
 use diem_temppath::TempPath;
-use diem_types::{
-    on_chain_config::VMPublishingOption,
-    transaction::authenticator::AuthenticationKey,
-};
+use diem_types::transaction::authenticator::AuthenticationKey;
 use rand::rngs::StdRng;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -28,8 +25,6 @@ pub struct TestConfig {
     // outside the config.
     #[serde(skip)]
     temp_dir: Option<TempPath>,
-
-    pub publishing_option: Option<VMPublishingOption>,
 }
 
 impl Clone for TestConfig {
@@ -40,7 +35,6 @@ impl Clone for TestConfig {
             owner_key: self.owner_key.clone(),
             execution_key: self.execution_key.clone(),
             temp_dir: None,
-            publishing_option: self.publishing_option.clone(),
         }
     }
 }
@@ -62,7 +56,6 @@ impl TestConfig {
             owner_key: None,
             execution_key: None,
             temp_dir: None,
-            publishing_option: Some(VMPublishingOption::open()),
         }
     }
 
@@ -78,7 +71,6 @@ impl TestConfig {
             owner_key: None,
             execution_key: None,
             temp_dir: Some(temp_dir),
-            publishing_option: None,
         }
     }
 

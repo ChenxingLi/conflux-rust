@@ -10,7 +10,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt,
-    fs::{self, File},
+    fs::File,
     io::{Read, Write},
     path::{Path, PathBuf},
     str::FromStr,
@@ -46,8 +46,6 @@ pub use safety_rules_config::*;
 mod upstream_config;
 pub use upstream_config::*;
 mod test_config;
-use diem_secure_storage::{KVStorage, Storage};
-use diem_types::waypoint::Waypoint;
 pub use test_config::*;
 
 /// Config pulls in configuration information from the config file.
@@ -94,8 +92,6 @@ pub struct NodeConfig {
 pub struct BaseConfig {
     data_dir: PathBuf,
     pub role: RoleType,
-    #[serde(with = "yaml_serde::with::singleton_map")]
-    pub waypoint: WaypointConfig,
 }
 
 impl Default for BaseConfig {
@@ -103,63 +99,6 @@ impl Default for BaseConfig {
         BaseConfig {
             data_dir: PathBuf::from("./pos_db"),
             role: RoleType::Validator,
-            waypoint: WaypointConfig::None,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WaypointConfig {
-    FromConfig(Waypoint),
-    FromFile(PathBuf),
-    FromStorage(SecureBackend),
-    None,
-}
-
-impl WaypointConfig {
-    pub fn waypoint_from_config(&self) -> Option<Waypoint> {
-        if let WaypointConfig::FromConfig(waypoint) = self {
-            Some(*waypoint)
-        } else {
-            None
-        }
-    }
-
-    pub fn waypoint(&self) -> Waypoint {
-        let waypoint = match &self {
-            WaypointConfig::FromConfig(waypoint) => Some(*waypoint),
-            WaypointConfig::FromFile(path) => {
-                let content = fs::read_to_string(path).unwrap_or_else(|_| {
-                    panic!("Failed to read waypoint file {}", path.display())
-                });
-                Some(Waypoint::from_str(&content.trim()).unwrap_or_else(|_| {
-                    panic!("Failed to parse waypoint: {}", content.trim())
-                }))
-            }
-            WaypointConfig::FromStorage(backend) => {
-                let storage: Storage = backend.into();
-                let waypoint = storage
-                    .get::<Waypoint>(diem_global_constants::WAYPOINT)
-                    .expect("Unable to read waypoint")
-                    .value;
-                Some(waypoint)
-            }
-            WaypointConfig::None => None,
-        };
-        waypoint.expect("waypoint should be present")
-    }
-
-    pub fn genesis_waypoint(&self) -> Waypoint {
-        match &self {
-            WaypointConfig::FromStorage(backend) => {
-                let storage: Storage = backend.into();
-                storage
-                    .get::<Waypoint>(diem_global_constants::GENESIS_WAYPOINT)
-                    .expect("Unable to read waypoint")
-                    .value
-            }
-            _ => self.waypoint(),
         }
     }
 }

@@ -12,12 +12,11 @@ use anyhow::Result;
 use diem_crypto::HashValue;
 use diem_types::{
     account_address::AccountAddress,
-    account_state_blob::{AccountStateBlob, AccountStateWithProof},
     committed_block::CommittedBlock,
     contract_event::ContractEvent,
     epoch_change::EpochChangeProof,
     ledger_info::LedgerInfoWithSignatures,
-    proof::{AccumulatorConsistencyProof, SparseMerkleProof},
+    proof::AccumulatorConsistencyProof,
     reward_distribution_event::RewardDistributionEventV2,
     transaction::{TransactionListWithProof, TransactionWithProof, Version},
 };
@@ -40,12 +39,6 @@ impl DbReader for MockDbReader {
     }
 
     fn get_block_timestamp(&self, _version: u64) -> Result<u64> {
-        unimplemented!()
-    }
-
-    fn get_latest_account_state(
-        &self, _address: AccountAddress,
-    ) -> Result<Option<AccountStateBlob>> {
         unimplemented!()
     }
 
@@ -80,26 +73,6 @@ impl DbReader for MockDbReader {
         EpochChangeProof,
         AccumulatorConsistencyProof,
     )> {
-        unimplemented!()
-    }
-
-    fn get_account_state_with_proof(
-        &self, _address: AccountAddress, _version: Version,
-        _ledger_version: Version,
-    ) -> Result<AccountStateWithProof> {
-        unimplemented!()
-    }
-
-    fn get_account_state_with_proof_by_version(
-        &self, _address: AccountAddress, _version: Version,
-    ) -> Result<(
-        Option<AccountStateBlob>,
-        SparseMerkleProof<AccountStateBlob>,
-    )> {
-        unimplemented!()
-    }
-
-    fn get_latest_state_root(&self) -> Result<(Version, HashValue)> {
         unimplemented!()
     }
 
