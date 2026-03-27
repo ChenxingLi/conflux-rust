@@ -1091,7 +1091,6 @@ impl RpcImpl {
         &self, hash: H256,
     ) -> JsonRpcResult<TxWithPoolInfo> {
         let mut ret = TxWithPoolInfo::default();
-        let hash: H256 = hash.into();
         if let Some(tx) = self.tx_pool.get_transaction(&hash) {
             ret.exist = true;
             if self.tx_pool.check_tx_packed_in_deferred_pool(&hash) {
@@ -1153,6 +1152,7 @@ impl RpcImpl {
     pub fn txpool_transaction_by_address_and_nonce(
         &self, address: RpcAddress, nonce: U256,
     ) -> CoreResult<Option<RpcTransaction>> {
+        self.check_address_network(address.network)?;
         let tx = self
             .tx_pool
             .get_transaction_by_address2nonce(

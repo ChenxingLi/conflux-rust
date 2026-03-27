@@ -20,7 +20,7 @@ use cfx_rpc_primitives::{Bytes, Index, U64 as HexU64};
 use cfx_rpc_utils::{
     error::{
         errors::*, jsonrpc_error_helpers::*,
-        jsonrpsee_error_helpers::internal_error as jsonrpsee_internal_error,
+        jsonrpsee_error_helpers::internal_rpc_err as jsonrpsee_internal_error,
     },
     helpers::SpawnBlocking,
 };

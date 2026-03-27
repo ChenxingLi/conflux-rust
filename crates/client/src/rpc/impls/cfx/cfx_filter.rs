@@ -18,6 +18,7 @@ use crate::rpc::{
     types::{CfxFilterChanges, CfxFilterLog, CfxRpcLogFilter, Log, RevertTo},
 };
 use cfx_addr::Network;
+use cfx_rpc_utils::error::jsonrpc_error_helpers::error_object_owned_to_jsonrpc_error;
 use cfx_types::{Space, H128, H256};
 use cfx_util_macros::bail;
 use cfxcore::{
@@ -379,7 +380,9 @@ impl<T: Filterable + Send + Sync + 'static> CfxFilter for T {
         let mut polls = self.polls().lock();
         let epoch_number = self.best_executed_epoch_number();
 
-        let filter: LogFilter = filter.into_primitive()?;
+        let filter: LogFilter = filter
+            .into_primitive()
+            .map_err(error_object_owned_to_jsonrpc_error)?;
 
         let id = polls.create_poll(SyncPollFilter::new(PollFilter::Logs {
             last_epoch_number: if epoch_number == 0 {

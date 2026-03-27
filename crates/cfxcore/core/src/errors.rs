@@ -3,7 +3,10 @@
 // See http://www.gnu.org/licenses/
 use crate::light_protocol::Error as LightProtocolError;
 use cfx_rpc_eth_types::Error as EthRpcError;
-pub use cfx_rpc_utils::error::error_codes::EXCEPTION_ERROR;
+pub use cfx_rpc_utils::error::{
+    error_codes::EXCEPTION_ERROR,
+    jsonrpc_error_helpers::error_object_owned_to_jsonrpc_error,
+};
 use cfx_statedb::Error as StateDbError;
 use cfx_storage::Error as StorageError;
 use cfxcore_errors::ProviderBlockError;
@@ -97,7 +100,7 @@ impl From<ProviderBlockError> for Error {
 
 impl From<EthRpcError> for Error {
     fn from(e: EthRpcError) -> Error {
-        let e: JsonRpcError = e.into();
+        let e: JsonRpcError = error_object_owned_to_jsonrpc_error(e.into());
         e.into()
     }
 }

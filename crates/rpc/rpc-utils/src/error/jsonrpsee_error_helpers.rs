@@ -1,11 +1,9 @@
 use jsonrpc_core::Error as JsonRpcError;
-use jsonrpsee::types::{
-    self as jsonrpsee_types,
-    error::{
-        ErrorObjectOwned, INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE,
-        INVALID_REQUEST_CODE,
-    },
+use jsonrpsee::types::error::{
+    ErrorObjectOwned, INTERNAL_ERROR_CODE, INTERNAL_ERROR_MSG,
+    INVALID_PARAMS_CODE, INVALID_REQUEST_CODE,
 };
+use serde::Serialize;
 
 pub fn jsonrpc_error_to_error_object_owned(
     e: JsonRpcError,
@@ -14,7 +12,25 @@ pub fn jsonrpc_error_to_error_object_owned(
 }
 
 pub fn invalid_params_msg(param: &str) -> ErrorObjectOwned {
-    invalid_params_rpc_err(format!("Invalid parameters: {}", param))
+    let data: Option<bool> = None;
+    invalid_params_rpc_err(format!("Invalid parameters: {}", param), data)
+}
+
+pub fn invalid_params<S: Serialize>(
+    param: &str, data: Option<S>,
+) -> ErrorObjectOwned {
+    invalid_params_rpc_err(format!("Invalid parameters: {}", param), data)
+}
+
+pub fn invalid_params_check<T, E: std::fmt::Display>(
+    param: &str, r: std::result::Result<T, E>,
+) -> Result<T, ErrorObjectOwned> {
+    match r {
+        Ok(t) => Ok(t),
+        Err(e) => {
+            Err(invalid_params(param.into(), Some(format!("{}", e))).into())
+        }
+    }
 }
 
 pub fn invalid_request_msg(param: &str) -> ErrorObjectOwned {
@@ -22,48 +38,33 @@ pub fn invalid_request_msg(param: &str) -> ErrorObjectOwned {
     ErrorObjectOwned::owned(INVALID_REQUEST_CODE, param, data)
 }
 
-pub fn invalid_params_rpc_err(msg: impl Into<String>) -> ErrorObjectOwned {
-    let data: Option<bool> = None;
+pub fn invalid_params_rpc_err<S: Serialize>(
+    msg: impl Into<String>, data: Option<S>,
+) -> ErrorObjectOwned {
     ErrorObjectOwned::owned(INVALID_PARAMS_CODE, msg, data)
 }
 
-pub fn internal_error(msg: impl Into<String>) -> ErrorObjectOwned {
+pub fn internal_error() -> ErrorObjectOwned {
     let data: Option<bool> = None;
-    ErrorObjectOwned::owned(INTERNAL_ERROR_CODE, msg, data)
+    ErrorObjectOwned::owned(INTERNAL_ERROR_CODE, INTERNAL_ERROR_MSG, data)
 }
 
 /// Constructs an internal JSON-RPC error.
-pub fn internal_rpc_err(msg: impl Into<String>) -> ErrorObjectOwned {
-    rpc_err(jsonrpsee_types::error::INTERNAL_ERROR_CODE, msg, None)
-}
-
-/// Constructs an internal JSON-RPC error with data
-pub fn internal_rpc_err_with_data(
-    msg: impl Into<String>, data: &[u8],
-) -> ErrorObjectOwned {
-    rpc_err(jsonrpsee_types::error::INTERNAL_ERROR_CODE, msg, Some(data))
+pub fn internal_rpc_err<S: Serialize>(data: S) -> ErrorObjectOwned {
+    rpc_err(INTERNAL_ERROR_CODE, INTERNAL_ERROR_MSG, Some(data))
 }
 
 /// Constructs an internal JSON-RPC error with code and message
 pub fn rpc_error_with_code(
     code: i32, msg: impl Into<String>,
 ) -> ErrorObjectOwned {
-    rpc_err(code, msg, None)
+    rpc_err(code, msg, None::<()>)
 }
 
 /// Constructs a JSON-RPC error, consisting of `code`, `message` and optional
 /// `data`.
-pub fn rpc_err(
-    code: i32, msg: impl Into<String>, data: Option<&[u8]>,
+pub fn rpc_err<S: Serialize>(
+    code: i32, msg: impl Into<String>, data: Option<S>,
 ) -> ErrorObjectOwned {
-    ErrorObjectOwned::owned(
-        code,
-        msg.into(),
-        data.map(|data| {
-            jsonrpsee_core::to_json_raw_value(
-                &alloy_primitives::hex::encode_prefixed(data),
-            )
-            .expect("serializing String can't fail")
-        }),
-    )
+    ErrorObjectOwned::owned(code, msg, data)
 }
