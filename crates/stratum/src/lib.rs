@@ -506,7 +506,7 @@ mod tests {
             serde_json::from_str(r#"{"jsonrpc":"2.0","result":true,"id":1}"#)
                 .unwrap();
         assert_eq!(expected_json, response_json);
-        assert_eq!(1, stratum.implementation.workers.read().len());
+        assert_eq!(1, stratum.implementation.connections.read().len());
 
         let _ = stratum.stop().await;
     }
@@ -630,7 +630,7 @@ mod tests {
             serde_json::from_str(r#"{"jsonrpc":"2.0","result":true,"id":1}"#)
                 .unwrap();
         assert_eq!(expected_json, response_json);
-        assert_eq!(1, stratum.implementation.workers.read().len());
+        assert_eq!(1, stratum.implementation.connections.read().len());
 
         let _ = stratum.stop().await;
     }
@@ -656,7 +656,7 @@ mod tests {
             serde_json::from_str(r#"{"jsonrpc":"2.0","result":false,"id":2}"#)
                 .unwrap();
         assert_eq!(expected_json, response_json);
-        assert_eq!(0, stratum.implementation.workers.read().len());
+        assert_eq!(0, stratum.implementation.connections.read().len());
 
         let _ = stratum.stop().await;
     }
@@ -725,7 +725,7 @@ mod tests {
             submissions.read()[0]
         );
 
-        assert_eq!(1, stratum.implementation.workers.read().len());
+        assert_eq!(1, stratum.implementation.connections.read().len());
 
         let _ = stratum.stop().await;
     }
