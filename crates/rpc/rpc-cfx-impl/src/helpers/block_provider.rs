@@ -1,12 +1,9 @@
-use crate::rpc::types::{
-    cfx::{
-        block::{Block, BlockTransactions, Header},
-        transaction::PackedOrExecuted,
-        RpcAddress,
-    },
-    Receipt, Transaction,
-};
 use cfx_addr::Network;
+use cfx_rpc_cfx_types::{
+    block::{Block, BlockTransactions, Header},
+    transaction::PackedOrExecuted,
+    Receipt, RpcAddress, Transaction,
+};
 use cfx_types::{Space, H256, U256, U64};
 use cfxcore::{
     block_data_manager::{BlockDataManager, DataVersionTuple},

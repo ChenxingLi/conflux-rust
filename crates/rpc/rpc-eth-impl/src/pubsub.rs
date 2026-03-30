@@ -9,7 +9,7 @@ use cfx_rpc_eth_types::{
     eth_pubsub::{Kind as SubscriptionKind, Params, Result as PubSubResult},
     Header, Log,
 };
-use cfx_rpc_utils::error::jsonrpsee_error_helpers::internal_rpc_err;
+use cfx_rpc_utils::error::jsonrpsee_error_helpers::internal_error_with_data;
 use cfx_tasks::TaskExecutor;
 use cfx_types::{Space, H256};
 use cfxcore::{
@@ -559,7 +559,7 @@ impl SubscriptionSerializeError {
 
 impl From<SubscriptionSerializeError> for ErrorObject<'static> {
     fn from(value: SubscriptionSerializeError) -> Self {
-        internal_rpc_err(value.to_string())
+        internal_error_with_data(value.to_string())
     }
 }
 
