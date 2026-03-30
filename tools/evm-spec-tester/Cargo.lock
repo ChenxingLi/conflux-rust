@@ -601,7 +601,7 @@ dependencies = [
  "fnv",
  "hashbrown 0.15.2",
  "itertools 0.13.0",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-integer",
  "num-traits",
  "zeroize",
@@ -618,7 +618,7 @@ dependencies = [
  "ark-serialize 0.3.0",
  "ark-std 0.3.0",
  "derivative",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "paste",
  "rustc_version 0.3.3",
@@ -638,7 +638,7 @@ dependencies = [
  "derivative",
  "digest 0.10.7",
  "itertools 0.10.5",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "paste",
  "rustc_version 0.4.1",
@@ -659,7 +659,7 @@ dependencies = [
  "digest 0.10.7",
  "educe",
  "itertools 0.13.0",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "paste",
  "zeroize",
@@ -701,7 +701,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db2fd794a08ccb318058009eefdf15bcaaaaf6f8161eb3345f907222bac38b20"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "quote",
  "syn 1.0.109",
@@ -713,7 +713,7 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7abe79b0e4288889c4574159ab790824d0033b9fdcb2a112a3182fac2e514565"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "proc-macro2",
  "quote",
@@ -726,7 +726,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09be120733ee33f7693ceaa202ca41accd5653b779563608f1234f78ae07c4b3"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "proc-macro2",
  "quote",
@@ -759,7 +759,7 @@ dependencies = [
  "ark-relations",
  "ark-std 0.5.0",
  "educe",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-integer",
  "num-traits",
  "tracing",
@@ -795,7 +795,7 @@ checksum = "adb7b85a02b83d2f22f89bd5cac66c9c89474240cb6207cb1efc16d098e822a5"
 dependencies = [
  "ark-std 0.4.0",
  "digest 0.10.7",
- "num-bigint",
+ "num-bigint 0.4.4",
 ]
 
 [[package]]
@@ -808,7 +808,7 @@ dependencies = [
  "ark-std 0.5.0",
  "arrayvec 0.7.4",
  "digest 0.10.7",
- "num-bigint",
+ "num-bigint 0.4.4",
 ]
 
 [[package]]
@@ -1000,6 +1000,17 @@ checksum = "4bd3ffe8b19a604421a5d461d4a70346223e535903fbc3067138bddbebddcf77"
 dependencies = [
  "serde",
  "thiserror 1.0.63",
+]
+
+[[package]]
+name = "bigdecimal"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1374191e2dd25f9ae02e3aa95041ed5d747fc77b3c102b49fe2dd9a8117a6244"
+dependencies = [
+ "num-bigint 0.2.6",
+ "num-integer",
+ "num-traits",
 ]
 
 [[package]]
@@ -1648,6 +1659,8 @@ dependencies = [
 name = "cfx-rpc-cfx-impl"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "bigdecimal",
  "blockgen",
  "cfx-addr",
  "cfx-execute-helper",
@@ -1658,25 +1671,37 @@ dependencies = [
  "cfx-rpc-cfx-types",
  "cfx-rpc-common-impl",
  "cfx-rpc-eth-types",
+ "cfx-rpc-primitives",
  "cfx-rpc-utils",
  "cfx-statedb",
+ "cfx-storage",
  "cfx-types",
  "cfx-util-macros",
+ "cfx-vm-types",
  "cfxcore",
+ "cfxcore-accounts",
  "cfxcore-errors",
+ "cfxkey",
  "consensus-types",
  "diem-crypto",
  "diem-types",
  "itertools 0.14.0",
- "jsonrpc-core",
  "jsonrpsee",
+ "keccak-hash",
  "log",
  "network",
+ "num-bigint 0.2.6",
+ "parity-version",
  "parking_lot 0.12.1",
  "primitives",
  "random-crash",
  "rlp 0.4.6",
+ "rustc-hex",
+ "serde",
+ "serde_json",
  "storage-interface",
+ "tokio",
+ "transient-hashmap",
  "txgen",
 ]
 
@@ -1761,7 +1786,6 @@ dependencies = [
  "cfxcore-errors",
  "futures 0.3.30",
  "geth-tracer",
- "jsonrpc-core",
  "jsonrpsee",
  "keccak-hash",
  "log",
@@ -5530,11 +5554,22 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05180d69e3da0e530ba2a1dae5110317e49e3b7f3d41be227dc5f92e49ee7af"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-complex",
  "num-integer",
  "num-iter",
  "num-rational",
+ "num-traits",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
+dependencies = [
+ "autocfg",
+ "num-integer",
  "num-traits",
 ]
 
@@ -5603,7 +5638,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0638a1c9d0a3c0914158145bc76cff373a75a627e6ecbfb71cbe6f453a5a19b0"
 dependencies = [
  "autocfg",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-integer",
  "num-traits",
 ]
@@ -7020,7 +7055,7 @@ dependencies = [
  "bytes",
  "fastrlp 0.3.1",
  "fastrlp 0.4.0",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-integer",
  "num-traits",
  "parity-scale-codec 3.6.9",
@@ -7757,7 +7792,7 @@ version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "297f631f50729c8c99b84667867963997ec0b50f32b2a7dbcab828ef0541e8bb"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "thiserror 2.0.18",
  "time",

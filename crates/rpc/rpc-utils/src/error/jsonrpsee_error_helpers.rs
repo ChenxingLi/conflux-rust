@@ -1,4 +1,6 @@
+use crate::error::error_codes as codes;
 use alloy_rpc_types::error::EthRpcErrorCode;
+use cfx_types::H256;
 use jsonrpsee::types::error::{
     ErrorObjectOwned, INTERNAL_ERROR_CODE, INTERNAL_ERROR_MSG,
     INVALID_PARAMS_CODE, INVALID_REQUEST_CODE,
@@ -51,6 +53,45 @@ pub fn internal_error() -> ErrorObjectOwned {
 /// Constructs an internal JSON-RPC error.
 pub fn internal_error_with_data<S: Serialize>(data: S) -> ErrorObjectOwned {
     rpc_err(INTERNAL_ERROR_CODE, INTERNAL_ERROR_MSG, Some(data))
+}
+
+pub fn call_execution_error(message: String, data: String) -> ErrorObjectOwned {
+    ErrorObjectOwned::owned(
+        codes::CALL_EXECUTION_ERROR as i32,
+        message,
+        Some(data),
+    )
+}
+
+pub fn geth_call_execution_error(
+    message: String, data: String,
+) -> ErrorObjectOwned {
+    ErrorObjectOwned::owned(
+        EthRpcErrorCode::ExecutionError.code(),
+        message,
+        Some(data),
+    )
+}
+
+pub fn request_rejected_in_catch_up_mode(
+    details: Option<String>,
+) -> ErrorObjectOwned {
+    ErrorObjectOwned::owned(
+        codes::REQUEST_REJECTED_IN_CATCH_UP as i32,
+        "Request rejected due to still in the catch up mode.",
+        details,
+    )
+}
+
+pub fn pivot_assumption_failed(expected: H256, got: H256) -> ErrorObjectOwned {
+    ErrorObjectOwned::owned(
+        codes::CONFLUX_PIVOT_CHAIN_UNSTABLE as i32,
+        "pivot chain assumption failed",
+        Some(format!(
+            "pivot assumption: {:?}, actual pivot hash: {:?}",
+            expected, got
+        )),
+    )
 }
 
 /// Constructs an internal JSON-RPC error with code and message

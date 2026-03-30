@@ -6,7 +6,6 @@ license-file.workspace = true
 
 [dependencies]
 cfx-execute-helper = { workspace = true }
-jsonrpc-core = { workspace = true }
 jsonrpsee = { workspace = true }
 log = { workspace = true }
 cfx-types = { workspace = true }
@@ -35,3 +34,18 @@ network = { workspace = true }
 random-crash = { workspace = true }
 rlp = { workspace = true }
 parking_lot = { workspace = true }
+cfxcore-accounts = { workspace = true }
+cfx-storage = { workspace = true }
+keccak-hash = { workspace = true }
+cfxkey = { workspace = true }
+bigdecimal = { workspace = true }
+num-bigint = { workspace = true }
+parity-version = { workspace = true }
+transient-hashmap = { workspace = true }
+tokio = { workspace = true }
+cfx-rpc-primitives = { workspace = true }
+cfx-vm-types = { workspace = true }
+rustc-hex = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
