@@ -67,8 +67,7 @@ consensus:
   safety_rules:
     service:
       type: local
-execution:
-  genesis_file_location: ./genesis_file
+execution: {}
 logger:
   file: ./log/pos.log
   level: INFO

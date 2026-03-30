@@ -147,21 +147,13 @@ impl NodeConfig {
     /// Paths used in the config are either absolute or relative to the config
     /// location
     pub fn load<P: AsRef<Path>>(input_path: P) -> Result<Self, Error> {
-        let mut config = Self::load_config(&input_path)?;
-
-        let input_dir = RootPath::new(input_path);
-        config.execution.load(&input_dir)?;
-
+        let config = Self::load_config(&input_path)?;
         Ok(config)
     }
 
     pub fn save<P: AsRef<Path>>(
         &mut self, output_path: P,
     ) -> Result<(), Error> {
-        let output_dir = RootPath::new(&output_path);
-        self.execution.save(&output_dir)?;
-        // This must be last as calling save on subconfigs may change their
-        // fields
         self.save_config(&output_path)?;
         Ok(())
     }
