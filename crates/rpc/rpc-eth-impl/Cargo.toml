@@ -1,5 +1,5 @@
 [package]
-name = "cfx-rpc"
+name = "cfx-rpc-eth-impl"
 edition = "2021"
 version.workspace = true
 authors.workspace = true

@@ -13,7 +13,6 @@ use super::PosLedgerDB;
 use crate::{
     change_set::ChangeSet,
     errors::DiemDbError,
-    ledger_counters::{LedgerCounter, LedgerCounterBumps},
     schema::{
         event::EventSchema, event_accumulator::EventAccumulatorSchema,
         event_by_key::EventByKeySchema, event_by_version::EventByVersionSchema,
@@ -30,7 +29,7 @@ use diem_types::{
     block_metadata::new_block_event_key,
     contract_event::ContractEvent,
     event::EventKey,
-    proof::{position::Position, EventAccumulatorProof, EventProof},
+    proof::{position::Position, EventAccumulatorProof},
     transaction::Version,
 };
 use schemadb::{schema::ValueCodec, ReadOptions, SchemaIterator, DB};
@@ -190,9 +189,6 @@ impl EventStore {
     pub fn put_events(
         &self, version: u64, events: &[ContractEvent], cs: &mut ChangeSet,
     ) -> Result<HashValue> {
-        cs.counter_bumps(version)
-            .bump(LedgerCounter::EventsCreated, events.len());
-
         // Event table and indices updates
         events.iter().enumerate().try_for_each::<_, Result<_>>(
             |(idx, event)| {

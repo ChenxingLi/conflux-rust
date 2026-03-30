@@ -1813,7 +1813,133 @@ dependencies = [
 ]
 
 [[package]]
-name = "cfx-rpc"
+name = "cfx-rpc-builder"
+version = "3.0.0"
+dependencies = [
+ "alloy-primitives",
+ "cfx-rpc-cfx-types",
+ "cfx-rpc-eth-api",
+ "cfx-rpc-eth-impl",
+ "cfx-rpc-middlewares",
+ "cfx-tasks",
+ "cfxcore",
+ "jsonrpsee",
+ "jsonrpsee-core",
+ "jsonrpsee-types",
+ "log",
+ "rand 0.9.0",
+ "serde",
+ "strum 0.26.3",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "cfx-rpc-cfx-api"
+version = "3.0.0"
+dependencies = [
+ "cfx-rpc-cfx-types",
+ "cfx-rpc-eth-types",
+ "cfx-rpc-primitives",
+ "cfx-types",
+ "diem-types",
+ "jsonrpsee",
+ "network",
+ "primitives",
+]
+
+[[package]]
+name = "cfx-rpc-cfx-impl"
+version = "0.1.0"
+dependencies = [
+ "blockgen",
+ "cfx-addr",
+ "cfx-execute-helper",
+ "cfx-executor",
+ "cfx-parameters",
+ "cfx-parity-trace-types",
+ "cfx-rpc-cfx-api",
+ "cfx-rpc-cfx-types",
+ "cfx-rpc-common-impl",
+ "cfx-rpc-eth-types",
+ "cfx-rpc-utils",
+ "cfx-statedb",
+ "cfx-types",
+ "cfx-util-macros",
+ "cfxcore",
+ "cfxcore-errors",
+ "consensus-types",
+ "diem-crypto",
+ "diem-types",
+ "itertools 0.14.0",
+ "jsonrpc-core",
+ "jsonrpsee",
+ "log",
+ "network",
+ "parking_lot 0.12.1",
+ "primitives",
+ "random-crash",
+ "rlp 0.4.6",
+ "storage-interface",
+ "txgen",
+]
+
+[[package]]
+name = "cfx-rpc-cfx-types"
+version = "3.0.0"
+dependencies = [
+ "bls-signatures",
+ "cfx-addr",
+ "cfx-parameters",
+ "cfx-parity-trace-types",
+ "cfx-rpc-primitives",
+ "cfx-rpc-utils",
+ "cfx-types",
+ "cfx-util-macros",
+ "cfx-vm-types",
+ "cfxcore-accounts",
+ "cfxkey",
+ "diem-crypto",
+ "diem-types",
+ "jsonrpsee",
+ "keccak-hash",
+ "log",
+ "once_cell",
+ "parity-version",
+ "primitives",
+ "rand 0.7.3",
+ "rustc-hex",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "strum_macros 0.26.4",
+]
+
+[[package]]
+name = "cfx-rpc-common-impl"
+version = "3.0.0"
+dependencies = [
+ "cfx-addr",
+ "cfx-parity-trace-types",
+ "cfx-rpc-cfx-types",
+ "cfx-rpc-eth-types",
+ "cfx-types",
+ "slice-group-by",
+]
+
+[[package]]
+name = "cfx-rpc-eth-api"
+version = "3.0.0"
+dependencies = [
+ "alloy-rpc-types-trace",
+ "cfx-rpc-eth-types",
+ "cfx-rpc-primitives",
+ "cfx-types",
+ "jsonrpsee",
+]
+
+[[package]]
+name = "cfx-rpc-eth-impl"
 version = "3.0.0"
 dependencies = [
  "alloy-rpc-types-trace",
@@ -1856,115 +1982,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cfx-rpc-builder"
-version = "3.0.0"
-dependencies = [
- "alloy-primitives",
- "cfx-rpc",
- "cfx-rpc-cfx-types",
- "cfx-rpc-eth-api",
- "cfx-rpc-middlewares",
- "cfx-tasks",
- "cfxcore",
- "jsonrpsee",
- "jsonrpsee-core",
- "jsonrpsee-types",
- "log",
- "rand 0.9.0",
- "serde",
- "strum 0.26.3",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
-name = "cfx-rpc-cfx-api"
-version = "3.0.0"
-dependencies = [
- "cfx-rpc-cfx-types",
- "cfx-rpc-eth-types",
- "cfx-rpc-primitives",
- "cfx-types",
- "diem-types",
- "jsonrpsee",
- "network",
- "primitives",
-]
-
-[[package]]
-name = "cfx-rpc-cfx-impl"
-version = "0.1.0"
-dependencies = [
- "cfx-addr",
- "cfx-execute-helper",
- "cfx-parity-trace-types",
- "cfx-rpc-cfx-types",
- "cfx-rpc-common-impl",
- "cfx-rpc-eth-types",
- "cfx-types",
- "cfx-util-macros",
- "cfxcore",
- "cfxcore-errors",
- "jsonrpc-core",
- "log",
- "primitives",
-]
-
-[[package]]
-name = "cfx-rpc-cfx-types"
-version = "3.0.0"
-dependencies = [
- "bls-signatures",
- "cfx-addr",
- "cfx-parameters",
- "cfx-parity-trace-types",
- "cfx-rpc-primitives",
- "cfx-rpc-utils",
- "cfx-types",
- "cfx-util-macros",
- "cfx-vm-types",
- "cfxcore-accounts",
- "cfxkey",
- "diem-crypto",
- "diem-types",
- "jsonrpc-core",
- "keccak-hash",
- "log",
- "once_cell",
- "parity-version",
- "primitives",
- "rand 0.7.3",
- "rustc-hex",
- "serde",
- "serde_derive",
- "serde_json",
- "strum_macros 0.26.4",
-]
-
-[[package]]
-name = "cfx-rpc-common-impl"
-version = "3.0.0"
-dependencies = [
- "cfx-addr",
- "cfx-parity-trace-types",
- "cfx-rpc-cfx-types",
- "cfx-rpc-eth-types",
- "cfx-types",
- "slice-group-by",
-]
-
-[[package]]
-name = "cfx-rpc-eth-api"
-version = "3.0.0"
-dependencies = [
- "alloy-rpc-types-trace",
- "cfx-rpc-eth-types",
- "cfx-rpc-primitives",
- "cfx-types",
- "jsonrpsee",
-]
-
-[[package]]
 name = "cfx-rpc-eth-types"
 version = "3.0.0"
 dependencies = [
@@ -1974,10 +1991,10 @@ dependencies = [
  "cfx-parity-trace-types",
  "cfx-rpc-cfx-types",
  "cfx-rpc-primitives",
+ "cfx-rpc-utils",
  "cfx-types",
  "cfx-util-macros",
  "cfx-vm-types",
- "jsonrpc-core",
  "jsonrpsee",
  "primitives",
  "rlp 0.4.6",
@@ -2033,6 +2050,7 @@ dependencies = [
  "jsonrpsee-core",
  "revm-context-interface",
  "revm-primitives",
+ "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
@@ -2561,11 +2579,12 @@ dependencies = [
  "cfx-mallocator-utils",
  "cfx-parameters",
  "cfx-parity-trace-types",
- "cfx-rpc",
  "cfx-rpc-builder",
+ "cfx-rpc-cfx-api",
  "cfx-rpc-cfx-impl",
  "cfx-rpc-cfx-types",
  "cfx-rpc-common-impl",
+ "cfx-rpc-eth-impl",
  "cfx-rpc-eth-types",
  "cfx-rpc-primitives",
  "cfx-rpc-utils",
@@ -2588,6 +2607,7 @@ dependencies = [
  "delegate 0.4.2",
  "diem-config",
  "diem-crypto",
+ "diem-metrics",
  "diem-types",
  "dir",
  "fallible-iterator",
@@ -2695,6 +2715,7 @@ dependencies = [
  "env_logger",
  "executor",
  "jsonrpsee",
+ "libc",
  "log",
  "log4rs",
  "malloc_size_of",
@@ -3409,30 +3430,6 @@ name = "diem-infallible"
 version = "0.1.0"
 
 [[package]]
-name = "diem-jellyfish-merkle"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bcs",
- "byteorder",
- "diem-crypto",
- "diem-crypto-derive",
- "diem-infallible",
- "diem-metrics",
- "diem-nibble",
- "diem-types",
- "mirai-annotations",
- "num-derive",
- "num-traits",
- "once_cell",
- "proptest",
- "proptest-derive",
- "rand 0.8.5",
- "serde",
- "thiserror 1.0.63",
-]
-
-[[package]]
 name = "diem-log-derive"
 version = "0.1.0"
 dependencies = [
@@ -4057,7 +4054,6 @@ dependencies = [
  "diem-crypto",
  "diem-secure-net",
  "diem-types",
- "scratchpad",
  "serde",
  "storage-interface",
  "thiserror 1.0.63",
@@ -5910,7 +5906,7 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 [[package]]
 name = "librocksdb_sys"
 version = "0.1.0"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=f42a47efa918ebccf1f49076c96051af67d9893f#f42a47efa918ebccf1f49076c96051af67d9893f"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
 dependencies = [
  "bindgen",
  "bzip2-sys",
@@ -5927,7 +5923,7 @@ dependencies = [
 [[package]]
 name = "libtitan_sys"
 version = "0.0.1"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=f42a47efa918ebccf1f49076c96051af67d9893f#f42a47efa918ebccf1f49076c96051af67d9893f"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
 dependencies = [
  "bzip2-sys",
  "cc",
@@ -7264,7 +7260,6 @@ dependencies = [
  "diem-config",
  "diem-crypto",
  "diem-infallible",
- "diem-jellyfish-merkle",
  "diem-logger",
  "diem-metrics",
  "diem-proptest-helpers",
@@ -8312,7 +8307,7 @@ dependencies = [
 [[package]]
 name = "rocksdb"
 version = "0.3.0"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=f42a47efa918ebccf1f49076c96051af67d9893f#f42a47efa918ebccf1f49076c96051af67d9893f"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
 dependencies = [
  "libc",
  "librocksdb_sys",
@@ -8657,16 +8652,6 @@ name = "scratch"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1792db035ce95be60c3f8853017b3999209281c24e2ba5bc8e59bf97a0c590c1"
-
-[[package]]
-name = "scratchpad"
-version = "0.1.0"
-dependencies = [
- "arc-swap",
- "diem-crypto",
- "diem-types",
- "itertools 0.14.0",
-]
 
 [[package]]
 name = "scrypt"
@@ -9400,7 +9385,6 @@ dependencies = [
  "diem-types",
  "itertools 0.14.0",
  "parking_lot 0.12.1",
- "scratchpad",
  "serde",
  "thiserror 1.0.63",
 ]

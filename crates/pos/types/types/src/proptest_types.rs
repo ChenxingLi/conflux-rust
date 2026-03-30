@@ -8,7 +8,6 @@
 use crate::{
     access_path::AccessPath,
     account_address::{self, AccountAddress},
-    account_state_blob::AccountStateBlob,
     block_info::{BlockInfo, Round},
     block_metadata::BlockMetadata,
     chain_id::ChainId,
@@ -342,17 +341,16 @@ fn new_raw_transaction(
                 chain_id,
             )
         }
-        TransactionPayload::WriteSet(WriteSetPayload::Direct(write_set)) => {
-            // It's a bit unfortunate that max_gas_amount etc is generated but
-            // not used, but it isn't a huge deal.
-            RawTransaction::new_change_set(sender, write_set, chain_id)
+        TransactionPayload::WriteSet(_) => {
+            // WriteSet transactions are only used for genesis, not for
+            // user transactions. Generate a no-op script instead.
+            RawTransaction::new_script(
+                sender,
+                Script::new(vec![], vec![], vec![]),
+                expiration_time_secs,
+                chain_id,
+            )
         }
-        TransactionPayload::WriteSet(WriteSetPayload::Script {
-            execute_as: signer,
-            script,
-        }) => RawTransaction::new_writeset_script(
-            sender, script, signer, chain_id,
-        ),
         TransactionPayload::Election(election_payload) => {
             RawTransaction::new_election(sender, election_payload, chain_id)
         }
@@ -711,11 +709,6 @@ pub struct TransactionToCommitGen {
     transaction_gen: (Index, SignatureCheckedTransactionGen),
     /// Events: account and event content.
     event_gens: Vec<(Index, ContractEventGen)>,
-    /// State updates: account and the blob.
-    /// N.B. the transaction sender and event owners must be updated to reflect
-    /// information such as sequence numbers so that test data generated
-    /// through this is more realistic and logical.
-    account_state_blobs: Vec<(Index, AccountStateBlob)>,
     /// Gas used.
     gas_used: u64,
     /// Transaction status
@@ -736,17 +729,9 @@ impl TransactionToCommitGen {
             .into_iter()
             .map(|(index, event_gen)| event_gen.materialize(index, universe))
             .collect();
-        let account_states = self
-            .account_state_blobs
-            .into_iter()
-            .map(|(index, blob)| {
-                (universe.get_account_info(index).address, blob)
-            })
-            .collect();
 
         TransactionToCommit::new(
             Transaction::UserTransaction(transaction),
-            account_states,
             events,
             self.gas_used,
             self.status,
@@ -760,52 +745,26 @@ impl Arbitrary for TransactionToCommitGen {
 
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         (
-            (
-                any::<Index>(),
-                any::<AccountStateBlob>(),
-                any::<SignatureCheckedTransactionGen>(),
-            ),
-            vec(
-                (
-                    any::<Index>(),
-                    any::<AccountStateBlob>(),
-                    any::<ContractEventGen>(),
-                ),
-                0..=2,
-            ),
-            vec((any::<Index>(), any::<AccountStateBlob>()), 0..=1),
+            (any::<Index>(), any::<SignatureCheckedTransactionGen>()),
+            vec((any::<Index>(), any::<ContractEventGen>()), 0..=2),
             any::<u64>(),
             any::<KeptVMStatus>(),
         )
-            .prop_map(
-                |(
-                    sender,
-                    event_emitters,
-                    mut touched_accounts,
+            .prop_map(|(sender, event_emitters, gas_used, status)| {
+                let (sender_index, txn_gen) = sender;
+
+                let mut event_gens = Vec::new();
+                for (index, event_gen) in event_emitters {
+                    event_gens.push((index, event_gen));
+                }
+
+                Self {
+                    transaction_gen: (sender_index, txn_gen),
+                    event_gens,
                     gas_used,
                     status,
-                )| {
-                    // To reflect change of account/event sequence numbers, txn
-                    // sender account and event emitter
-                    // accounts must be updated.
-                    let (sender_index, sender_blob, txn_gen) = sender;
-                    touched_accounts.push((sender_index, sender_blob));
-
-                    let mut event_gens = Vec::new();
-                    for (index, blob, event_gen) in event_emitters {
-                        touched_accounts.push((index, blob));
-                        event_gens.push((index, event_gen));
-                    }
-
-                    Self {
-                        transaction_gen: (sender_index, txn_gen),
-                        event_gens,
-                        account_state_blobs: touched_accounts,
-                        gas_used,
-                        status,
-                    }
-                },
-            )
+                }
+            })
             .boxed()
     }
 }
