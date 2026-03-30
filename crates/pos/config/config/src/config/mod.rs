@@ -21,8 +21,6 @@ mod consensus_config;
 pub use consensus_config::*;
 mod error;
 pub use error::*;
-mod execution_config;
-pub use execution_config::*;
 mod logger_config;
 pub use logger_config::*;
 mod metrics_config;
@@ -51,8 +49,6 @@ pub struct NodeConfig {
     pub base: BaseConfig,
     #[serde(default)]
     pub consensus: ConsensusConfig,
-    #[serde(default)]
-    pub execution: ExecutionConfig,
     #[serde(default)]
     pub logger: LoggerConfig,
     #[serde(default)]
@@ -137,7 +133,6 @@ impl NodeConfig {
     pub fn set_data_dir(&mut self, data_dir: PathBuf) {
         self.base.data_dir = data_dir.clone();
         self.consensus.set_data_dir(data_dir.clone());
-        self.execution.set_data_dir(data_dir.clone());
         self.metrics.set_data_dir(data_dir.clone());
         self.storage.set_data_dir(data_dir);
     }

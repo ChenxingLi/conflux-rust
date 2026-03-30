@@ -67,7 +67,6 @@ consensus:
   safety_rules:
     service:
       type: local
-execution: {}
 logger:
   file: ./log/pos.log
   level: INFO

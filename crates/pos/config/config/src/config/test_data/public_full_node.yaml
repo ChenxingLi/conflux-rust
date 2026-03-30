@@ -2,5 +2,3 @@ base:
     # Update this value to the location you want Diem to store its database
     data_dir: "/opt/diem/data"
     role: "full_node"
-
-execution: {}
