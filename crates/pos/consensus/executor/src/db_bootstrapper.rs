@@ -24,10 +24,9 @@ use diem_types::{
     ledger_info::{LedgerInfo, LedgerInfoWithSignatures},
     on_chain_config::{new_epoch_event_key, ValidatorSet},
     term_state::NodeID,
-    transaction::{Transaction, WriteSetPayload},
+    transaction::Transaction,
     validator_config::ValidatorConfig,
     validator_info::ValidatorInfo,
-    write_set::WriteSet,
 };
 use executor_types::BlockExecutor;
 use pow_types::FakePowHandler;
@@ -58,12 +57,7 @@ fn build_genesis_transaction(initial_nodes: &[(NodeID, u64)]) -> Transaction {
             .expect("ValidatorSet serialization cannot fail"),
     );
 
-    Transaction::GenesisTransaction(WriteSetPayload::Direct(
-        diem_types::transaction::ChangeSet::new(
-            WriteSet::default(),
-            vec![event],
-        ),
-    ))
+    Transaction::GenesisTransaction(vec![event])
 }
 
 /// If the database has not been bootstrapped yet, commit the genesis

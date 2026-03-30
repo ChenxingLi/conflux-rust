@@ -21,13 +21,12 @@ use diem_types::{
         pos_state_config::{PosStateConfigTrait, POS_STATE_CONFIG},
         NodeID, TERM_LIST_LEN,
     },
-    transaction::{ChangeSet, Transaction, WriteSetPayload},
+    transaction::Transaction,
     validator_config::{
         ConsensusPrivateKey, ConsensusPublicKey, ConsensusVRFPrivateKey,
         ConsensusVRFPublicKey, ValidatorConfig,
     },
     validator_info::ValidatorInfo,
-    write_set::WriteSet,
 };
 use rand_08::{rngs::StdRng, SeedableRng};
 use rustc_hex::FromHexError;
@@ -155,9 +154,8 @@ fn generate_genesis_from_public_keys(public_keys: Vec<(NodeID, u64)>) {
     let validator_set_bytes = bcs::to_bytes(&validator_set).unwrap();
     let contract_event =
         ContractEvent::new(new_epoch_event_key(), validator_set_bytes);
-    let change_set = ChangeSet::new(WriteSet::default(), vec![contract_event]);
-    let write_set_paylod = WriteSetPayload::Direct(change_set);
-    let genesis_transaction = Transaction::GenesisTransaction(write_set_paylod);
+    let genesis_transaction =
+        Transaction::GenesisTransaction(vec![contract_event]);
     let genesis_bytes = bcs::to_bytes(&genesis_transaction).unwrap();
     genesis_file.write_all(&genesis_bytes).unwrap();
 }
