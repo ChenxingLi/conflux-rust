@@ -577,7 +577,7 @@ dependencies = [
  "fnv",
  "hashbrown 0.15.2",
  "itertools 0.13.0",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-integer",
  "num-traits",
  "zeroize",
@@ -594,7 +594,7 @@ dependencies = [
  "ark-serialize 0.3.0",
  "ark-std 0.3.0",
  "derivative",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "paste",
  "rustc_version 0.3.3",
@@ -614,7 +614,7 @@ dependencies = [
  "derivative",
  "digest 0.10.7",
  "itertools 0.10.5",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "paste",
  "rustc_version 0.4.1",
@@ -635,7 +635,7 @@ dependencies = [
  "digest 0.10.7",
  "educe",
  "itertools 0.13.0",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "paste",
  "zeroize",
@@ -677,7 +677,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db2fd794a08ccb318058009eefdf15bcaaaaf6f8161eb3345f907222bac38b20"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "quote",
  "syn 1.0.109",
@@ -689,7 +689,7 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7abe79b0e4288889c4574159ab790824d0033b9fdcb2a112a3182fac2e514565"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "proc-macro2",
  "quote",
@@ -702,7 +702,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09be120733ee33f7693ceaa202ca41accd5653b779563608f1234f78ae07c4b3"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "proc-macro2",
  "quote",
@@ -735,7 +735,7 @@ dependencies = [
  "ark-relations",
  "ark-std 0.5.0",
  "educe",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-integer",
  "num-traits",
  "tracing",
@@ -771,7 +771,7 @@ checksum = "adb7b85a02b83d2f22f89bd5cac66c9c89474240cb6207cb1efc16d098e822a5"
 dependencies = [
  "ark-std 0.4.0",
  "digest 0.10.7",
- "num-bigint",
+ "num-bigint 0.4.4",
 ]
 
 [[package]]
@@ -784,7 +784,7 @@ dependencies = [
  "ark-std 0.5.0",
  "arrayvec 0.7.4",
  "digest 0.10.7",
- "num-bigint",
+ "num-bigint 0.4.4",
 ]
 
 [[package]]
@@ -979,6 +979,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bigdecimal"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1374191e2dd25f9ae02e3aa95041ed5d747fc77b3c102b49fe2dd9a8117a6244"
+dependencies = [
+ "num-bigint 0.2.6",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.64.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1119,6 +1130,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8894febbff9f758034a5b8e12d87918f56dfc64a8e1fe757d65e29041538d93"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "blockgen"
+version = "0.1.0"
+dependencies = [
+ "cfx-parameters",
+ "cfx-stratum",
+ "cfx-types",
+ "cfxcore",
+ "lazy_static",
+ "log",
+ "metrics",
+ "parking_lot 0.12.1",
+ "primitives",
+ "rand 0.9.0",
+ "txgen",
 ]
 
 [[package]]
@@ -1568,56 +1596,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "cfx-rpc"
-version = "3.0.0"
-dependencies = [
- "alloy-rpc-types-trace",
- "async-trait",
- "cfx-addr",
- "cfx-execute-helper",
- "cfx-executor",
- "cfx-parameters",
- "cfx-parity-trace-types",
- "cfx-rpc-cfx-impl",
- "cfx-rpc-cfx-types",
- "cfx-rpc-common-impl",
- "cfx-rpc-eth-api",
- "cfx-rpc-eth-types",
- "cfx-rpc-primitives",
- "cfx-rpc-utils",
- "cfx-statedb",
- "cfx-tasks",
- "cfx-types",
- "cfx-util-macros",
- "cfx-vm-types",
- "cfxcore",
- "cfxcore-errors",
- "futures 0.3.30",
- "geth-tracer",
- "jsonrpc-core",
- "jsonrpsee",
- "keccak-hash",
- "log",
- "parking_lot 0.12.1",
- "primitives",
- "rustc-hex",
- "serde",
- "serde_json",
- "solidity-abi",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "transient-hashmap",
-]
-
-[[package]]
 name = "cfx-rpc-builder"
 version = "3.0.0"
 dependencies = [
  "alloy-primitives",
- "cfx-rpc",
  "cfx-rpc-cfx-types",
  "cfx-rpc-eth-api",
+ "cfx-rpc-eth-impl",
  "cfx-rpc-middlewares",
  "cfx-tasks",
  "cfxcore",
@@ -1650,23 +1635,50 @@ dependencies = [
 name = "cfx-rpc-cfx-impl"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "bigdecimal",
+ "blockgen",
  "cfx-addr",
  "cfx-execute-helper",
+ "cfx-executor",
  "cfx-parameters",
  "cfx-parity-trace-types",
  "cfx-rpc-cfx-api",
  "cfx-rpc-cfx-types",
  "cfx-rpc-common-impl",
  "cfx-rpc-eth-types",
+ "cfx-rpc-primitives",
  "cfx-rpc-utils",
+ "cfx-statedb",
+ "cfx-storage",
  "cfx-types",
  "cfx-util-macros",
+ "cfx-vm-types",
  "cfxcore",
+ "cfxcore-accounts",
  "cfxcore-errors",
- "jsonrpc-core",
+ "cfxkey",
+ "consensus-types",
+ "diem-crypto",
+ "diem-types",
+ "itertools 0.14.0",
  "jsonrpsee",
+ "keccak-hash",
  "log",
+ "network",
+ "num-bigint 0.2.6",
+ "parity-version",
+ "parking_lot 0.12.1",
  "primitives",
+ "random-crash",
+ "rlp 0.4.6",
+ "rustc-hex",
+ "serde",
+ "serde_json",
+ "storage-interface",
+ "tokio",
+ "transient-hashmap",
+ "txgen",
 ]
 
 [[package]]
@@ -1721,6 +1733,48 @@ dependencies = [
  "cfx-rpc-primitives",
  "cfx-types",
  "jsonrpsee",
+]
+
+[[package]]
+name = "cfx-rpc-eth-impl"
+version = "3.0.0"
+dependencies = [
+ "alloy-rpc-types-trace",
+ "async-trait",
+ "cfx-addr",
+ "cfx-execute-helper",
+ "cfx-executor",
+ "cfx-parameters",
+ "cfx-parity-trace-types",
+ "cfx-rpc-cfx-impl",
+ "cfx-rpc-cfx-types",
+ "cfx-rpc-common-impl",
+ "cfx-rpc-eth-api",
+ "cfx-rpc-eth-types",
+ "cfx-rpc-primitives",
+ "cfx-rpc-utils",
+ "cfx-statedb",
+ "cfx-tasks",
+ "cfx-types",
+ "cfx-util-macros",
+ "cfx-vm-types",
+ "cfxcore",
+ "cfxcore-errors",
+ "futures 0.3.30",
+ "geth-tracer",
+ "jsonrpsee",
+ "keccak-hash",
+ "log",
+ "parking_lot 0.12.1",
+ "primitives",
+ "rustc-hex",
+ "serde",
+ "serde_json",
+ "solidity-abi",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "transient-hashmap",
 ]
 
 [[package]]
@@ -1853,6 +1907,18 @@ dependencies = [
  "sqlite3-sys",
  "strfmt",
  "tokio",
+]
+
+[[package]]
+name = "cfx-stratum"
+version = "1.12.0"
+dependencies = [
+ "cfx-types",
+ "jsonrpc-core",
+ "jsonrpc-tcp-server",
+ "keccak-hash",
+ "log",
+ "parking_lot 0.12.1",
 ]
 
 [[package]]
@@ -4591,6 +4657,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonrpc-tcp-server"
+version = "18.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60a0a0d35558123e93743d467285196905da1368500378cb5352b71856377874"
+dependencies = [
+ "jsonrpc-core",
+ "jsonrpc-server-utils",
+ "log",
+ "parking_lot 0.11.2",
+ "tower-service",
+]
+
+[[package]]
 name = "jsonrpsee"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4886,7 +4965,7 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 [[package]]
 name = "librocksdb_sys"
 version = "0.1.0"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=f42a47efa918ebccf1f49076c96051af67d9893f#f42a47efa918ebccf1f49076c96051af67d9893f"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
 dependencies = [
  "bindgen",
  "bzip2-sys",
@@ -4903,7 +4982,7 @@ dependencies = [
 [[package]]
 name = "libtitan_sys"
 version = "0.0.1"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=f42a47efa918ebccf1f49076c96051af67d9893f#f42a47efa918ebccf1f49076c96051af67d9893f"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
 dependencies = [
  "bzip2-sys",
  "cc",
@@ -5325,11 +5404,22 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05180d69e3da0e530ba2a1dae5110317e49e3b7f3d41be227dc5f92e49ee7af"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-complex",
  "num-integer",
  "num-iter",
  "num-rational",
+ "num-traits",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
+dependencies = [
+ "autocfg",
+ "num-integer",
  "num-traits",
 ]
 
@@ -5398,7 +5488,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0638a1c9d0a3c0914158145bc76cff373a75a627e6ecbfb71cbe6f453a5a19b0"
 dependencies = [
  "autocfg",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-integer",
  "num-traits",
 ]
@@ -6727,7 +6817,7 @@ dependencies = [
 [[package]]
 name = "rocksdb"
 version = "0.3.0"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=f42a47efa918ebccf1f49076c96051af67d9893f#f42a47efa918ebccf1f49076c96051af67d9893f"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
 dependencies = [
  "libc",
  "librocksdb_sys",
@@ -6764,7 +6854,7 @@ dependencies = [
  "bytes",
  "fastrlp 0.3.1",
  "fastrlp 0.4.0",
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-integer",
  "num-traits",
  "parity-scale-codec 3.6.9",
@@ -7492,7 +7582,7 @@ version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "297f631f50729c8c99b84667867963997ec0b50f32b2a7dbcab828ef0541e8bb"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.4",
  "num-traits",
  "thiserror 2.0.18",
  "time",

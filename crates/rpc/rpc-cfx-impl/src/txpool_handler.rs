@@ -11,7 +11,7 @@ use cfx_rpc_cfx_types::{
     TxPoolPendingNonceRange, TxPoolStatus, TxWithPoolInfo,
 };
 use cfx_rpc_utils::error::jsonrpsee_error_helpers::{
-    internal_rpc_err, invalid_params_check,
+    internal_error_with_data, invalid_params_check,
 };
 use cfx_types::{Address, AddressSpaceUtil, H256, U256, U64};
 use cfxcore::{
@@ -127,7 +127,7 @@ impl TxPoolServer for TxPoolHandler {
             let (state_nonce, state_balance) = self
                 .tx_pool
                 .get_state_account_info(&tx.sender())
-                .map_err(|e| internal_rpc_err(format!("{}", e)))?;
+                .map_err(|e| internal_error_with_data(format!("{}", e)))?;
             let required_storage_collateral =
                 if let Transaction::Native(ref native_tx) = tx.unsigned {
                     U256::from(*native_tx.storage_limit())

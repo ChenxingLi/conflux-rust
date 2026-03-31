@@ -1780,56 +1780,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "cfx-rpc"
-version = "3.0.0"
-dependencies = [
- "alloy-rpc-types-trace",
- "async-trait",
- "cfx-addr",
- "cfx-execute-helper",
- "cfx-executor",
- "cfx-parameters",
- "cfx-parity-trace-types",
- "cfx-rpc-cfx-impl",
- "cfx-rpc-cfx-types",
- "cfx-rpc-common-impl",
- "cfx-rpc-eth-api",
- "cfx-rpc-eth-types",
- "cfx-rpc-primitives",
- "cfx-rpc-utils",
- "cfx-statedb",
- "cfx-tasks",
- "cfx-types",
- "cfx-util-macros",
- "cfx-vm-types",
- "cfxcore",
- "cfxcore-errors",
- "futures 0.3.30",
- "geth-tracer",
- "jsonrpc-core",
- "jsonrpsee",
- "keccak-hash",
- "log",
- "parking_lot 0.12.1",
- "primitives",
- "rustc-hex",
- "serde",
- "serde_json",
- "solidity-abi",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "transient-hashmap",
-]
-
-[[package]]
 name = "cfx-rpc-builder"
 version = "3.0.0"
 dependencies = [
  "alloy-primitives",
- "cfx-rpc",
  "cfx-rpc-cfx-types",
  "cfx-rpc-eth-api",
+ "cfx-rpc-eth-impl",
  "cfx-rpc-middlewares",
  "cfx-tasks",
  "cfxcore",
@@ -1862,23 +1819,50 @@ dependencies = [
 name = "cfx-rpc-cfx-impl"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "bigdecimal",
+ "blockgen",
  "cfx-addr",
  "cfx-execute-helper",
+ "cfx-executor",
  "cfx-parameters",
  "cfx-parity-trace-types",
  "cfx-rpc-cfx-api",
  "cfx-rpc-cfx-types",
  "cfx-rpc-common-impl",
  "cfx-rpc-eth-types",
+ "cfx-rpc-primitives",
  "cfx-rpc-utils",
+ "cfx-statedb",
+ "cfx-storage",
  "cfx-types",
  "cfx-util-macros",
+ "cfx-vm-types",
  "cfxcore",
+ "cfxcore-accounts",
  "cfxcore-errors",
- "jsonrpc-core",
+ "cfxkey",
+ "consensus-types",
+ "diem-crypto",
+ "diem-types",
+ "itertools 0.14.0",
  "jsonrpsee",
+ "keccak-hash",
  "log",
+ "network",
+ "num-bigint 0.2.6",
+ "parity-version",
+ "parking_lot 0.12.1",
  "primitives",
+ "random-crash",
+ "rlp 0.4.6",
+ "rustc-hex",
+ "serde",
+ "serde_json",
+ "storage-interface",
+ "tokio",
+ "transient-hashmap",
+ "txgen",
 ]
 
 [[package]]
@@ -1933,6 +1917,48 @@ dependencies = [
  "cfx-rpc-primitives",
  "cfx-types",
  "jsonrpsee",
+]
+
+[[package]]
+name = "cfx-rpc-eth-impl"
+version = "3.0.0"
+dependencies = [
+ "alloy-rpc-types-trace",
+ "async-trait",
+ "cfx-addr",
+ "cfx-execute-helper",
+ "cfx-executor",
+ "cfx-parameters",
+ "cfx-parity-trace-types",
+ "cfx-rpc-cfx-impl",
+ "cfx-rpc-cfx-types",
+ "cfx-rpc-common-impl",
+ "cfx-rpc-eth-api",
+ "cfx-rpc-eth-types",
+ "cfx-rpc-primitives",
+ "cfx-rpc-utils",
+ "cfx-statedb",
+ "cfx-tasks",
+ "cfx-types",
+ "cfx-util-macros",
+ "cfx-vm-types",
+ "cfxcore",
+ "cfxcore-errors",
+ "futures 0.3.30",
+ "geth-tracer",
+ "jsonrpsee",
+ "keccak-hash",
+ "log",
+ "parking_lot 0.12.1",
+ "primitives",
+ "rustc-hex",
+ "serde",
+ "serde_json",
+ "solidity-abi",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "transient-hashmap",
 ]
 
 [[package]]
@@ -2527,11 +2553,12 @@ dependencies = [
  "cfx-mallocator-utils",
  "cfx-parameters",
  "cfx-parity-trace-types",
- "cfx-rpc",
  "cfx-rpc-builder",
+ "cfx-rpc-cfx-api",
  "cfx-rpc-cfx-impl",
  "cfx-rpc-cfx-types",
  "cfx-rpc-common-impl",
+ "cfx-rpc-eth-impl",
  "cfx-rpc-eth-types",
  "cfx-rpc-primitives",
  "cfx-rpc-utils",
@@ -2554,6 +2581,7 @@ dependencies = [
  "delegate 0.4.2",
  "diem-config",
  "diem-crypto",
+ "diem-metrics",
  "diem-types",
  "dir",
  "fallible-iterator",
@@ -2661,6 +2689,7 @@ dependencies = [
  "env_logger",
  "executor",
  "jsonrpsee",
+ "libc",
  "log",
  "log4rs",
  "malloc_size_of",
@@ -5724,7 +5753,7 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 [[package]]
 name = "librocksdb_sys"
 version = "0.1.0"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=f42a47efa918ebccf1f49076c96051af67d9893f#f42a47efa918ebccf1f49076c96051af67d9893f"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
 dependencies = [
  "bindgen",
  "bzip2-sys",
@@ -5741,7 +5770,7 @@ dependencies = [
 [[package]]
 name = "libtitan_sys"
 version = "0.0.1"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=f42a47efa918ebccf1f49076c96051af67d9893f#f42a47efa918ebccf1f49076c96051af67d9893f"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
 dependencies = [
  "bzip2-sys",
  "cc",
@@ -8069,7 +8098,7 @@ dependencies = [
 [[package]]
 name = "rocksdb"
 version = "0.3.0"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=f42a47efa918ebccf1f49076c96051af67d9893f#f42a47efa918ebccf1f49076c96051af67d9893f"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
 dependencies = [
  "libc",
  "librocksdb_sys",
