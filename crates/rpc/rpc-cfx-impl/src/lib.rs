@@ -2,7 +2,9 @@ mod cfx_filter_handler;
 mod cfx_handler;
 mod debug_handler;
 pub mod helpers;
+mod light;
 mod pos_handler;
+mod pubsub;
 mod test_handler;
 mod trace_handler;
 mod txpool_handler;
@@ -13,6 +15,7 @@ pub use debug_handler::DebugHandler;
 pub use pos_handler::{
     convert_to_pos_epoch_reward, hash_value_to_h256, PosHandler,
 };
+pub use pubsub::PubSubHandler;
 pub use test_handler::TestHandler;
 pub use trace_handler::TraceHandler;
 pub use txpool_handler::TxPoolHandler;

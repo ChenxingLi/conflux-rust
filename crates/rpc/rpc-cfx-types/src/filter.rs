@@ -50,6 +50,20 @@ pub struct CfxRpcLogFilter {
     pub topics: Option<Vec<VariadicValue<H256>>>,
 }
 
+impl Default for CfxRpcLogFilter {
+    fn default() -> Self {
+        Self {
+            from_epoch: Some(EpochNumber::LatestCheckpoint),
+            to_epoch: Some(EpochNumber::LatestState),
+            from_block: None,
+            to_block: None,
+            block_hashes: None,
+            address: None,
+            topics: None,
+        }
+    }
+}
+
 impl CfxRpcLogFilter {
     pub fn into_primitive(self) -> Result<PrimitiveFilter, ErrorObjectOwned> {
         // from_epoch, to_epoch
