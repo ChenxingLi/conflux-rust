@@ -571,7 +571,11 @@ impl<'a> ContextTrait for Context<'a> {
         if maybe_builtin
             && self
                 .machine
-                .builtin(&address_with_space, self.env.number)
+                .builtin(
+                    &address_with_space,
+                    self.env.number,
+                    self.env.epoch_height,
+                )
                 .is_some()
         {
             return true;
