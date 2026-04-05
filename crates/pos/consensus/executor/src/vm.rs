@@ -43,7 +43,7 @@ impl PosVM {
                     Self::process_user_transaction(state_view, &tx, &spec)?
                 }
                 Transaction::GenesisTransaction(change_set) => {
-                    Self::process_genesis_transction(&change_set)?
+                    Self::process_genesis_transaction(&change_set)?
                 }
             };
             vm_outputs.push(output);
@@ -126,7 +126,7 @@ impl PosVM {
         Ok(Self::gen_output(events))
     }
 
-    fn process_genesis_transction(
+    fn process_genesis_transaction(
         write_set: &WriteSetPayload,
     ) -> Result<TransactionOutput, VMStatus> {
         let WriteSetPayload::Direct(change_set) = write_set;

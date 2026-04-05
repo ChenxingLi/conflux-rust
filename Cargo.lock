@@ -1835,6 +1835,7 @@ dependencies = [
  "cfx-rpc-utils",
  "cfx-statedb",
  "cfx-storage",
+ "cfx-tasks",
  "cfx-types",
  "cfx-util-macros",
  "cfx-vm-types",
@@ -1845,6 +1846,7 @@ dependencies = [
  "consensus-types",
  "diem-crypto",
  "diem-types",
+ "futures 0.3.30",
  "itertools 0.14.0",
  "jsonrpsee",
  "keccak-hash",
@@ -1860,7 +1862,9 @@ dependencies = [
  "serde",
  "serde_json",
  "storage-interface",
+ "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
  "transient-hashmap",
  "txgen",
 ]
@@ -2099,11 +2103,11 @@ version = "1.12.0"
 dependencies = [
  "cfx-types",
  "env_logger",
- "jsonrpc-core",
- "jsonrpc-tcp-server",
+ "jsonrpsee",
  "keccak-hash",
  "log",
  "parking_lot 0.12.1",
+ "serde_json",
  "tokio",
 ]
 

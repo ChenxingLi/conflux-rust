@@ -201,8 +201,8 @@ pub enum StatusCode {
     CFX_UNEXPECTED_TX = 27,
     // The pos transaction does not pass validation based on pos state
     CFX_INVALID_TX = 28,
-    ELECTION_NON_EXISITENT_NODE = 29,
-    ELECTION_TERGET_TERM_NOT_OPEN = 31,
+    ELECTION_NON_EXISTENT_NODE = 29,
+    ELECTION_TARGET_TERM_NOT_OPEN = 31,
     ELECTION_WITHOUT_VOTES = 32,
     PIVOT_DECISION_HEIGHT_TOO_OLD = 33,
 
