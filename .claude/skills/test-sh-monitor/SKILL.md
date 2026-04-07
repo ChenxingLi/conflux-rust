@@ -15,7 +15,7 @@ description: >
 
 **Always run the complete `test.sh` — never execute individual phases in isolation.**
 
-`test.sh` sets critical environment variables (`CARGO_TARGET_DIR`, `RUSTFLAGS`, `CXXFLAGS`, `CONFLUX_BENCH`), activates the venv, and manages symlinks. These side effects only take effect during a full run. In particular, `CARGO_TARGET_DIR=$ROOT_DIR/build` exists only within the `test.sh` process environment — manually running `cargo build` inside `tools/consensus_bench/` will drop artifacts in the wrong location, causing integration tests to pick up a stale binary.
+`test.sh` sets critical environment variables (`CARGO_TARGET_DIR`, `RUSTFLAGS`, `CONFLUX_BENCH`), activates the venv, and manages symlinks. These side effects only take effect during a full run. In particular, `CARGO_TARGET_DIR=$ROOT_DIR/build` exists only within the `test.sh` process environment — manually running `cargo build` inside `tools/consensus_bench/` will drop artifacts in the wrong location, causing integration tests to pick up a stale binary.
 
 ---
 
@@ -94,8 +94,8 @@ Open with a brief reminder, e.g.:
 
 Then run:
 ```bash
-PASSED=$(grep -c "✓" /tmp/test_run.log 2>/dev/null || echo 0)
-FAILED=$(grep -c "✗" /tmp/test_run.log 2>/dev/null || echo 0)
+PASSED=$(grep "✓" /tmp/test_run.log 2>/dev/null | wc -l)
+FAILED=$(grep -E "[✖✗]" /tmp/test_run.log 2>/dev/null | wc -l)
 RUNNING=$(pgrep -f "bash dev-support/test.sh" > /dev/null && echo "RUNNING" || echo "STOPPED")
 echo "[$(date '+%H:%M:%S')] $RUNNING passed=$PASSED failed=$FAILED"
 tail -3 /tmp/test_run.log
@@ -125,10 +125,10 @@ On timer notification → run Step A → run Step B → repeat.
 - **Failure signal:** `error: current package believes it's in a workspace`
 
 ### Phase 3: test_all.py (integration tests) ⚠️ requires active monitoring
-- **Key behavior:** parallel scheduling; a single test failure **does not** exit the process; only >5 failures trigger an early break
-- **Process alive ≠ tests passing** — tail the log regularly and count `✗`
+- **Key behavior:** parallel scheduling; a single test failure **does not** exit the process. Early break triggers: (1) >5 failures in a single round, or (2) any test that fails twice across retry rounds
+- **Process alive ≠ tests passing** — tail the log regularly and count `✖`
 - **Success:** no `FAILED`, exit code 0
-- **Failure:** any `✗`; exit code 1 or 80
+- **Failure:** any `✖`; exit code 1 or 80
 
 ### Phase 4: pytest
 - **Watch for:** `FAILED` and `ERROR`
@@ -144,7 +144,7 @@ On timer notification → run Step A → run Step B → repeat.
 | `error[E` | 1/2 | Rust compile error | Read full log immediately |
 | `Build failed.` | 1/2 | Build failed | Same as above |
 | `✓` | 3/4 | Single test passed | Normal |
-| `✗` | 3/4 | Single test failed | Count; >5 means likely failure |
+| `✖` | 3/4 | Single test failed | Count; >5 means likely failure |
 | `ModuleNotFoundError` | any | Python env not ready | Stop waiting, diagnose venv |
 | `Cannot found contract` | 3 | Submodule not initialized | Stop, run `git submodule update --init --recursive` |
 | `externally-managed-environment` | startup | PEP 668, pip blocked | Check uv install and venv activation |
@@ -177,4 +177,4 @@ bash dev-support/test.sh > /tmp/test_run.log 2>&1
 
 1. **Process layer:** is the process still alive? (compile failures exit quickly)
 2. **Log layer:** tail regularly and interpret keywords by phase
-3. **Semantic layer:** in Phase 3, "process alive" does not mean "tests passing" — check the `✗` count
+3. **Semantic layer:** in Phase 3, "process alive" does not mean "tests passing" — check the `✖` count
