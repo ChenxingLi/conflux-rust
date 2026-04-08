@@ -4984,7 +4984,7 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 [[package]]
 name = "librocksdb_sys"
 version = "0.1.0"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=d0cd089bc092ec77b65a5262d453848f57abe3c3#d0cd089bc092ec77b65a5262d453848f57abe3c3"
 dependencies = [
  "bindgen",
  "bzip2-sys",
@@ -5001,7 +5001,7 @@ dependencies = [
 [[package]]
 name = "libtitan_sys"
 version = "0.0.1"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=d0cd089bc092ec77b65a5262d453848f57abe3c3#d0cd089bc092ec77b65a5262d453848f57abe3c3"
 dependencies = [
  "bzip2-sys",
  "cc",
@@ -5134,8 +5134,9 @@ checksum = "ab44e08e5b5110188be64dc8f0865635206ad7386fe672903bef195df3cc8960"
 
 [[package]]
 name = "lz4-sys"
-version = "1.8.3"
-source = "git+https://github.com/busyjay/lz4-rs.git?branch=adjust-build#5a8afe4010c67899fc7af876a58d67fd6269bf81"
+version = "1.11.1+lz4-1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bd8c0d6c6ed0cd30b3652886bb8711dc4bb01d637a68105a3d5158039b418e6"
 dependencies = [
  "cc",
  "libc",
@@ -6845,7 +6846,7 @@ dependencies = [
 [[package]]
 name = "rocksdb"
 version = "0.3.0"
-source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=b84f1c0f549059602c1d51d87d2c1b01e931e5fd#b84f1c0f549059602c1d51d87d2c1b01e931e5fd"
+source = "git+https://github.com/Conflux-Chain/rust-rocksdb.git?rev=d0cd089bc092ec77b65a5262d453848f57abe3c3#d0cd089bc092ec77b65a5262d453848f57abe3c3"
 dependencies = [
  "libc",
  "librocksdb_sys",
