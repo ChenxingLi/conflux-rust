@@ -86,8 +86,6 @@ members = [
     "crates/pos/consensus/safety-rules",
     "crates/pos/crypto/crypto",
     "crates/pos/crypto/crypto-derive",
-    "crates/pos/secure/net",
-    "crates/pos/secure/push-metrics",
     "crates/pos/secure/storage",
     "crates/pos/storage/accumulator",
     "crates/pos/storage/cached-pos-ledger-db",
@@ -222,8 +220,6 @@ executor = { path = "./crates/pos/consensus/executor" }
 safety-rules = { path = "./crates/pos/consensus/safety-rules" }
 diem-crypto = { path = "./crates/pos/crypto/crypto" }
 diem-crypto-derive = { path = "./crates/pos/crypto/crypto-derive" }
-diem-secure-net = { path = "./crates/pos/secure/net" }
-diem-secure-push-metrics = { path = "./crates/pos/secure/push-metrics" }
 diem-secure-storage = { path = "./crates/pos/secure/storage" }
 accumulator = { path = "./crates/pos/storage/accumulator" }
 cached-pos-ledger-db = { path = "./crates/pos/storage/cached-pos-ledger-db" }

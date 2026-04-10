@@ -2237,12 +2237,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chunked_transfer"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e4de3bc4ea267985becf712dc6d9eed8b04c953b3fcfb339ebc87acd9804901"
-
-[[package]]
 name = "cipher"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2959,26 +2953,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "diem-secure-net"
-version = "0.1.0"
-dependencies = [
- "diem-logger",
- "diem-secure-push-metrics",
- "once_cell",
- "serde",
- "thiserror 1.0.63",
-]
-
-[[package]]
-name = "diem-secure-push-metrics"
-version = "0.1.0"
-dependencies = [
- "diem-logger",
- "diem-metrics-core",
- "ureq",
-]
-
-[[package]]
 name = "diem-secure-storage"
 version = "0.1.0"
 dependencies = [
@@ -3436,7 +3410,6 @@ dependencies = [
  "anyhow",
  "bcs",
  "diem-crypto",
- "diem-secure-net",
  "diem-types",
  "serde",
  "storage-interface",
@@ -6293,15 +6266,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "qstring"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d464fae65fff2680baf48019211ce37aaec0c78e9264c84a3e484717f965104e"
-dependencies = [
- "percent-encoding",
-]
-
-[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7074,16 +7038,13 @@ version = "0.1.0"
 dependencies = [
  "bcs",
  "consensus-types",
- "crash-handler",
  "diem-config",
  "diem-crypto",
  "diem-global-constants",
  "diem-infallible",
  "diem-logger",
  "diem-metrics-core",
- "diem-secure-net",
  "diem-secure-storage",
- "diem-temppath",
  "diem-types",
  "log",
  "once_cell",
@@ -7812,7 +7773,6 @@ dependencies = [
  "anyhow",
  "bcs",
  "diem-crypto",
- "diem-secure-net",
  "diem-state-view",
  "diem-types",
  "itertools 0.14.0",
@@ -8584,23 +8544,6 @@ name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
-
-[[package]]
-name = "ureq"
-version = "1.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b8b063c2d59218ae09f22b53c42eaad0d53516457905f5235ca4bc9e99daa71"
-dependencies = [
- "base64 0.13.1",
- "chunked_transfer",
- "log",
- "native-tls",
- "once_cell",
- "qstring",
- "serde",
- "serde_json",
- "url",
-]
 
 [[package]]
 name = "url"
