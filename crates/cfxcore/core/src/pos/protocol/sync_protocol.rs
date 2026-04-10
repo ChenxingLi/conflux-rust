@@ -232,35 +232,6 @@ impl HotStuffSynchronizationProtocol {
         self.request_manager.resend_waiting_requests(io);
     }
 
-    /// In the event two peers simultaneously dial each other we need to be able
-    /// to do tie-breaking to determine which connection to keep and which
-    /// to drop in a deterministic way. One simple way is to compare our
-    /// local PeerId with that of the remote's PeerId and
-    /// keep the connection where the peer with the greater PeerId is the
-    /// dialer.
-    ///
-    /// Returns `true` if the existing connection should be dropped and `false`
-    /// if the new connection should be dropped.
-    fn simultaneous_dial_tie_breaking(
-        own_peer_id: H256, remote_peer_id: H256, existing_origin: bool,
-        new_origin: bool,
-    ) -> bool {
-        match (existing_origin, new_origin) {
-            // If the remote dials while an existing connection is open, the
-            // older connection is dropped.
-            (false /* in-bound */, false /* in-bound */) => true,
-            (false /* in-bound */, true /* out-bound */) => {
-                remote_peer_id < own_peer_id
-            }
-            (true /* out-bound */, false /* in-bound */) => {
-                own_peer_id < remote_peer_id
-            }
-            // We should never dial the same peer twice, but if we do drop the
-            // new connection
-            (true /* out-bound */, true /* out-bound */) => false,
-        }
-    }
-
     fn handle_error(
         &self, io: &dyn NetworkContext, peer: &NodeId, msg_id: MsgId, e: Error,
     ) {
@@ -507,66 +478,30 @@ impl NetworkProtocolHandler for HotStuffSynchronizationProtocol {
         _peer_protocol_version: ProtocolVersion,
         pos_public_key: Option<(ConsensusPublicKey, ConsensusVRFPublicKey)>,
     ) {
-        // TODO(linxi): maintain peer protocol version
-        let new_originated = io.get_peer_connection_origin(node_id);
-        if new_originated.is_none() {
+        if io.get_peer_connection_origin(node_id).is_none() {
             debug!("Peer does not exist when just connected");
             return;
         }
-        let new_originated = new_originated.unwrap();
         let peer_hash = keccak(node_id);
 
-        let add_new_peer = if let Some(old_peer) = self.peers.remove(&peer_hash)
-        {
-            let old_peer_id = &old_peer.read().id;
-            let old_originated = io.get_peer_connection_origin(old_peer_id);
-            if old_originated.is_none() {
-                debug!("Old session does not exist.");
-                true
-            } else {
-                let old_originated = old_originated.unwrap();
-                if Self::simultaneous_dial_tie_breaking(
-                    self.own_node_hash.clone(),
-                    peer_hash.clone(),
-                    old_originated,
-                    new_originated,
-                ) {
-                    // Drop the existing connection and replace it with the new
-                    // connection.
-                    io.disconnect_peer(
-                        old_peer_id,
-                        Some(UpdateNodeOperation::Failure),
-                        "remove old peer connection",
-                    );
-                    true
-                } else {
-                    // Drop the new connection.
-                    false
-                }
-            }
-        } else {
-            true
-        };
+        // Remove any stale entry from a previous connection.
+        // The network layer handles session conflicts via
+        // update_ingress_node_id, which kills the old session
+        // and calls on_peer_disconnected before on_peer_connected.
+        // Any remaining entry here is from a thread race between
+        // simultaneous connections and is stale.
+        if self.peers.remove(&peer_hash).is_some() {
+            debug!("Removed stale peer entry for peer_hash={:?}", peer_hash);
+        }
 
-        if add_new_peer {
-            self.peers.insert(peer_hash.clone(), *node_id, None);
-            if let Some(state) = self.peers.get(&peer_hash) {
-                let mut state = state.write();
-                state.id = *node_id;
-                state.peer_hash = peer_hash;
-                self.request_manager.on_peer_connected(node_id);
-            } else {
-                warn!(
-                    "PeerState is missing for peer: peer_hash={:?}",
-                    peer_hash
-                );
-            }
+        self.peers.insert(peer_hash.clone(), *node_id, None);
+        if let Some(state) = self.peers.get(&peer_hash) {
+            let mut state = state.write();
+            state.id = *node_id;
+            state.peer_hash = peer_hash;
+            self.request_manager.on_peer_connected(node_id);
         } else {
-            io.disconnect_peer(
-                node_id,
-                Some(UpdateNodeOperation::Failure),
-                "remove new peer connection",
-            );
+            warn!("PeerState is missing for peer: peer_hash={:?}", peer_hash);
         }
 
         if let Some(public_key) = pos_public_key {
@@ -574,15 +509,13 @@ impl NetworkProtocolHandler for HotStuffSynchronizationProtocol {
                 from_consensus_public_key(&public_key.0, &public_key.1),
                 peer_hash,
             );
-            if add_new_peer {
-                let event = NetworkEvent::PeerConnected;
-                if let Err(e) = self
-                    .mempool_network_task
-                    .network_events_tx
-                    .push((*node_id, discriminant(&event)), (*node_id, event))
-                {
-                    warn!("error sending PeerConnected: e={:?}", e);
-                }
+            let event = NetworkEvent::PeerConnected;
+            if let Err(e) = self
+                .mempool_network_task
+                .network_events_tx
+                .push((*node_id, discriminant(&event)), (*node_id, event))
+            {
+                warn!("error sending PeerConnected: e={:?}", e);
             }
             if let Some(state) = self.peers.get(&peer_hash) {
                 state.write().set_pos_public_key(Some(public_key));
