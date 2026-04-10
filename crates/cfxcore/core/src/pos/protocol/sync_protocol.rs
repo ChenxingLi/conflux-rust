@@ -51,21 +51,16 @@ type TimerToken = usize;
 #[derive(Default)]
 pub struct PeerState {
     id: NodeId,
-    peer_hash: H256,
     // TODO(lpl): Only keep AccountAddress?
     pos_public_key: Option<(ConsensusPublicKey, ConsensusVRFPublicKey)>,
 }
 
 impl PeerState {
     pub fn new(
-        id: NodeId, peer_hash: H256,
+        id: NodeId,
         pos_public_key: Option<(ConsensusPublicKey, ConsensusVRFPublicKey)>,
     ) -> Self {
-        Self {
-            id,
-            peer_hash,
-            pos_public_key,
-        }
+        Self { id, pos_public_key }
     }
 
     pub fn set_pos_public_key(
@@ -92,9 +87,10 @@ impl Peers {
         &self, peer: H256, id: NodeId,
         pos_public_key: Option<(ConsensusPublicKey, ConsensusVRFPublicKey)>,
     ) {
-        self.0.write().entry(peer).or_insert(Arc::new(RwLock::new(
-            PeerState::new(id, peer, pos_public_key),
-        )));
+        self.0.write().insert(
+            peer,
+            Arc::new(RwLock::new(PeerState::new(id, pos_public_key))),
+        );
     }
 
     pub fn len(&self) -> usize { self.0.read().len() }
@@ -484,25 +480,14 @@ impl NetworkProtocolHandler for HotStuffSynchronizationProtocol {
         }
         let peer_hash = keccak(node_id);
 
-        // Remove any stale entry from a previous connection.
-        // The network layer handles session conflicts via
-        // update_ingress_node_id, which kills the old session
-        // and calls on_peer_disconnected before on_peer_connected.
-        // Any remaining entry here is from a thread race between
-        // simultaneous connections and is stale.
-        if self.peers.remove(&peer_hash).is_some() {
-            debug!("Removed stale peer entry for peer_hash={:?}", peer_hash);
-        }
-
-        self.peers.insert(peer_hash.clone(), *node_id, None);
-        if let Some(state) = self.peers.get(&peer_hash) {
-            let mut state = state.write();
-            state.id = *node_id;
-            state.peer_hash = peer_hash;
-            self.request_manager.on_peer_connected(node_id);
-        } else {
-            warn!("PeerState is missing for peer: peer_hash={:?}", peer_hash);
-        }
+        // Unconditionally replace any existing entry. The network layer
+        // already serializes session conflicts via update_ingress_node_id
+        // and calls on_peer_disconnected before on_peer_connected; any
+        // entry observed here is a stale leftover from a thread race
+        // between simultaneous connections to the same peer.
+        self.peers
+            .insert(peer_hash, *node_id, pos_public_key.clone());
+        self.request_manager.on_peer_connected(node_id);
 
         if let Some(public_key) = pos_public_key {
             self.pos_peer_mapping.write().insert(
@@ -516,14 +501,6 @@ impl NetworkProtocolHandler for HotStuffSynchronizationProtocol {
                 .push((*node_id, discriminant(&event)), (*node_id, event))
             {
                 warn!("error sending PeerConnected: e={:?}", e);
-            }
-            if let Some(state) = self.peers.get(&peer_hash) {
-                state.write().set_pos_public_key(Some(public_key));
-            } else {
-                warn!(
-                    "PeerState is missing for peer: peer_hash={:?}",
-                    peer_hash
-                );
             }
         } else {
             info!(
