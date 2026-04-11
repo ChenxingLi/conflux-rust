@@ -71,7 +71,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "once_cell",
  "version_check",
- "zerocopy 0.7.32",
+ "zerocopy",
 ]
 
 [[package]]
@@ -245,7 +245,7 @@ dependencies = [
  "keccak-asm",
  "paste",
  "proptest",
- "rand 0.9.0",
+ "rand 0.9.3",
  "ruint",
  "rustc-hash 2.1.1",
  "serde",
@@ -1145,7 +1145,7 @@ dependencies = [
  "metrics",
  "parking_lot 0.12.1",
  "primitives",
- "rand 0.9.0",
+ "rand 0.9.3",
  "txgen",
 ]
 
@@ -1414,7 +1414,7 @@ dependencies = [
  "network",
  "parking_lot 0.12.1",
  "primitives",
- "rand 0.9.0",
+ "rand 0.9.3",
  "toml 0.8.19",
  "txgen",
 ]
@@ -1559,7 +1559,7 @@ dependencies = [
  "malloc_size_of",
  "malloc_size_of_derive",
  "primitives",
- "rand 0.9.0",
+ "rand 0.9.3",
  "rand_xorshift 0.4.0",
  "treap-map",
  "typenum",
@@ -1610,7 +1610,7 @@ dependencies = [
  "jsonrpsee-core",
  "jsonrpsee-types",
  "log",
- "rand 0.9.0",
+ "rand 0.9.3",
  "serde",
  "strum 0.26.3",
  "thiserror 2.0.18",
@@ -1708,7 +1708,7 @@ dependencies = [
  "once_cell",
  "parity-version",
  "primitives",
- "rand 0.7.3",
+ "rand 0.9.3",
  "rustc-hex",
  "serde",
  "serde_derive",
@@ -1900,7 +1900,7 @@ dependencies = [
  "memoffset",
  "parking_lot 0.12.1",
  "primitives",
- "rand 0.9.0",
+ "rand 0.9.3",
  "rand_chacha 0.9.0",
  "random-crash",
  "rlp 0.4.6",
@@ -2073,7 +2073,7 @@ dependencies = [
  "primitives",
  "priority-send-queue",
  "rand 0.8.5",
- "rand 0.9.0",
+ "rand 0.9.3",
  "rand_xorshift 0.4.0",
  "rangetools",
  "rayon",
@@ -2201,7 +2201,7 @@ dependencies = [
  "log",
  "parity-wordlist",
  "parking_lot 0.12.1",
- "rand 0.9.0",
+ "rand 0.9.3",
  "rustc-hex",
  "serde",
  "serde_derive",
@@ -4715,7 +4715,7 @@ dependencies = [
  "jsonrpsee-types",
  "parking_lot 0.12.1",
  "pin-project",
- "rand 0.9.0",
+ "rand 0.9.3",
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
@@ -5014,7 +5014,7 @@ version = "0.1.0"
 dependencies = [
  "malloc_size_of",
  "parking_lot 0.12.1",
- "rand 0.9.0",
+ "rand 0.9.3",
 ]
 
 [[package]]
@@ -5078,7 +5078,7 @@ dependencies = [
  "log-mdc",
  "mock_instant",
  "parking_lot 0.12.1",
- "rand 0.9.0",
+ "rand 0.9.3",
  "serde",
  "serde-value",
  "serde_json",
@@ -5206,7 +5206,7 @@ dependencies = [
  "lazy_static",
  "log",
  "parking_lot 0.12.1",
- "rand 0.9.0",
+ "rand 0.9.3",
  "serde",
  "timer",
  "tokio",
@@ -5359,7 +5359,7 @@ dependencies = [
  "parity-path",
  "parking_lot 0.12.1",
  "priority-send-queue",
- "rand 0.9.0",
+ "rand 0.9.3",
  "rlp 0.4.6",
  "rlp-derive",
  "serde",
@@ -6169,7 +6169,7 @@ dependencies = [
  "log",
  "malloc_size_of",
  "once_cell",
- "rand 0.9.0",
+ "rand 0.9.3",
  "rlp 0.4.6",
  "rlp-derive",
  "serde",
@@ -6325,14 +6325,13 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.9.0"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
+checksum = "7ec095654a25171c2124e9e3393a930bddbffdc939556c914957a4c3e0a87166"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.3",
  "serde",
- "zerocopy 0.8.24",
 ]
 
 [[package]]
@@ -6427,7 +6426,7 @@ dependencies = [
  "lazy_static",
  "log",
  "parking_lot 0.12.1",
- "rand 0.9.0",
+ "rand 0.9.3",
 ]
 
 [[package]]
@@ -6854,7 +6853,7 @@ dependencies = [
  "primitive-types 0.12.2",
  "proptest",
  "rand 0.8.5",
- "rand 0.9.0",
+ "rand 0.9.3",
  "rlp 0.5.2",
  "ruint-macro",
  "serde_core",
@@ -7176,7 +7175,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c3c81b43dc2d8877c216a3fccf76677ee1ebccd429566d3e67447290d0c42b2"
 dependencies = [
  "bitcoin_hashes",
- "rand 0.9.0",
+ "rand 0.9.3",
  "secp256k1-sys 0.11.0",
 ]
 
@@ -8395,7 +8394,7 @@ version = "0.1.0"
 dependencies = [
  "malloc_size_of",
  "primitives",
- "rand 0.9.0",
+ "rand 0.9.3",
  "rand_xorshift 0.4.0",
 ]
 
@@ -8419,7 +8418,7 @@ dependencies = [
  "metrics",
  "parking_lot 0.12.1",
  "primitives",
- "rand 0.9.0",
+ "rand 0.9.3",
  "rlp 0.4.6",
  "rustc-hex",
  "secret-store",
@@ -9223,16 +9222,7 @@ version = "0.7.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74d4d3961e53fa4c9a25a8637fc2bfaf2595b3d3ae34875568a5cf64787716be"
 dependencies = [
- "zerocopy-derive 0.7.32",
-]
-
-[[package]]
-name = "zerocopy"
-version = "0.8.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2586fea28e186957ef732a5f8b3be2da217d65c5969d4b1e17f973ebbe876879"
-dependencies = [
- "zerocopy-derive 0.8.24",
+ "zerocopy-derive",
 ]
 
 [[package]]
@@ -9240,17 +9230,6 @@ name = "zerocopy-derive"
 version = "0.7.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ce1b18ccd8e73a9321186f97e46f9f04b778851177567b1975109d26a08d2a6"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.111",
-]
-
-[[package]]
-name = "zerocopy-derive"
-version = "0.8.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a996a8f63c5c4448cd959ac1bab0aaa3306ccfd060472f85943ee0750f0169be"
 dependencies = [
  "proc-macro2",
  "quote",
