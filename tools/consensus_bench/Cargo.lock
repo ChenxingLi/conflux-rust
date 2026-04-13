@@ -1357,10 +1357,10 @@ dependencies = [
  "digest 0.10.7",
  "hmac 0.12.1",
  "lazy_static",
- "parity-secp256k1",
  "pbkdf2 0.12.2",
  "ripemd",
  "scrypt 0.11.0",
+ "secp256k1 0.30.0",
  "sha2 0.10.9",
  "subtle",
  "thiserror 2.0.18",
@@ -1917,10 +1917,9 @@ dependencies = [
  "log",
  "malloc_size_of",
  "malloc_size_of_derive",
- "parity-secp256k1",
  "parity-wordlist",
- "rand 0.7.3",
  "rustc-hex",
+ "secp256k1 0.30.0",
  "serde",
  "sha2 0.10.9",
  "thiserror 2.0.18",
@@ -5087,17 +5086,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "parity-secp256k1"
-version = "0.7.0"
-source = "git+https://github.com/paritytech/rust-secp256k1.git#d05fd8e152f8d110b587906e3d854196b086e42a"
-dependencies = [
- "arrayvec 0.5.2",
- "cc",
- "cfg-if 0.1.10",
- "rand 0.7.3",
 ]
 
 [[package]]
