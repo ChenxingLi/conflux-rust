@@ -189,8 +189,6 @@ On timer notification → run Step A → run Step B → repeat.
 ### Phase 2: cargo build consensus_bench
 - **Anchor:** `=== Phase 2/4: Building consensus_bench ===`
 - **Success anchor:** `=== Phase 2/4: Build succeeded ===`
-- **Special risk:** when the worktree is nested inside the parent repo, Cargo may walk up and resolve the wrong workspace
-- **Failure signal:** `error: current package believes it's in a workspace`
 
 ### Phase 3: test_all.py (integration tests) — requires active monitoring
 - **Anchor:** `=== Phase 3/4: Integration tests ===`
