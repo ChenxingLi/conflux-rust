@@ -4,7 +4,6 @@
 
 use std::{collections::BTreeMap, convert::TryInto, path::PathBuf, sync::Arc};
 
-use cfx_rpc_builder::RpcModuleSelection;
 use lazy_static::*;
 use log::{error, warn};
 use parking_lot::RwLock;
@@ -21,6 +20,7 @@ use cfx_parameters::{
 use cfx_rpc_cfx_types::{
     address::USE_SIMPLE_RPC_ADDRESS, apis::ApiSet, RpcImplConfiguration,
 };
+use cfx_rpc_eth_types::RpcModuleSelection;
 use cfx_storage::{
     defaults::DEFAULT_DEBUG_SNAPSHOT_CHECKER_THREADS, storage_dir,
     ConsensusParam, ProvideExtraSnapshotSyncConfig, StorageConfiguration,

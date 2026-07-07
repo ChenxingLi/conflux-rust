@@ -9,6 +9,7 @@ pub mod eth_pubsub;
 mod fee_history;
 mod filter;
 mod log;
+mod module;
 mod receipt;
 mod simulate;
 mod state;
@@ -32,6 +33,7 @@ pub use eth_pubsub::*;
 pub use fee_history::FeeHistory;
 pub use filter::*;
 pub use log::*;
+pub use module::{EthRpcModule, RpcModuleSelection};
 pub use receipt::Receipt;
 pub use simulate::*;
 pub use state::{

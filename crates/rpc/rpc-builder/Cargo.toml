@@ -27,6 +27,7 @@ cfx-rpc-cfx-api = { workspace = true }
 cfxcore = { workspace = true }
 cfxcore-accounts = { workspace = true }
 cfx-rpc-cfx-types = { workspace = true }
+cfx-rpc-eth-types = { workspace = true }
 cfx-rpc-middlewares = { workspace = true }
 cfx-tasks = { workspace = true }
 network = { workspace = true }

@@ -1526,8 +1526,8 @@ dependencies = [
  "cfx-executor",
  "cfx-internal-common",
  "cfx-parameters",
- "cfx-rpc-builder",
  "cfx-rpc-cfx-types",
+ "cfx-rpc-eth-types",
  "cfx-storage",
  "cfx-types",
  "cfxcore",
@@ -1755,6 +1755,7 @@ dependencies = [
  "cfx-rpc-cfx-types",
  "cfx-rpc-eth-api",
  "cfx-rpc-eth-impl",
+ "cfx-rpc-eth-types",
  "cfx-rpc-middlewares",
  "cfx-tasks",
  "cfxcore",
@@ -1953,6 +1954,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "similar-asserts",
+ "strum 0.26.3",
  "thiserror 2.0.18",
 ]
 

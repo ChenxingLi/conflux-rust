@@ -165,11 +165,15 @@ impl RpcModuleSelection {
 }
 
 impl From<&HashSet<EthRpcModule>> for RpcModuleSelection {
-    fn from(s: &HashSet<EthRpcModule>) -> Self { Self::from(s.clone()) }
+    fn from(s: &HashSet<EthRpcModule>) -> Self {
+        Self::from(s.clone())
+    }
 }
 
 impl From<HashSet<EthRpcModule>> for RpcModuleSelection {
-    fn from(s: HashSet<EthRpcModule>) -> Self { Self::Selection(s) }
+    fn from(s: HashSet<EthRpcModule>) -> Self {
+        Self::Selection(s)
+    }
 }
 
 impl From<&[EthRpcModule]> for RpcModuleSelection {
@@ -192,14 +196,18 @@ impl<const N: usize> From<[EthRpcModule; N]> for RpcModuleSelection {
 
 impl<'a> FromIterator<&'a EthRpcModule> for RpcModuleSelection {
     fn from_iter<I>(iter: I) -> Self
-    where I: IntoIterator<Item = &'a EthRpcModule> {
+    where
+        I: IntoIterator<Item = &'a EthRpcModule>,
+    {
         iter.into_iter().copied().collect()
     }
 }
 
 impl FromIterator<EthRpcModule> for RpcModuleSelection {
     fn from_iter<I>(iter: I) -> Self
-    where I: IntoIterator<Item = EthRpcModule> {
+    where
+        I: IntoIterator<Item = EthRpcModule>,
+    {
         Self::Selection(iter.into_iter().collect())
     }
 }
@@ -302,7 +310,9 @@ impl EthRpcModule {
 
     /// Returns the string representation of the module.
     #[inline]
-    pub fn as_str(&self) -> &'static str { self.into() }
+    pub fn as_str(&self) -> &'static str {
+        self.into()
+    }
 }
 
 impl FromStr for EthRpcModule {
@@ -341,7 +351,9 @@ impl fmt::Display for EthRpcModule {
 
 impl Serialize for EthRpcModule {
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
+    where
+        S: Serializer,
+    {
         s.serialize_str(self.as_ref())
     }
 }

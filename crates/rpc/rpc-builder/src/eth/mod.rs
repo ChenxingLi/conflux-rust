@@ -27,13 +27,12 @@
 // IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 #![allow(unused)]
-mod module;
 
 pub use crate::{
     error::*, id_provider::SubscriptionIdProvider, RpcServerHandle,
 };
+pub use cfx_rpc_eth_types::{EthRpcModule, RpcModuleSelection};
 use cfx_rpc_middlewares::{maybe_cors_layer, Logger, Metrics, Throttle};
-pub use module::{EthRpcModule, RpcModuleSelection};
 
 use cfx_rpc_cfx_types::RpcImplConfiguration;
 use cfx_rpc_eth_api::*;
