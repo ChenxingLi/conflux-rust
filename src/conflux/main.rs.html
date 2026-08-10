@@ -25,7 +25,7 @@
 <a href=#25 id=25 data-nosnippet>25</a><span class="kw">use </span>cli::Cli;
 <a href=#26 id=26 data-nosnippet>26</a><span class="kw">use </span>client::{
 <a href=#27 id=27 data-nosnippet>27</a>    archive::ArchiveClient,
-<a href=#28 id=28 data-nosnippet>28</a>    common::{shutdown_handler, ClientTrait},
+<a href=#28 id=28 data-nosnippet>28</a>    common::{panic_handler, shutdown_handler, ClientTrait},
 <a href=#29 id=29 data-nosnippet>29</a>    configuration::Configuration,
 <a href=#30 id=30 data-nosnippet>30</a>    full::FullClient,
 <a href=#31 id=31 data-nosnippet>31</a>    light::LightClient,
@@ -86,32 +86,32 @@
 <a href=#86 id=86 data-nosnippet>86</a>    <span class="kw">let </span>conf = Configuration::parse(<span class="kw-2">&amp;</span>matches)<span class="question-mark">?</span>;
 <a href=#87 id=87 data-nosnippet>87</a>
 <a href=#88 id=88 data-nosnippet>88</a>    setup_logger(<span class="kw-2">&amp;</span>conf)<span class="question-mark">?</span>;
-<a href=#89 id=89 data-nosnippet>89</a>
-<a href=#90 id=90 data-nosnippet>90</a>    THROTTLING_SERVICE.write().initialize(
-<a href=#91 id=91 data-nosnippet>91</a>        conf.raw_conf.egress_queue_capacity,
-<a href=#92 id=92 data-nosnippet>92</a>        conf.raw_conf.egress_min_throttle,
-<a href=#93 id=93 data-nosnippet>93</a>        conf.raw_conf.egress_max_throttle,
-<a href=#94 id=94 data-nosnippet>94</a>    );
-<a href=#95 id=95 data-nosnippet>95</a>
-<a href=#96 id=96 data-nosnippet>96</a>    <span class="kw">let </span>exit = Arc::new((Mutex::new(<span class="bool-val">false</span>), Condvar::new()));
-<a href=#97 id=97 data-nosnippet>97</a>
-<a href=#98 id=98 data-nosnippet>98</a>    <span class="macro">info!</span>(
-<a href=#99 id=99 data-nosnippet>99</a>        <span class="string">"
-<a href=#100 id=100 data-nosnippet>100</a>:'######:::'#######::'##::: ##:'########:'##:::::::'##::::'##:'##::::'##:
-<a href=#101 id=101 data-nosnippet>101</a>'##... ##:'##.... ##: ###:: ##: ##.....:: ##::::::: ##:::: ##:. ##::'##::
-<a href=#102 id=102 data-nosnippet>102</a> ##:::..:: ##:::: ##: ####: ##: ##::::::: ##::::::: ##:::: ##::. ##'##:::
-<a href=#103 id=103 data-nosnippet>103</a> ##::::::: ##:::: ##: ## ## ##: ######::: ##::::::: ##:::: ##:::. ###::::
-<a href=#104 id=104 data-nosnippet>104</a> ##::::::: ##:::: ##: ##. ####: ##...:::: ##::::::: ##:::: ##::: ## ##:::
-<a href=#105 id=105 data-nosnippet>105</a> ##::: ##: ##:::: ##: ##:. ###: ##::::::: ##::::::: ##:::: ##:: ##:. ##::
-<a href=#106 id=106 data-nosnippet>106</a>. ######::. #######:: ##::. ##: ##::::::: ########:. #######:: ##:::. ##:
-<a href=#107 id=107 data-nosnippet>107</a>:......::::.......:::..::::..::..::::::::........:::.......:::..:::::..::
-<a href=#108 id=108 data-nosnippet>108</a>Current Version: {}
-<a href=#109 id=109 data-nosnippet>109</a>"</span>,
-<a href=#110 id=110 data-nosnippet>110</a>        get_version()
-<a href=#111 id=111 data-nosnippet>111</a>    );
-<a href=#112 id=112 data-nosnippet>112</a>
-<a href=#113 id=113 data-nosnippet>113</a>    <span class="kw">let </span>client_handle: Box&lt;<span class="kw">dyn </span>ClientTrait&gt;;
-<a href=#114 id=114 data-nosnippet>114</a>    client_handle = <span class="kw">match </span>conf.node_type() {
+<a href=#89 id=89 data-nosnippet>89</a>    panic_handler::setup();
+<a href=#90 id=90 data-nosnippet>90</a>
+<a href=#91 id=91 data-nosnippet>91</a>    THROTTLING_SERVICE.write().initialize(
+<a href=#92 id=92 data-nosnippet>92</a>        conf.raw_conf.egress_queue_capacity,
+<a href=#93 id=93 data-nosnippet>93</a>        conf.raw_conf.egress_min_throttle,
+<a href=#94 id=94 data-nosnippet>94</a>        conf.raw_conf.egress_max_throttle,
+<a href=#95 id=95 data-nosnippet>95</a>    );
+<a href=#96 id=96 data-nosnippet>96</a>
+<a href=#97 id=97 data-nosnippet>97</a>    <span class="kw">let </span>exit = Arc::new((Mutex::new(<span class="bool-val">false</span>), Condvar::new()));
+<a href=#98 id=98 data-nosnippet>98</a>
+<a href=#99 id=99 data-nosnippet>99</a>    <span class="macro">info!</span>(
+<a href=#100 id=100 data-nosnippet>100</a>        <span class="string">"
+<a href=#101 id=101 data-nosnippet>101</a>:'######:::'#######::'##::: ##:'########:'##:::::::'##::::'##:'##::::'##:
+<a href=#102 id=102 data-nosnippet>102</a>'##... ##:'##.... ##: ###:: ##: ##.....:: ##::::::: ##:::: ##:. ##::'##::
+<a href=#103 id=103 data-nosnippet>103</a> ##:::..:: ##:::: ##: ####: ##: ##::::::: ##::::::: ##:::: ##::. ##'##:::
+<a href=#104 id=104 data-nosnippet>104</a> ##::::::: ##:::: ##: ## ## ##: ######::: ##::::::: ##:::: ##:::. ###::::
+<a href=#105 id=105 data-nosnippet>105</a> ##::::::: ##:::: ##: ##. ####: ##...:::: ##::::::: ##:::: ##::: ## ##:::
+<a href=#106 id=106 data-nosnippet>106</a> ##::: ##: ##:::: ##: ##:. ###: ##::::::: ##::::::: ##:::: ##:: ##:. ##::
+<a href=#107 id=107 data-nosnippet>107</a>. ######::. #######:: ##::. ##: ##::::::: ########:. #######:: ##:::. ##:
+<a href=#108 id=108 data-nosnippet>108</a>:......::::.......:::..::::..::..::::::::........:::.......:::..:::::..::
+<a href=#109 id=109 data-nosnippet>109</a>Current Version: {}
+<a href=#110 id=110 data-nosnippet>110</a>"</span>,
+<a href=#111 id=111 data-nosnippet>111</a>        get_version()
+<a href=#112 id=112 data-nosnippet>112</a>    );
+<a href=#113 id=113 data-nosnippet>113</a>
+<a href=#114 id=114 data-nosnippet>114</a>    <span class="kw">let </span>client_handle: Box&lt;<span class="kw">dyn </span>ClientTrait&gt; = <span class="kw">match </span>conf.node_type() {
 <a href=#115 id=115 data-nosnippet>115</a>        NodeType::Archive =&gt; {
 <a href=#116 id=116 data-nosnippet>116</a>            <span class="macro">info!</span>(<span class="string">"Starting archive client..."</span>);
 <a href=#117 id=117 data-nosnippet>117</a>            ArchiveClient::start(conf, exit.clone())
@@ -173,7 +173,7 @@
 <a href=#173 id=173 data-nosnippet>173</a>        <span class="kw">let </span>dump_cmd = DumpCommand::parse(dump_matches).map_err(|e| {
 <a href=#174 id=174 data-nosnippet>174</a>            <span class="macro">format!</span>(<span class="string">"Failed to parse dump command arguments: {}"</span>, e)
 <a href=#175 id=175 data-nosnippet>175</a>        })<span class="question-mark">?</span>;
-<a href=#176 id=176 data-nosnippet>176</a>        <span class="kw">let </span><span class="kw-2">mut </span>conf = Configuration::parse(<span class="kw-2">&amp;</span>matches)<span class="question-mark">?</span>;
+<a href=#176 id=176 data-nosnippet>176</a>        <span class="kw">let </span><span class="kw-2">mut </span>conf = Configuration::parse(matches)<span class="question-mark">?</span>;
 <a href=#177 id=177 data-nosnippet>177</a>        <span class="kw">let </span>execute_output = dump_cmd.execute(<span class="kw-2">&amp;mut </span>conf)<span class="question-mark">?</span>;
 <a href=#178 id=178 data-nosnippet>178</a>        <span class="kw">return </span><span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(execute_output));
 <a href=#179 id=179 data-nosnippet>179</a>    }

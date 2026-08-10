@@ -13,15 +13,15 @@
 <a href=#13 id=13 data-nosnippet>13</a>//! Internally, it uses the `PerKeyQueue` to store messages
 <a href=#14 id=14 data-nosnippet>14</a></span><span class="kw">use </span><span class="kw">crate</span>::message_queues::{PerKeyQueue, QueueStyle};
 <a href=#15 id=15 data-nosnippet>15</a><span class="kw">use </span>anyhow::{ensure, <span class="prelude-ty">Result</span>};
-<a href=#16 id=16 data-nosnippet>16</a><span class="kw">use </span>diem_infallible::{Mutex, NonZeroUsize};
-<a href=#17 id=17 data-nosnippet>17</a><span class="kw">use </span>diem_metrics::IntCounterVec;
-<a href=#18 id=18 data-nosnippet>18</a><span class="kw">use </span>futures::{
-<a href=#19 id=19 data-nosnippet>19</a>    channel::oneshot,
-<a href=#20 id=20 data-nosnippet>20</a>    stream::{FusedStream, Stream},
-<a href=#21 id=21 data-nosnippet>21</a>};
-<a href=#22 id=22 data-nosnippet>22</a><span class="kw">use </span>std::{
-<a href=#23 id=23 data-nosnippet>23</a>    fmt::{Debug, Formatter},
-<a href=#24 id=24 data-nosnippet>24</a>    hash::Hash,
+<a href=#16 id=16 data-nosnippet>16</a><span class="kw">use </span>futures::{
+<a href=#17 id=17 data-nosnippet>17</a>    channel::oneshot,
+<a href=#18 id=18 data-nosnippet>18</a>    stream::{FusedStream, Stream},
+<a href=#19 id=19 data-nosnippet>19</a>};
+<a href=#20 id=20 data-nosnippet>20</a><span class="kw">use </span>parking_lot::Mutex;
+<a href=#21 id=21 data-nosnippet>21</a><span class="kw">use </span>std::{
+<a href=#22 id=22 data-nosnippet>22</a>    fmt::{Debug, Formatter},
+<a href=#23 id=23 data-nosnippet>23</a>    hash::Hash,
+<a href=#24 id=24 data-nosnippet>24</a>    num::NonZeroUsize,
 <a href=#25 id=25 data-nosnippet>25</a>    pin::Pin,
 <a href=#26 id=26 data-nosnippet>26</a>    sync::Arc,
 <a href=#27 id=27 data-nosnippet>27</a>    task::{Context, Poll, Waker},
@@ -208,28 +208,21 @@
 <a href=#208 id=208 data-nosnippet>208</a><span class="doccomment">/// Create a new Diem Channel and returns the two ends of the channel.
 <a href=#209 id=209 data-nosnippet>209</a></span><span class="kw">pub fn </span>new&lt;K: Eq + Hash + Clone, M&gt;(
 <a href=#210 id=210 data-nosnippet>210</a>    queue_style: QueueStyle, max_queue_size_per_key: usize,
-<a href=#211 id=211 data-nosnippet>211</a>    counters: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span><span class="lifetime">'static </span>IntCounterVec&gt;,
-<a href=#212 id=212 data-nosnippet>212</a>) -&gt; (Sender&lt;K, M&gt;, Receiver&lt;K, M&gt;) {
-<a href=#213 id=213 data-nosnippet>213</a>    <span class="kw">let </span>max_queue_size_per_key = <span class="macro">NonZeroUsize!</span>(
-<a href=#214 id=214 data-nosnippet>214</a>        max_queue_size_per_key,
-<a href=#215 id=215 data-nosnippet>215</a>        <span class="string">"diem_channel cannot be of size 0"
-<a href=#216 id=216 data-nosnippet>216</a>    </span>);
-<a href=#217 id=217 data-nosnippet>217</a>    <span class="kw">let </span>shared_state = Arc::new(Mutex::new(SharedState {
-<a href=#218 id=218 data-nosnippet>218</a>        internal_queue: PerKeyQueue::new(
-<a href=#219 id=219 data-nosnippet>219</a>            queue_style,
-<a href=#220 id=220 data-nosnippet>220</a>            max_queue_size_per_key,
-<a href=#221 id=221 data-nosnippet>221</a>            counters,
-<a href=#222 id=222 data-nosnippet>222</a>        ),
-<a href=#223 id=223 data-nosnippet>223</a>        waker: <span class="prelude-val">None</span>,
-<a href=#224 id=224 data-nosnippet>224</a>        num_senders: <span class="number">1</span>,
-<a href=#225 id=225 data-nosnippet>225</a>        receiver_dropped: <span class="bool-val">false</span>,
-<a href=#226 id=226 data-nosnippet>226</a>        stream_terminated: <span class="bool-val">false</span>,
-<a href=#227 id=227 data-nosnippet>227</a>    }));
-<a href=#228 id=228 data-nosnippet>228</a>    <span class="kw">let </span>shared_state_clone = Arc::clone(<span class="kw-2">&amp;</span>shared_state);
-<a href=#229 id=229 data-nosnippet>229</a>    (
-<a href=#230 id=230 data-nosnippet>230</a>        Sender { shared_state },
-<a href=#231 id=231 data-nosnippet>231</a>        Receiver {
-<a href=#232 id=232 data-nosnippet>232</a>            shared_state: shared_state_clone,
-<a href=#233 id=233 data-nosnippet>233</a>        },
-<a href=#234 id=234 data-nosnippet>234</a>    )
-<a href=#235 id=235 data-nosnippet>235</a>}</code></pre></div></section></main></body></html>
+<a href=#211 id=211 data-nosnippet>211</a>) -&gt; (Sender&lt;K, M&gt;, Receiver&lt;K, M&gt;) {
+<a href=#212 id=212 data-nosnippet>212</a>    <span class="kw">let </span>max_queue_size_per_key = NonZeroUsize::new(max_queue_size_per_key)
+<a href=#213 id=213 data-nosnippet>213</a>        .expect(<span class="string">"diem_channel cannot be of size 0"</span>);
+<a href=#214 id=214 data-nosnippet>214</a>    <span class="kw">let </span>shared_state = Arc::new(Mutex::new(SharedState {
+<a href=#215 id=215 data-nosnippet>215</a>        internal_queue: PerKeyQueue::new(queue_style, max_queue_size_per_key),
+<a href=#216 id=216 data-nosnippet>216</a>        waker: <span class="prelude-val">None</span>,
+<a href=#217 id=217 data-nosnippet>217</a>        num_senders: <span class="number">1</span>,
+<a href=#218 id=218 data-nosnippet>218</a>        receiver_dropped: <span class="bool-val">false</span>,
+<a href=#219 id=219 data-nosnippet>219</a>        stream_terminated: <span class="bool-val">false</span>,
+<a href=#220 id=220 data-nosnippet>220</a>    }));
+<a href=#221 id=221 data-nosnippet>221</a>    <span class="kw">let </span>shared_state_clone = Arc::clone(<span class="kw-2">&amp;</span>shared_state);
+<a href=#222 id=222 data-nosnippet>222</a>    (
+<a href=#223 id=223 data-nosnippet>223</a>        Sender { shared_state },
+<a href=#224 id=224 data-nosnippet>224</a>        Receiver {
+<a href=#225 id=225 data-nosnippet>225</a>            shared_state: shared_state_clone,
+<a href=#226 id=226 data-nosnippet>226</a>        },
+<a href=#227 id=227 data-nosnippet>227</a>    )
+<a href=#228 id=228 data-nosnippet>228</a>}</code></pre></div></section></main></body></html>
