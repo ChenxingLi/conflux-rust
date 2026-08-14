@@ -89,6 +89,7 @@ fn test_get_set_at_second_commit() {
     state_0.commit(epoch_id_0).unwrap();
 
     let mut state_1 = state_manager
+        .clone()
         .open_state(&epoch_id_0, OpenOptions::next_epoch_base())
         .unwrap()
         .unwrap();
@@ -281,7 +282,8 @@ fn simulate_transactions(
 
     let mut epoch_id = H256::default();
     epoch_id.as_bytes_mut()[0] = epoch;
-    let mut state = state_manager
+    let mut state = (**state_manager)
+        .clone()
         .open_state(&epoch_id, OpenOptions::next_epoch_base())
         .unwrap()
         .unwrap();
@@ -428,6 +430,7 @@ fn test_set_delete() {
 
     // In second state, insert part 2, then delete everything.
     let mut state = state_manager
+        .clone()
         .open_state(&epoch_id, OpenOptions::next_epoch_base())
         .unwrap()
         .unwrap();
@@ -559,6 +562,7 @@ fn test_set_order_concurrent() {
     let parent_epoch_0 = epoch_id;
 
     let mut state_1 = state_manager
+        .clone()
         .open_state(&parent_epoch_0, OpenOptions::next_epoch_base())
         .unwrap()
         .unwrap();

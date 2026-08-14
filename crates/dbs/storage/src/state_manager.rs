@@ -18,6 +18,78 @@ pub enum StorageVersion {
     Epoch(EpochId),
 }
 
+/// The interface of a versioned state engine, for callers that read, write
+/// and maintain state without depending on a concrete engine.
+///
+/// `open_state`, `commit` and `preview_genesis_root` take `self: Arc<Self>`:
+/// the state objects they build store an owned `Arc` back to the engine,
+/// which cannot be recovered from a `&self` receiver. The other methods need
+/// only a borrow and take the ordinary `&self`.
+///
+/// Two members are not in their final shape yet, and each is pinned there by
+/// a change that has not happened.
+///
+/// - `open_state` still names the version by its epoch hash rather than by
+///   `StorageVersion`. The read handle on the empty base is still handed out by
+///   an entry point of its own on the concrete engine, so nothing here would
+///   produce the `Empty` variant yet.
+/// - `open_state` answers with `Box<dyn StateTrait>`, the write capable
+///   supertrait of `StorageView`. `StateDb` still holds a write capable trait
+///   object in its transitional constructor, so the write methods have to come
+///   off `StateTrait` before this can narrow to `StorageView`.
+pub trait StorageEngine: Send + Sync {
+    /// Open one version of the state for reading. `Ok(None)` means the
+    /// version is not available on this node, which the caller tells apart
+    /// from an engine failure by the `Result` around it.
+    fn open_state(
+        self: Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
+    ) -> Result<Option<Box<dyn StateTrait>>>;
+
+    /// Apply a whole changeset on top of `parent` and persist it under
+    /// `meta.epoch_id`, answering with the consensus commitment.
+    fn commit(
+        self: Arc<Self>, parent: StorageVersion, changeset: Changeset,
+        meta: CommitMeta,
+    ) -> Result<StateRoot>;
+
+    /// The state root the genesis changeset would produce on the empty base,
+    /// computed without persisting anything.
+    ///
+    /// Only genesis needs a root before its epoch has an id. Execution is
+    /// deferred: the state root a block header carries belongs to the epoch
+    /// `DEFERRED_STATE_EPOCH_COUNT` heights below it, an epoch which already
+    /// has a block hash of its own, so a commit always has an epoch id to
+    /// persist under. Nothing sits that far below the earliest headers, so
+    /// they carry the genesis root instead — the genesis header among them,
+    /// and the hash of that header is in turn the epoch id the genesis state
+    /// is committed under.
+    fn preview_genesis_root(
+        self: Arc<Self>, changeset: &Changeset,
+    ) -> Result<StateRoot>;
+
+    /// Whether the epoch `base` identifies can serve as the execution base
+    /// of its child epoch. An engine error answers `false`; every caller
+    /// reacts to `false` by skipping or re-executing the epoch, and both
+    /// are the safe move.
+    fn usable_as_base(&self, base: &EpochId) -> bool;
+
+    /// The restart handshake: get the engine ready for the replay consensus
+    /// is about to drive, and answer where it should start. The returned
+    /// height is never above the one consensus proposed, so consensus can
+    /// keep applying its own force recompute rules by taking the lower of
+    /// the two.
+    fn plan_recovery(&self, view: &dyn ConsensusRecoveryView) -> RecoveryPlan;
+
+    /// Tell the engine that the chain has confirmed the state at
+    /// `view.confirmed_height()`, its cue to reclaim what it no longer
+    /// needs. The call is synchronous: an open or commit issued after it
+    /// sees a state consistent with the reclamation. Returns the physical
+    /// openable lower bound the reclamation leaves behind. An error on the
+    /// way is logged rather than returned; the next confirmation retries
+    /// the round.
+    fn notify_state_confirmed(&self, view: &dyn StateConfirmedView) -> u64;
+}
+
 /// The chain level facts the engine pulls while it reclaims what a state
 /// confirmation has made unnecessary. Every method answers a question in
 /// consensus vocabulary; which states and snapshots to remove is the engine's
@@ -196,7 +268,11 @@ impl StateIndex {
     }
 }
 
-use crate::delta_mpt_key::DeltaMptKeyPadding;
+use crate::{
+    delta_mpt_key::DeltaMptKeyPadding,
+    impls::errors::Result,
+    state::{Changeset, CommitMeta, StateTrait},
+};
 use cfx_types::Space;
-use primitives::{EpochId, MerkleHash};
+use primitives::{EpochId, MerkleHash, StateRoot};
 use std::sync::Arc;

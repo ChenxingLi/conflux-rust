@@ -240,7 +240,7 @@ pub use self::{
     state_manager::{
         ConsensusRecoveryView, OpenMode, OpenOptions, RecoveryPlan,
         StateConfirmedView, StateIndex, StateManager as StorageManager,
-        StorageVersion,
+        StorageEngine, StorageVersion,
     },
     storage_db::{KeyValueDbIterableTrait, KeyValueDbTrait},
 };

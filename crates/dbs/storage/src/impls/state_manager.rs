@@ -1166,25 +1166,14 @@ impl StateManager {
         )
     }
 
-    /// Tell the engine that the chain has confirmed the state at
-    /// `view.confirmed_height()`, its cue to reclaim the states and snapshots
-    /// it no longer needs. The call is synchronous, so an open or a commit
-    /// issued after it sees a state consistent with the reclamation.
-    ///
     /// `view` is read only and is not kept past this call. It carries the
     /// confirmed height, the retention parameters the engine's own rules are
     /// stated in, and the lookup from a height to its pivot chain epoch, which
     /// is the one thing the engine cannot answer for itself.
     ///
-    /// Returns the physical openable lower bound left behind, which consensus
-    /// needs in order to move its own bound and drop the prefix of the pivot
-    /// hash mirror indexed from it.
-    ///
-    /// An error on the way is logged rather than returned; it surfaces at a
-    /// later open or commit, and the next confirmation retries the round. The
-    /// bound is still reported, straight off the record, because a failed
-    /// round leaves the record describing the disk just as a successful one
-    /// does.
+    /// On a failed round the bound is still reported, straight off the record,
+    /// because a failed round leaves the record describing the disk just as a
+    /// successful one does.
     pub fn notify_state_confirmed(&self, view: &dyn StateConfirmedView) -> u64 {
         match self.storage_manager.maintain_state_confirmed(view) {
             Ok(physical_openable_lower_bound) => physical_openable_lower_bound,
@@ -1200,16 +1189,9 @@ impl StateManager {
         }
     }
 
-    /// Get the snapshot pipeline ready for a restart replay and say where the
-    /// replay should start.
-    ///
     /// `view` is read only and is not kept past this call. No transaction is
     /// executed here; the replay itself is a run of ordinary commits driven by
     /// consensus.
-    ///
-    /// The suggested restart height is never above the one consensus proposed,
-    /// so consensus can keep applying its own force recompute rules by taking
-    /// the lower of the two.
     pub fn plan_recovery(
         &self, view: &dyn ConsensusRecoveryView,
     ) -> RecoveryPlan {
@@ -1300,17 +1282,11 @@ impl StateManager {
         }
     }
 
-    /// Can the epoch `base` identifies serve as the execution base of its
-    /// child epoch? A per epoch existence question, asked when the
-    /// sync path skips epochs it cannot execute and when the restart path
-    /// locates the recompute start.
+    /// Asked when the sync path skips epochs it cannot execute and when the
+    /// restart path locates the recompute start.
     ///
     /// Answered by the read only open, not by the base open: the two are not
     /// known to agree on availability in the snapshot sync special case.
-    ///
-    /// An engine error answers `false`. Every caller reacts to `false` by
-    /// skipping the epoch or by re-executing it, and both are the safe move
-    /// when the truth cannot be read off the disk.
     pub fn usable_as_base(&self, base: &EpochId) -> bool {
         match self.get_state_trees(
             base, /* try_open = */ false,
@@ -1465,9 +1441,8 @@ impl StateManager {
         ))))
     }
 
-    /// Commit a whole changeset on top of `parent`. The caller names the
-    /// parent version; opening the three layers of the next epoch happens
-    /// here, inside the engine.
+    /// Opening the three layers of the next epoch happens here, inside the
+    /// engine.
     ///
     /// `meta.height` is not read. The height the engine acts on comes off the
     /// state object, where the open path put it, and holds the same value.
@@ -1490,16 +1465,8 @@ impl StateManager {
     }
 
     /// Compute the state root the genesis changeset would produce on the empty
-    /// base, without persisting any of it.
-    ///
-    /// Only genesis needs a root before its epoch has an id. Execution is
-    /// deferred: the state root a block header carries belongs to the epoch
-    /// `DEFERRED_STATE_EPOCH_COUNT` heights below it, an epoch which already
-    /// has a block hash of its own, so a commit always has an epoch id to
-    /// persist under. Nothing sits that far below the earliest headers, so
-    /// they carry the genesis root instead — the genesis header among them,
-    /// and the hash of that header is in turn the epoch id the genesis state
-    /// is committed under.
+    /// base, without persisting any of it. The reason only genesis needs this
+    /// is on `StorageEngine::preview_genesis_root`.
     ///
     /// The `commit_changeset` that follows applies the same changeset a second
     /// time, on a state object opened afresh. The preview runs on the plain
@@ -1540,6 +1507,39 @@ impl StateManager {
             single_mpt_state,
             single_mpt_storage_manager.get_state_filter(),
         ))
+    }
+}
+
+impl StorageEngine for StateManager {
+    fn open_state(
+        self: Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
+    ) -> Result<Option<Box<dyn StateTrait>>> {
+        StateManager::open_state(&self, epoch_hash, opts)
+    }
+
+    fn commit(
+        self: Arc<Self>, parent: StorageVersion, changeset: Changeset,
+        meta: CommitMeta,
+    ) -> Result<StateRoot> {
+        StateManager::commit_changeset(&self, parent, changeset, meta)
+    }
+
+    fn preview_genesis_root(
+        self: Arc<Self>, changeset: &Changeset,
+    ) -> Result<StateRoot> {
+        StateManager::preview_genesis_root(&self, changeset)
+    }
+
+    fn usable_as_base(&self, base: &EpochId) -> bool {
+        StateManager::usable_as_base(self, base)
+    }
+
+    fn plan_recovery(&self, view: &dyn ConsensusRecoveryView) -> RecoveryPlan {
+        StateManager::plan_recovery(self, view)
+    }
+
+    fn notify_state_confirmed(&self, view: &dyn StateConfirmedView) -> u64 {
+        StateManager::notify_state_confirmed(self, view)
     }
 }
 
