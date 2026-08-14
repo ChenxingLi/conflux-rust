@@ -84,7 +84,7 @@ impl StorageStateTrait for MockStorage {
     }
 
     fn read_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
+        &self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<MptKeyValue>>> {
         let prefix = access_key_prefix.to_key_bytes();
 
@@ -98,7 +98,7 @@ impl StorageStateTrait for MockStorage {
         let mut kvs = vec![];
 
         for k in keys {
-            *self.num_reads.get_mut() += 1;
+            *self.num_reads.lock() += 1;
             let v = self.contents.get(&k).unwrap();
             kvs.push((k.clone(), v.clone()));
         }

@@ -1,7 +1,6 @@
 use crate::{
     impls::{errors::*, state::ChildrenMerkleMap},
     state::StateTrait,
-    utils::access_mode,
     CowNodeRef, DeltaMpt, MptKeyValue, NodeRefDeltaMpt, OwnedNodeSet,
     SubTrieVisitor,
 };
@@ -259,37 +258,24 @@ impl SingleMptState {
         Ok(())
     }
 
-    fn delete_all_impl<AM: access_mode::AccessMode>(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
+    fn read_all_impl(
+        &self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<MptKeyValue>>> {
-        if AM::READ_ONLY {
-            self.ensure_temp_slab_for_db_load();
-        } else {
-            self.pre_modification();
-        }
+        self.ensure_temp_slab_for_db_load();
 
-        // Retrieve and delete key/value pairs from single mpt trie
+        // See the comment on `State::read_all_impl`: the read-only traversal
+        // only reads the owned node set, so a local empty one is enough.
+        let mut owned_node_set = Some(OwnedNodeSet::default());
+
+        // Retrieve key/value pairs from single mpt trie
         let trie_kvs = {
             let key_prefix = access_key_prefix.to_key_bytes();
-            let deleted = if AM::READ_ONLY {
-                SubTrieVisitor::new(
-                    &self.trie,
-                    self.trie_root.clone(),
-                    &mut self.owned_node_set,
-                )?
-                .traversal(&key_prefix, &key_prefix)?
-            } else {
-                let (deleted, _, root_node) = SubTrieVisitor::new(
-                    &self.trie,
-                    self.trie_root.clone(),
-                    &mut self.owned_node_set,
-                )?
-                .delete_all(&key_prefix, &key_prefix)?;
-                self.trie_root = root_node.unwrap().into();
-
-                deleted
-            };
-            deleted
+            SubTrieVisitor::new(
+                &self.trie,
+                self.trie_root.clone(),
+                &mut owned_node_set,
+            )?
+            .traversal(&key_prefix, &key_prefix)?
         };
 
         let mut result = Vec::new();
@@ -392,9 +378,9 @@ impl StateTrait for SingleMptState {
     }
 
     fn read_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
+        &self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<MptKeyValue>>> {
-        self.delete_all_impl::<access_mode::Read>(access_key_prefix)
+        self.read_all_impl(access_key_prefix)
     }
 
     fn read_all_with_callback(

@@ -278,7 +278,7 @@ impl<Main: StateTrait> StateTrait for ReplicatedState<Main> {
     }
 
     fn read_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
+        &self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<MptKeyValue>>> {
         self.state.read_all(access_key_prefix)
     }

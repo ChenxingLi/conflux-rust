@@ -50,7 +50,7 @@ impl StorageTrait for InmemoryStorage {
     }
 
     fn read_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
+        &self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<cfx_storage::MptKeyValue>>> {
         let kvs = read_prefix(&self.inner, &access_key_prefix.to_key_bytes());
         Ok(if kvs.is_empty() { None } else { Some(kvs) })

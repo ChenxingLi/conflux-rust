@@ -65,7 +65,7 @@ impl StateTrait for RecordingStorage<State> {
     }
 
     fn read_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
+        &self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<MptKeyValue>>> {
         match self.storage.read_all(access_key_prefix)? {
             None => Ok(None),

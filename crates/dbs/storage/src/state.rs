@@ -26,9 +26,8 @@ pub trait StateTrait: Sync + Send {
         &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
     ) -> Result<()>;
     fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()>;
-    // TODO: Remove this mut.
     fn read_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
+        &self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<MptKeyValue>>>;
 
     fn read_all_with_callback(
