@@ -1,7 +1,7 @@
 use crate::errors::{invalid_params_check, Result as CoreResult};
 
 use cfx_statedb::StateDb;
-use cfx_storage::{state::StateTrait, OpenOptions, StorageState};
+use cfx_storage::{state::StorageView, OpenOptions, StorageState};
 use cfx_types::{Space, H256};
 
 use primitives::EpochNumber;
@@ -116,7 +116,7 @@ impl ConsensusGraph {
 
     fn get_state_by_height_and_hash(
         &self, height: u64, hash: &H256, space: Option<Space>,
-    ) -> CoreResult<Box<dyn StateTrait>> {
+    ) -> CoreResult<Box<dyn StorageView>> {
         // Keep the lock until we get the desired State, otherwise the State may
         // expire.
         let state_availability_boundary =
