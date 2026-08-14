@@ -992,18 +992,20 @@ impl StorageManager {
             .get_pivot_hash_from_epoch_number(
                 maintained_state_height_lower_bound,
             )?;
-        let maintained_epoch_execution_commitment = consensus_inner
-            .get_epoch_execution_commitment_with_db(&maintained_epoch_id);
-        let maintained_state_root = match &maintained_epoch_execution_commitment
+        // This lookup is a gate, not a coordinate read: no commitment row
+        // means consensus has not executed this epoch, and maintenance waits
+        // for a later round. The coordinates the round needs come from the
+        // engine's own index.
+        if consensus_inner
+            .get_epoch_execution_commitment_with_db(&maintained_epoch_id)
+            .is_none()
         {
-            Some(commitment) => &commitment.state_root_with_aux_info,
-            None => return Ok(()),
-        };
+            return Ok(());
+        }
 
         self.maintain_snapshots_pivot_chain_confirmed(
             maintained_state_height_lower_bound,
             &maintained_epoch_id,
-            maintained_state_root,
             state_availability_boundary,
             &|height, find_nearest_snapshot_multiple_of| {
                 extra_snapshots_to_keep_predicate(
@@ -1031,29 +1033,55 @@ impl StorageManager {
     ///
     /// The behavior of old pivot snapshot deletion can be different between
     /// Archive Node and Full Node.
+    ///
+    /// The period boundary is decided by two coordinates of the maintained
+    /// epoch, its snapshot layer and its intermediate layer, both read from
+    /// the engine's own index.
+    ///
+    /// An epoch with no entry makes the whole round a no op. Do not substitute
+    /// anything for the missing pair: that decides the boundary from a value
+    /// which was never that epoch's, and the failure is silent -- snapshots
+    /// get removed, kept or merged against the wrong period and only a much
+    /// later state root mismatch shows it. Skipping mutates nothing before the
+    /// return, `last_confirmed_snapshottable_epoch_id` in particular, so the
+    /// next confirmation redoes the round; the cost is deferred garbage
+    /// collection, not a wrong decision.
     pub fn maintain_snapshots_pivot_chain_confirmed(
         &self, maintained_state_height_lower_bound: u64,
         maintained_epoch_id: &EpochId,
-        maintained_state_root: &StateRootWithAuxInfo,
         state_availability_boundary: &RwLock<StateAvailabilityBoundary>,
         extra_snapshots_to_keep: &dyn Fn(u64, &mut bool) -> bool,
         stable_checkpoint_height: u64,
     ) -> Result<()> {
+        let (maintained_snapshot_epoch_id, maintained_intermediate_epoch_id) =
+            match self.state_index_db.get(maintained_epoch_id)? {
+                Some(entry) => {
+                    (entry.snapshot_epoch_id, entry.intermediate_epoch_id)
+                }
+                None => {
+                    warn!(
+                        "maintain_snapshots_pivot_chain_confirmed: no index \
+                         entry for epoch {:?}, skipping this round.",
+                        maintained_epoch_id,
+                    );
+                    return Ok(());
+                }
+            };
+
         // Update the confirmed epoch id. Skip remaining actions when the
         // confirmed snapshot-able epoch id doesn't change
         {
             let mut last_confirmed_snapshottable_id_locked =
                 self.last_confirmed_snapshottable_epoch_id.lock();
             if last_confirmed_snapshottable_id_locked.is_some() {
-                if maintained_state_root.aux_info.intermediate_epoch_id.eq(
+                if maintained_intermediate_epoch_id.eq(
                     last_confirmed_snapshottable_id_locked.as_ref().unwrap(),
                 ) {
                     return Ok(());
                 }
             }
-            *last_confirmed_snapshottable_id_locked = Some(
-                maintained_state_root.aux_info.intermediate_epoch_id.clone(),
-            );
+            *last_confirmed_snapshottable_id_locked =
+                Some(maintained_intermediate_epoch_id.clone());
         }
 
         let confirmed_intermediate_height = maintained_state_height_lower_bound
@@ -1083,8 +1111,8 @@ impl StorageManager {
              confirmed_snapshot_height {}, first_available_state_height {}",
             maintained_state_height_lower_bound,
             maintained_epoch_id,
-            maintained_state_root.aux_info.intermediate_epoch_id,
-            maintained_state_root.aux_info.snapshot_epoch_id,
+            maintained_intermediate_epoch_id,
+            maintained_snapshot_epoch_id,
             confirmed_intermediate_height,
             confirmed_snapshot_height,
             first_available_state_height,
@@ -1111,9 +1139,7 @@ impl StorageManager {
                 if snapshot_info.height == confirmed_snapshot_height {
                     // Remove all non-pivot Snapshot at
                     // confirmed_snapshot_height
-                    if snapshot_epoch_id
-                        .eq(&maintained_state_root.aux_info.snapshot_epoch_id)
-                    {
+                    if snapshot_epoch_id.eq(&maintained_snapshot_epoch_id) {
                         prev_snapshot_epoch_id =
                             &snapshot_info.parent_snapshot_epoch_id;
                     } else {
@@ -1170,15 +1196,11 @@ impl StorageManager {
                     // confirmed_snapshot_height and confirmed_height.
                     //
                     // When a snapshot has height > confirmed_snapshot_height,
-                    // but doesn't contain confirmed_state_root.aux_info.
+                    // but doesn't contain the maintained epoch's
                     // intermediate_epoch_id, it must be a non-pivot fork.
                     if snapshot_info
                         .get_epoch_id_at_height(confirmed_intermediate_height)
-                        != Some(
-                            &maintained_state_root
-                                .aux_info
-                                .intermediate_epoch_id,
-                        )
+                        != Some(&maintained_intermediate_epoch_id)
                     {
                         debug!(
                             "remove mismatch intermediate snapshot: {:?}",
@@ -1263,9 +1285,7 @@ impl StorageManager {
             {
                 if in_progress_snapshot_info
                     .get_epoch_id_at_height(confirmed_intermediate_height)
-                    != Some(
-                        &maintained_state_root.aux_info.intermediate_epoch_id,
-                    )
+                    != Some(&maintained_intermediate_epoch_id)
                 {
                     to_cancel = true;
                 }
@@ -1745,7 +1765,7 @@ use crate::{
     utils::guarded_value::GuardedValue,
     DeltaMpt, DeltaMptIdGen, DeltaMptIterator, KeyValueDbTrait, KvdbSqlite,
     OpenDeltaDbLru, ProvideExtraSnapshotSyncConfig, StateIndex,
-    StateRootWithAuxInfo, StorageConfiguration,
+    StorageConfiguration,
 };
 use cfx_internal_common::{
     consensus_api::StateMaintenanceTrait, StateAvailabilityBoundary,

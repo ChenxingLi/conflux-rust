@@ -1691,7 +1691,6 @@ impl TxReplayer {
                 .maintain_snapshots_pivot_chain_confirmed(
                     confirmed_height,
                     confirmed_epoch_hash,
-                    confirmed_epoch_state_root,
                     &self.state_availability_boundary,
                     &|_height, _find_nearest_snapshot_multiple_of| false,
                     /*
