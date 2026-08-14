@@ -3,6 +3,7 @@ use cfx_config::Configuration;
 use cfx_rpc_eth_types::{AccountState, StateDump, EOA_STORAGE_ROOT_H256};
 use cfx_rpc_primitives::Bytes;
 use cfx_statedb::{StateDbExt, StateDbGeneric};
+use cfx_storage::OpenOptions;
 use cfx_types::{Address, Space, H256, U256};
 use cfxcore::NodeType;
 use chrono::Utc;
@@ -115,12 +116,19 @@ fn prepare_state_db(
 
     let state_root = block.pivot_header.deferred_state_root();
 
-    let state_index = data_man
-        .get_state_readonly_index(&epoch_hash)
+    // The commitment row is only the gate for "was this epoch executed"; the
+    // coordinates come from the engine's own index now.
+    data_man
+        .get_epoch_execution_commitment_with_db(&epoch_hash)
         .ok_or("Failed to get state index")?;
 
     let state = state_manager
-        .get_state_no_commit(state_index, true, Some(Space::Ethereum))
+        .open_state(
+            &epoch_hash,
+            OpenOptions::read_only()
+                .with_try_open(true)
+                .with_space(Some(Space::Ethereum)),
+        )
         .map_err(|e| e.to_string())?
         .ok_or("Failed to get state")?;
 

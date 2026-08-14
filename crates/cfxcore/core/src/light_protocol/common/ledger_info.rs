@@ -11,7 +11,7 @@ use cfx_parameters::consensus::DEFERRED_STATE_EPOCH_COUNT;
 
 use cfx_storage::{
     state::{State, StateDbGetOriginalMethods, StateTrait},
-    StateProof, StorageRootProof,
+    OpenOptions, StateProof, StorageRootProof,
 };
 use cfx_types::{Address, AddressSpaceUtil, Bloom, H256};
 use primitives::{
@@ -171,18 +171,21 @@ impl LedgerInfo {
     fn state_of(&self, epoch: u64) -> Result<State, Error> {
         let pivot = self.pivot_hash_of(epoch)?;
 
-        let maybe_state_index = self
+        // The commitment row stays as the gate telling whether the epoch was
+        // executed; the coordinates come from the engine's own index now.
+        let executed = self
             .consensus
             .data_manager()
-            .get_state_readonly_index(&pivot);
-        let state = maybe_state_index.map(|state_index| {
+            .get_epoch_execution_commitment_with_db(&pivot)
+            .is_some();
+        let state = executed.then(|| {
             self.consensus
                 .data_manager()
                 .storage_manager
-                .get_state_no_commit_inner(
-                    state_index,
-                    /* try_open = */ true,
-                    true,
+                .open_layered_state(
+                    &pivot,
+                    OpenOptions::read_only().with_try_open(true),
+                    /* open_mpt_snapshot = */ true,
                 )
         });
 
