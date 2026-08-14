@@ -1110,34 +1110,23 @@ impl StateManager {
         {
             return Ok(None);
         }
-        let (maybe_state_trees, recover_mpt_during_construct_pivot_state) =
-            match opts.mode {
-                OpenMode::ReadOnly => (
-                    self.get_state_trees(
-                        epoch_id,
-                        opts.try_open,
-                        open_mpt_snapshot,
-                    )?,
-                    false,
-                ),
-                OpenMode::NextEpochBase {
-                    recover_mpt_during_construct_pivot_state,
-                } => (
-                    self.get_state_trees_for_next_epoch(
-                        epoch_id,
-                        opts.try_open,
-                        open_mpt_snapshot,
-                    )?,
-                    recover_mpt_during_construct_pivot_state,
-                ),
-            };
+        let maybe_state_trees = match opts.mode {
+            OpenMode::ReadOnly => self.get_state_trees(
+                epoch_id,
+                opts.try_open,
+                open_mpt_snapshot,
+            )?,
+            OpenMode::NextEpochBase => self.get_state_trees_for_next_epoch(
+                epoch_id,
+                opts.try_open,
+                open_mpt_snapshot,
+            )?,
+        };
         match maybe_state_trees {
             None => Ok(None),
-            Some(state_trees) => Ok(Some(State::new(
-                self.clone(),
-                state_trees,
-                recover_mpt_during_construct_pivot_state,
-            ))),
+            Some(state_trees) => {
+                Ok(Some(State::new(self.clone(), state_trees)))
+            }
         }
     }
 
@@ -1173,7 +1162,6 @@ impl StateManager {
                 intermediate_epoch_id: NULL_EPOCH,
                 parent_epoch_id: NULL_EPOCH,
             },
-            false,
         )
     }
 
@@ -1305,7 +1293,7 @@ impl StateManager {
     ) -> Result<Option<Box<dyn StateTrait>>> {
         match opts.mode {
             OpenMode::ReadOnly => self.open_read_only(epoch_hash, opts),
-            OpenMode::NextEpochBase { .. } => {
+            OpenMode::NextEpochBase => {
                 self.open_next_epoch_base(epoch_hash, opts)
             }
         }
@@ -1395,7 +1383,6 @@ impl StateManager {
                 return Ok(Some(ReadOnlyState::Layered(State::new(
                     self.clone(),
                     state_trees,
-                    false,
                 ))));
             }
             Err(e) => Err(e),
@@ -1483,23 +1470,14 @@ impl StateManager {
     ///
     /// `meta.height` is not read. The height the engine acts on comes off the
     /// state object, where the open path put it, and holds the same value.
-    ///
-    /// TODO: `recover_mpt_during_construct_pivot_state` is worked out by the
-    /// engine itself once the recovery handshake lands.
     pub fn commit_changeset(
-        self: &Arc<Self>, parent: StorageVersion,
-        recover_mpt_during_construct_pivot_state: bool, changeset: Changeset,
+        self: &Arc<Self>, parent: StorageVersion, changeset: Changeset,
         meta: CommitMeta,
     ) -> Result<StateRoot> {
         let mut state = match parent {
             StorageVersion::Empty => self.get_state_for_genesis_write(),
             StorageVersion::Epoch(parent) => self
-                .open_state(
-                    &parent,
-                    OpenOptions::next_epoch_base(
-                        recover_mpt_during_construct_pivot_state,
-                    ),
-                )?
+                .open_state(&parent, OpenOptions::next_epoch_base())?
                 .ok_or_else(|| {
                     Error::Msg(format!(
                         "commit: the parent version {:?} is not available",

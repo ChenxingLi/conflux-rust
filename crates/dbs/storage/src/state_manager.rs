@@ -95,8 +95,9 @@ pub trait ConsensusRecoveryView {
 
     /// One past the last height consensus will replay in this window. The
     /// engine reports "no epoch in this window needs its MPT rebuilt" by
-    /// answering with this height, and it is also the point at which the
-    /// recovery mode is cleared once the engine owns that flag.
+    /// answering with this height, and it is also where the engine clears its
+    /// recovery mode: the commit at the height below this one is the last
+    /// commit of the replay, which the engine cannot recognize on its own.
     fn replay_window_end_height(&self) -> u64;
 
     /// The height consensus would restart execution from if the engine had no
@@ -115,13 +116,6 @@ pub struct RecoveryPlan {
     /// is re-anchored to an era aligned height plus two snapshot periods,
     /// which is usually far below the chain tip.
     pub recompute_start_height: u64,
-
-    /// The highest height whose snapshot still has a usable MPT, or `None`
-    /// when no such height is known. Consensus uses it to work out, per epoch,
-    /// whether the snapshot generated during the replay has to rebuild its MPT
-    /// from scratch. The field disappears once the engine works that out
-    /// itself.
-    pub max_height_has_mpt: Option<u64>,
 }
 
 /// What the caller intends to do with the version it opens: read that
@@ -134,13 +128,7 @@ pub enum OpenMode {
     /// Open the state of that epoch as the execution base of its child
     /// epoch. The engine shifts to a new delta MPT here when that epoch sits
     /// on a snapshot boundary.
-    NextEpochBase {
-        /// Whether the snapshot generated while this epoch is committed has
-        /// to rebuild its MPT from scratch, which is the case during the
-        /// restart replay window. The flag moves into the engine later; until
-        /// then it stays an input.
-        recover_mpt_during_construct_pivot_state: bool,
-    },
+    NextEpochBase,
 }
 
 /// Everything `StateManager::open_state` needs besides the epoch hash.
@@ -164,13 +152,9 @@ impl OpenOptions {
         }
     }
 
-    pub fn next_epoch_base(
-        recover_mpt_during_construct_pivot_state: bool,
-    ) -> Self {
+    pub fn next_epoch_base() -> Self {
         Self {
-            mode: OpenMode::NextEpochBase {
-                recover_mpt_during_construct_pivot_state,
-            },
+            mode: OpenMode::NextEpochBase,
             space: None,
             try_open: false,
         }

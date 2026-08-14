@@ -47,9 +47,6 @@ mod impls {
         /// Height of the epoch this instance commits, i.e. the parent's height
         /// plus one.
         height: u64,
-        /// TODO: the engine works this flag out itself once the recovery
-        /// handshake lands; until then it is an input of the open.
-        recover_mpt_during_construct_pivot_state: bool,
     }
 
     /// How one `StateDb` reads, and whether it can commit.
@@ -113,7 +110,6 @@ mod impls {
         /// written to but never read from.
         pub fn new_for_commit(
             manager: Arc<StorageManager>, parent: EpochId, height: u64,
-            recover_mpt_during_construct_pivot_state: bool,
         ) -> Result<Self> {
             let view = manager
                 .open_layered_state(
@@ -135,7 +131,6 @@ mod impls {
                         manager,
                         parent: StorageVersion::Epoch(parent),
                         height,
-                        recover_mpt_during_construct_pivot_state,
                     },
                 },
             })
@@ -157,7 +152,6 @@ mod impls {
                         manager,
                         parent: StorageVersion::Empty,
                         height: 0,
-                        recover_mpt_during_construct_pivot_state: false,
                     },
                 },
             }
@@ -717,7 +711,6 @@ mod impls {
                 Storage::Commit { ctx, .. } => {
                     ctx.manager.clone().commit_changeset(
                         ctx.parent,
-                        ctx.recover_mpt_during_construct_pivot_state,
                         changeset,
                         CommitMeta {
                             epoch_id,

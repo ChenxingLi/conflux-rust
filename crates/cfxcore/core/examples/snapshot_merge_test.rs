@@ -379,7 +379,7 @@ where
     Iter: Iterator<Item = (&'a AddressWithSpace, &'a Account)>,
 {
     let state = manager
-        .open_state(&parent_epoch_id, OpenOptions::next_epoch_base(false))
+        .open_state(&parent_epoch_id, OpenOptions::next_epoch_base())
         .unwrap()
         .unwrap();
     let mut state = StateDb::new_on_owned_state(state);

@@ -2037,12 +2037,6 @@ impl ConsensusNewBlockHandler {
             }
         }
 
-        let snapshot_epoch_count = inner
-            .data_man
-            .storage_manager
-            .get_storage_manager()
-            .get_snapshot_epoch_count();
-
         // The engine gets the snapshot pipeline ready and answers where the
         // replay should start; what consensus supplies is chain facts, through
         // the view below. The engine only ever lowers the proposed start
@@ -2063,8 +2057,6 @@ impl ConsensusNewBlockHandler {
         };
         let start_compute_epoch_pivot_index =
             inner.height_to_pivot_index(recovery_plan.recompute_start_height);
-        let max_snapshot_epoch_height_has_mpt =
-            recovery_plan.max_height_has_mpt;
 
         let confirmed_epoch_num = meter.get_confirmed_epoch_num();
         for pivot_index in start_pivot_index + 1..end_index {
@@ -2100,16 +2092,6 @@ impl ConsensusNewBlockHandler {
                     .executor
                     .get_reward_execution_info(inner, pivot_arena_index);
 
-                // TODO: the engine works this out per commit, and the three
-                // execution layer signatures carrying it disappear.
-                let recover_mpt_during_construct_pivot_state =
-                    max_snapshot_epoch_height_has_mpt.map_or(true, |h| {
-                        height > h + snapshot_epoch_count as u64
-                    });
-                info!(
-                    "compute epoch recovery flag {}",
-                    recover_mpt_during_construct_pivot_state
-                );
                 self.executor.compute_epoch(
                     EpochExecutionTask::new(
                         pivot_arena_index,
@@ -2119,7 +2101,6 @@ impl ConsensusNewBlockHandler {
                         true, /* force_recompute */
                     ),
                     None,
-                    recover_mpt_during_construct_pivot_state,
                 );
 
                 // Remove old-pivot state during start up to save disk,
@@ -2156,14 +2137,6 @@ impl ConsensusNewBlockHandler {
                 }
             }
         }
-
-        inner
-            .data_man
-            .storage_manager
-            .get_storage_manager()
-            .get_snapshot_manager()
-            .get_snapshot_db_manager()
-            .clean_snapshot_epoch_id_before_recovered();
     }
 
     fn get_force_compute_index(

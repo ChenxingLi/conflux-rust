@@ -611,16 +611,11 @@ impl ConsensusExecutor {
     pub fn compute_epoch(
         &self, task: EpochExecutionTask,
         debug_record: Option<&mut ComputeEpochDebugRecord>,
-        recover_mpt_during_construct_pivot_state: bool,
     ) {
         if self.consensus_graph_bench_mode {
             return;
         }
-        self.handler.handle_epoch_execution(
-            task,
-            debug_record,
-            recover_mpt_during_construct_pivot_state,
-        )
+        self.handler.handle_epoch_execution(task, debug_record)
     }
 
     pub fn epoch_executed_and_recovered(
@@ -878,7 +873,7 @@ impl ConsensusExecutionHandler {
         debug!("Receive execution task: {:?}", task);
         match task {
             ExecutionTask::ExecuteEpoch(task) => {
-                self.handle_epoch_execution(task, None, false)
+                self.handle_epoch_execution(task, None)
             }
             ExecutionTask::GetResult(task) => self.handle_get_result_task(task),
             ExecutionTask::Stop => return false,
@@ -889,7 +884,6 @@ impl ConsensusExecutionHandler {
     fn handle_epoch_execution(
         &self, task: EpochExecutionTask,
         debug_record: Option<&mut ComputeEpochDebugRecord>,
-        recover_mpt_during_construct_pivot_state: bool,
     ) {
         let _timer = MeterTimer::time_func(CONSENSIS_EXECUTION_TIMER.as_ref());
         self.compute_epoch(
@@ -900,7 +894,6 @@ impl ConsensusExecutionHandler {
             task.on_local_pivot,
             debug_record,
             task.force_recompute,
-            recover_mpt_during_construct_pivot_state,
         );
     }
 
@@ -922,15 +915,11 @@ impl ConsensusExecutionHandler {
             .get_epoch_execution_commitment_with_db(epoch_hash)
     }
 
-    fn new_state(
-        &self, pivot_block: &Block,
-        recover_mpt_during_construct_pivot_state: bool,
-    ) -> DbResult<State> {
+    fn new_state(&self, pivot_block: &Block) -> DbResult<State> {
         let state_db = StateDb::new_for_commit(
             self.data_man.storage_manager.clone(),
             *pivot_block.block_header.parent_hash(),
             pivot_block.block_header.height(),
-            recover_mpt_during_construct_pivot_state,
         )
         // Unwrapping is safe because the state exists.
         .expect("State exists");
@@ -980,7 +969,6 @@ impl ConsensusExecutionHandler {
         on_local_pivot: bool,
         mut debug_record: Option<&mut ComputeEpochDebugRecord>,
         force_recompute: bool,
-        recover_mpt_during_construct_pivot_state: bool,
     ) {
         // FIXME: Question: where to calculate if we should make a snapshot?
         // FIXME: Currently we make the snapshotting decision when committing
@@ -1039,9 +1027,7 @@ impl ConsensusExecutionHandler {
             epoch_blocks.len(),
         );
 
-        let mut state = self
-            .new_state(pivot_block, recover_mpt_during_construct_pivot_state)
-            .expect("Cannot init state");
+        let mut state = self.new_state(pivot_block).expect("Cannot init state");
 
         let epoch_receipts = self
             .process_epoch_transactions(
@@ -1544,7 +1530,7 @@ impl ConsensusExecutionHandler {
             epoch_blocks.len(),
         );
         let pivot_block = epoch_blocks.last().expect("Not empty");
-        let mut state = self.new_state(&pivot_block, false)?;
+        let mut state = self.new_state(&pivot_block)?;
         self.process_epoch_transactions(
             &mut state,
             &epoch_blocks,

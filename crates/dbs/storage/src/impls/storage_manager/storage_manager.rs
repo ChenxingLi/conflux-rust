@@ -87,6 +87,22 @@ impl PersistedSnapshotInfoMap {
     }
 }
 
+/// What the engine remembers between the recovery handshake and the end of
+/// the restart replay. The per commit rebuild decision is worked out from
+/// these two numbers.
+struct RecoveryMode {
+    /// The highest height whose snapshot still has a usable MPT, as the
+    /// startup self check found it. `None` means no such height is known, in
+    /// which case every epoch of the replay rebuilds its MPT.
+    max_height_has_mpt: Option<u64>,
+
+    /// The last height consensus replays in this window. The commit at this
+    /// height is the one which clears the recovery mode, because the engine
+    /// cannot tell the last commit of the replay from the first commit of
+    /// normal execution by looking at the commits alone.
+    replay_last_height: u64,
+}
+
 // FIXME: correctly order code blocks.
 pub struct StorageManager {
     delta_db_manager: Arc<DeltaDbManager>,
@@ -137,6 +153,12 @@ pub struct StorageManager {
 
     pub persist_state_from_initialization:
         RwLock<Option<(Option<EpochId>, HashSet<EpochId>, u64, Option<u64>)>>,
+
+    /// Set by `plan_recovery` while the restart replay still has commits to
+    /// come, cleared by the commit which ends the replay window. `None` means
+    /// the engine is not in recovery mode, the state of every normally running
+    /// node.
+    recovery_mode: RwLock<Option<RecoveryMode>>,
 
     /// The engine's own state index. Owned here because `new_arc` creates
     /// the storage dir it lives in, and because the maintenance which advances
@@ -303,6 +325,7 @@ impl StorageManager {
             storage_conf,
             intermediate_trie_root_merkle: RwLock::new(None),
             persist_state_from_initialization: RwLock::new(None),
+            recovery_mode: RwLock::new(None),
             state_index_db,
             physical_openable_lower_bound,
         }));
@@ -1058,10 +1081,94 @@ impl StorageManager {
             start_compute_epoch_height,
             need_set_intermediate_trie_root_merkle,
         );
+        self.enter_recovery_mode(
+            view,
+            start_compute_epoch_height,
+            max_height_has_mpt,
+        );
         RecoveryPlan {
             recompute_start_height: start_compute_epoch_height,
-            max_height_has_mpt,
         }
+    }
+
+    /// Arm the recovery mode for the replay which is about to run, or, when
+    /// the replay has no epoch to execute, finish it right away.
+    ///
+    /// The replay commits the epochs at heights
+    /// `[max(window_start + 1, recompute_start), window_end)`, the range the
+    /// consensus loop walks. An empty range means no commit will ever arrive
+    /// to clear the mode, so the mode is not armed at all and the snapshot id
+    /// recorded during the handshake is released right away.
+    fn enter_recovery_mode(
+        &self, view: &dyn ConsensusRecoveryView, recompute_start_height: u64,
+        max_height_has_mpt: Option<u64>,
+    ) {
+        let window_end = view.replay_window_end_height();
+        let first_replay_height = max(
+            view.replay_window_start_height() + 1,
+            recompute_start_height,
+        );
+        if first_replay_height < window_end {
+            *self.recovery_mode.write() = Some(RecoveryMode {
+                max_height_has_mpt,
+                replay_last_height: window_end - 1,
+            });
+        } else {
+            self.leave_recovery_mode();
+        }
+    }
+
+    /// Drop the recovery mode and release the snapshot which the handshake
+    /// hid while its MPT was being rebuilt.
+    fn leave_recovery_mode(&self) {
+        let left = self.recovery_mode.write().take();
+        if let Some(mode) = left {
+            info!(
+                "leave recovery mode at replay window end height {}",
+                mode.replay_last_height
+            );
+        }
+        self.get_snapshot_manager()
+            .get_snapshot_db_manager()
+            .clean_snapshot_epoch_id_before_recovered();
+    }
+
+    /// Whether the snapshot generated while the epoch at `height` is committed
+    /// has to rebuild its MPT from scratch.
+    ///
+    /// The inputs are the commit's own height, the highest height whose
+    /// snapshot has a usable MPT, and the snapshot period. The one thing the
+    /// engine cannot see for itself is where the replay ends, which comes in
+    /// through the handshake.
+    ///
+    /// Called on every commit, including the ones which make no snapshot,
+    /// because the commit which ends the replay window is also the one which
+    /// clears the recovery mode.
+    pub fn recover_mpt_for_commit(&self, maybe_height: Option<u64>) -> bool {
+        let Some(height) = maybe_height else {
+            return false;
+        };
+        let (recover, replay_over) = match &*self.recovery_mode.read() {
+            None => return false,
+            Some(mode) => {
+                let recover = if height > mode.replay_last_height {
+                    false
+                } else {
+                    mode.max_height_has_mpt.map_or(true, |h| {
+                        height > h + self.get_snapshot_epoch_count() as u64
+                    })
+                };
+                (recover, height >= mode.replay_last_height)
+            }
+        };
+        info!(
+            "compute epoch recovery flag {} at height {}",
+            recover, height
+        );
+        if replay_over {
+            self.leave_recovery_mode();
+        }
+        recover
     }
 
     /// The snapshot half of `plan_recovery`, moved here from consensus

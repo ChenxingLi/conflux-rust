@@ -1817,7 +1817,7 @@ impl TxReplayer {
                 self.storage_manager
                     .open_state(
                         &last_state_root.state_root.delta_root,
-                        OpenOptions::next_epoch_base(false),
+                        OpenOptions::next_epoch_base(),
                     )
                     .unwrap()
                     .unwrap(),
@@ -1876,7 +1876,7 @@ fn tx_replay(matches: ArgMatches) -> errors::Result<()> {
                         .storage_manager
                         .open_state(
                             &last_state_root.state_root.delta_root,
-                            OpenOptions::next_epoch_base(false),
+                            OpenOptions::next_epoch_base(),
                         )
                         .unwrap()
                         .unwrap(),

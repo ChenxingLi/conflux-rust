@@ -91,7 +91,7 @@ fn generate_random_state(
     let mut state_1 = state_manager
         .open_layered_state(
             &epoch_id_0,
-            OpenOptions::next_epoch_base(false),
+            OpenOptions::next_epoch_base(),
             /* open_mpt_snapshot = */ true,
         )
         .unwrap()
@@ -142,7 +142,7 @@ fn generate_random_state(
     let mut state_2 = state_manager
         .open_layered_state(
             &epoch_id_1,
-            OpenOptions::next_epoch_base(false),
+            OpenOptions::next_epoch_base(),
             /* open_mpt_snapshot = */ true,
         )
         .unwrap()
@@ -199,7 +199,7 @@ fn generate_random_state(
     let new_state = state_manager
         .open_layered_state(
             &epoch_id_2,
-            OpenOptions::next_epoch_base(false),
+            OpenOptions::next_epoch_base(),
             /* open_mpt_snapshot = */ true,
         )
         .unwrap()
