@@ -21,11 +21,11 @@ use crate::{
     NodeType, Notifications, SharedTransactionPool,
 };
 use cfx_parameters::{consensus::*, consensus_internal::*};
-use cfx_storage::storage_db::SnapshotDbManagerTrait;
+use cfx_storage::{storage_db::SnapshotDbManagerTrait, StateConfirmedView};
 use cfx_types::H256;
 use hibitset::{BitSet, BitSetLike, DrainableBitSet};
 use parking_lot::Mutex;
-use primitives::{MERKLE_NULL_NODE, NULL_EPOCH};
+use primitives::{EpochId, MERKLE_NULL_NODE, NULL_EPOCH};
 use std::{
     cmp::{max, min},
     collections::{BinaryHeap, HashMap, HashSet, VecDeque},
@@ -1654,15 +1654,12 @@ impl ConsensusNewBlockHandler {
             let physical_openable_lower_bound = self
                 .data_man
                 .storage_manager
-                .get_storage_manager()
-                .maintain_state_confirmed(
-                    inner,
-                    inner.cur_era_stable_height,
-                    self.conf.inner_conf.era_epoch_count,
+                .notify_state_confirmed(&StateConfirmedFacts {
+                    data_man: &self.data_man,
                     confirmed_height,
-                )
-                // FIXME: propogate error.
-                .expect(&concat!(file!(), ":", line!(), ":", column!()));
+                    stable_checkpoint_height: inner.cur_era_stable_height,
+                    era_epoch_count: self.conf.inner_conf.era_epoch_count,
+                });
             self.adjust_state_availability_lower_bound(
                 physical_openable_lower_bound,
             );
@@ -2134,20 +2131,16 @@ impl ConsensusNewBlockHandler {
                     let physical_openable_lower_bound = self
                         .data_man
                         .storage_manager
-                        .get_storage_manager()
-                        .maintain_state_confirmed(
-                            inner,
-                            inner.cur_era_stable_height,
-                            self.conf.inner_conf.era_epoch_count,
+                        .notify_state_confirmed(&StateConfirmedFacts {
+                            data_man: &self.data_man,
                             confirmed_height,
-                        )
-                        .expect(&concat!(
-                            file!(),
-                            ":",
-                            line!(),
-                            ":",
-                            column!()
-                        ));
+                            stable_checkpoint_height: inner
+                                .cur_era_stable_height,
+                            era_epoch_count: self
+                                .conf
+                                .inner_conf
+                                .era_epoch_count,
+                        });
                     self.adjust_state_availability_lower_bound(
                         physical_openable_lower_bound,
                     );
@@ -2591,5 +2584,52 @@ impl ConsensusNewBlockHandler {
                 }
             }
         }
+    }
+}
+
+/// The chain facts the engine is given at a maintenance trigger point. It is
+/// built at the trigger point and dropped when `notify_state_confirmed`
+/// returns.
+///
+/// It holds `BlockDataManager`, the block and epoch database handle, and never
+/// the consensus graph: both trigger points hold the graph exclusively while
+/// the engine runs the maintenance round, so reaching for it here would
+/// deadlock. `pivot_hash_at_height` is therefore answered off the persisted
+/// epoch set table alone.
+struct StateConfirmedFacts<'a> {
+    data_man: &'a BlockDataManager,
+    confirmed_height: u64,
+    stable_checkpoint_height: u64,
+    era_epoch_count: u64,
+}
+
+impl<'a> StateConfirmedView for StateConfirmedFacts<'a> {
+    fn confirmed_height(&self) -> u64 { self.confirmed_height }
+
+    fn stable_checkpoint_height(&self) -> u64 { self.stable_checkpoint_height }
+
+    fn era_epoch_count(&self) -> u64 { self.era_epoch_count }
+
+    /// `EPOCH_SET_PERSISTENCE_DELAY`, how far below the pivot tip the epoch
+    /// set table lags, equals `DEFERRED_STATE_EPOCH_COUNT`, which both trigger
+    /// points subtract from the confirmed height before building this; so
+    /// every height the storage engine can ask about is in the table.
+    fn pivot_hash_at_height(&self, height: u64) -> Result<EpochId, String> {
+        self.data_man
+            .executed_epoch_set_hashes_from_db(height)
+            .ok_or_else(|| {
+                format!(
+                    "pivot_hash_at_height: epoch set not in db, height={}",
+                    height
+                )
+            })?
+            .last()
+            .copied()
+            .ok_or_else(|| {
+                format!(
+                    "pivot_hash_at_height: epoch set is empty, height={}",
+                    height
+                )
+            })
     }
 }

@@ -982,19 +982,20 @@ impl StorageManager {
         Ok(())
     }
 
-    /// Reclaim what the confirmation at `confirmed_height` has made
-    /// unnecessary, and report the physical openable lower bound as it stands
-    /// once the round is over.
+    /// Reclaim what the confirmation reported by `view` has made unnecessary,
+    /// and report the physical openable lower bound as it stands once the
+    /// round is over.
     ///
     /// The reported bound is the engine's own record as it stands when the
-    /// round ends, never a value computed for the caller. Garbage collection
-    /// inside the round raises the record when it removes snapshots; a round
-    /// which removes nothing, and a round which returns early, report the
-    /// value the record already held.
-    pub fn maintain_state_confirmed<ConsensusInner: StateMaintenanceTrait>(
-        &self, consensus_inner: &ConsensusInner, stable_checkpoint_height: u64,
-        era_epoch_count: u64, confirmed_height: u64,
+    /// round ends, never a value computed for the caller. A round which
+    /// removes nothing, and a round which returns early, report the value the
+    /// record already held.
+    pub fn maintain_state_confirmed(
+        &self, view: &dyn StateConfirmedView,
     ) -> Result<u64> {
+        let confirmed_height = view.confirmed_height();
+        let stable_checkpoint_height = view.stable_checkpoint_height();
+        let era_epoch_count = view.era_epoch_count();
         let additional_state_height_gap =
             (self.storage_conf.additional_maintained_snapshot_count
                 * self.get_snapshot_epoch_count()) as u64;
@@ -1012,21 +1013,11 @@ impl StorageManager {
         {
             return Ok(self.physical_openable_lower_bound());
         }
-        let maintained_epoch_id = consensus_inner
-            .get_pivot_hash_from_epoch_number(
-                maintained_state_height_lower_bound,
-            )?;
-        // This lookup is a gate, not a coordinate read: no commitment row
-        // means consensus has not executed this epoch, and maintenance waits
-        // for a later round. The coordinates the round needs come from the
-        // engine's own index.
-        if consensus_inner
-            .get_epoch_execution_commitment_with_db(&maintained_epoch_id)
-            .is_none()
-        {
-            return Ok(self.physical_openable_lower_bound());
-        }
-
+        let maintained_epoch_id = view
+            .pivot_hash_at_height(maintained_state_height_lower_bound)
+            .map_err(Error::Msg)?;
+        // The index lookup at the top of the call below makes the round a no
+        // op when the epoch has no entry.
         self.maintain_snapshots_pivot_chain_confirmed(
             maintained_state_height_lower_bound,
             &maintained_epoch_id,
@@ -1091,10 +1082,11 @@ impl StorageManager {
                 }
             };
 
-        // Update the confirmed epoch id. Skip remaining actions when the
-        // confirmed snapshot-able epoch id doesn't change
+        // Skip remaining actions when the confirmed snapshot-able epoch id
+        // doesn't change. The marker itself is advanced at the end of the
+        // round, not here.
         {
-            let mut last_confirmed_snapshottable_id_locked =
+            let last_confirmed_snapshottable_id_locked =
                 self.last_confirmed_snapshottable_epoch_id.lock();
             if last_confirmed_snapshottable_id_locked.is_some() {
                 if maintained_intermediate_epoch_id.eq(
@@ -1103,8 +1095,6 @@ impl StorageManager {
                     return Ok(());
                 }
             }
-            *last_confirmed_snapshottable_id_locked =
-                Some(maintained_intermediate_epoch_id.clone());
         }
 
         let confirmed_intermediate_height = maintained_state_height_lower_bound
@@ -1418,6 +1408,14 @@ impl StorageManager {
             }
         }
         */
+
+        // The marker moves once the round is through, because it is what makes
+        // the next confirmation in this snapshot period a no op. Moving it at
+        // the top made a round which failed part way permanent: the error is
+        // reported and the retry returns at the check above, so whatever the
+        // round had left to do would never be done.
+        *self.last_confirmed_snapshottable_epoch_id.lock() =
+            Some(maintained_intermediate_epoch_id);
 
         info!("maintain_snapshots_pivot_chain_confirmed: finished");
         Ok(())
@@ -1767,6 +1765,7 @@ use crate::{
         storage_manager::snapshot_manager::SnapshotManager,
     },
     snapshot_manager::SnapshotManagerTrait,
+    state_manager::StateConfirmedView,
     storage_db::{
         DeltaDbManagerTrait, KeyValueDbIterableTrait, SnapshotDbManagerTrait,
         SnapshotInfo, SnapshotKeptToProvideSyncStatus,
@@ -1777,7 +1776,6 @@ use crate::{
     OpenDeltaDbLru, ProvideExtraSnapshotSyncConfig, StateIndex,
     StorageConfiguration,
 };
-use cfx_internal_common::consensus_api::StateMaintenanceTrait;
 use fallible_iterator::FallibleIterator;
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use parking_lot::{Mutex, RwLock, RwLockReadGuard};

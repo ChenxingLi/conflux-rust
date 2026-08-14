@@ -233,8 +233,8 @@ pub use self::{
         StateTrait as StorageStateTrait, StorageView,
     },
     state_manager::{
-        OpenMode, OpenOptions, StateIndex, StateManager as StorageManager,
-        StorageVersion,
+        OpenMode, OpenOptions, StateConfirmedView, StateIndex,
+        StateManager as StorageManager, StorageVersion,
     },
     storage_db::{KeyValueDbIterableTrait, KeyValueDbTrait},
 };

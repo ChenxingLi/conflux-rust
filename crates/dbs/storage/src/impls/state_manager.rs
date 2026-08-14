@@ -1177,6 +1177,40 @@ impl StateManager {
         )
     }
 
+    /// Tell the engine that the chain has confirmed the state at
+    /// `view.confirmed_height()`, its cue to reclaim the states and snapshots
+    /// it no longer needs. The call is synchronous, so an open or a commit
+    /// issued after it sees a state consistent with the reclamation.
+    ///
+    /// `view` is read only and is not kept past this call. It carries the
+    /// confirmed height, the retention parameters the engine's own rules are
+    /// stated in, and the lookup from a height to its pivot chain epoch, which
+    /// is the one thing the engine cannot answer for itself.
+    ///
+    /// Returns the physical openable lower bound left behind, which consensus
+    /// needs in order to move its own bound and drop the prefix of the pivot
+    /// hash mirror indexed from it.
+    ///
+    /// An error on the way is logged rather than returned; it surfaces at a
+    /// later open or commit, and the next confirmation retries the round. The
+    /// bound is still reported, straight off the record, because a failed
+    /// round leaves the record describing the disk just as a successful one
+    /// does.
+    pub fn notify_state_confirmed(&self, view: &dyn StateConfirmedView) -> u64 {
+        match self.storage_manager.maintain_state_confirmed(view) {
+            Ok(physical_openable_lower_bound) => physical_openable_lower_bound,
+            Err(e) => {
+                warn!(
+                    "state confirmed at height {}: maintenance failed, {:?}. \
+                     The engine will retry at the next confirmation.",
+                    view.confirmed_height(),
+                    e
+                );
+                self.storage_manager.physical_openable_lower_bound()
+            }
+        }
+    }
+
     pub fn notify_genesis_hash(&self, genesis_hash: EpochId) {
         if let Some(single_mpt_manager) = &self.single_mpt_storage_manager {
             *single_mpt_manager.genesis_hash.lock() = genesis_hash;

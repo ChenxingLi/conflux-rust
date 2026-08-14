@@ -10,7 +10,6 @@ extern crate rlp_derive;
 #[macro_use]
 pub mod block_data_db_encoding;
 pub mod chain_id;
-pub mod consensus_api;
 pub mod debug;
 pub mod epoch_execution_commitment;
 pub mod state_availability_boundary;

@@ -18,6 +18,45 @@ pub enum StorageVersion {
     Epoch(EpochId),
 }
 
+/// The chain level facts the engine pulls while it reclaims what a state
+/// confirmation has made unnecessary. Every method answers a question in
+/// consensus vocabulary; which states and snapshots to remove is the engine's
+/// own answer.
+///
+/// The handle is read only and lives only for the duration of
+/// `StateManager::notify_state_confirmed`.
+///
+/// The implementation must not need the consensus graph: the engine calls this
+/// from inside the notification, and the trigger points are on the consensus
+/// side, holding the graph. An implementation over the persisted epoch set
+/// table meets that requirement, because that table is written for every
+/// height up to a fixed distance behind the pivot tip, and the heights asked
+/// about here are derived from the confirmed height and stay well below it.
+pub trait StateConfirmedView {
+    /// The height whose state the chain has confirmed. Every height the engine
+    /// looks up follows from this one by its own retention rules.
+    fn confirmed_height(&self) -> u64;
+
+    /// The stable checkpoint height of the current era. A node configured to
+    /// serve snapshot sync keeps the snapshots which sit an era apart from
+    /// this height, and the engine never removes the states above it.
+    fn stable_checkpoint_height(&self) -> u64;
+
+    /// The number of epochs in an era, the step of the era aligned heights
+    /// counted off `stable_checkpoint_height`.
+    fn era_epoch_count(&self) -> u64;
+
+    /// Which epoch sits at `height` on the pivot chain. The engine names
+    /// snapshots by epoch id, so it needs this to turn the height it retains
+    /// down to into an epoch id.
+    ///
+    /// The error text says why the lookup found nothing; it reaches the node
+    /// log, because the engine logs a failed round rather than returning it.
+    fn pivot_hash_at_height(
+        &self, height: u64,
+    ) -> std::result::Result<EpochId, String>;
+}
+
 /// What the caller intends to do with the version it opens: read that
 /// epoch, or use it as the execution base of its child epoch. One entry point
 /// serves both.

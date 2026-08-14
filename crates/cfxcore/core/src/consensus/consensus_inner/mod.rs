@@ -26,9 +26,6 @@ use crate::{
     state_exposer::{ConsensusGraphBlockExecutionState, STATE_EXPOSER},
     verification::VerificationConfig,
 };
-use cfx_internal_common::{
-    consensus_api::StateMaintenanceTrait, EpochExecutionCommitment,
-};
 use cfx_parameters::{consensus::*, consensus_internal::*};
 use cfx_types::{H256, U256, U512};
 use dag::{
@@ -4171,25 +4168,6 @@ impl RichTreeGraph for ConsensusGraphInner {
 
     fn referrers(&self, node_index: Self::NodeIndex) -> Vec<Self::NodeIndex> {
         self.arena[node_index].referrers.clone()
-    }
-}
-
-impl StateMaintenanceTrait for ConsensusGraphInner {
-    fn get_pivot_hash_from_epoch_number(
-        &self, epoch_number: u64,
-    ) -> Result<EpochId, String> {
-        ConsensusGraphInner::get_pivot_hash_from_epoch_number(
-            self,
-            epoch_number,
-        )
-        .map_err(|e| e.to_string())
-    }
-
-    fn get_epoch_execution_commitment_with_db(
-        &self, block_hash: &EpochId,
-    ) -> Option<EpochExecutionCommitment> {
-        self.data_man
-            .get_epoch_execution_commitment_with_db(block_hash)
     }
 }
 
