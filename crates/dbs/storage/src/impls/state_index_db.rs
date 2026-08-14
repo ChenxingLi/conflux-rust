@@ -5,9 +5,9 @@
 //! The engine's own persistent state index.
 //!
 //! It maps an epoch id to the physical coordinates of the state version at
-//! that epoch, plus the state root triplet and the height. The open path
-//! resolves its coordinates from here. The commitment row still carries the
-//! same coordinates in its `aux_info`; nothing resolves from that copy.
+//! that epoch, plus the state root triplet and the height. This is the only
+//! persisted copy of those coordinates: the open path resolves from here and
+//! snapshot maintenance reads the period boundary from here.
 //!
 //! One field cannot be recomputed and therefore must be stored: the
 //! intermediate layer key padding. It is carried along the chain -- on a

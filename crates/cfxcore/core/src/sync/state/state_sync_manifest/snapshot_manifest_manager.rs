@@ -25,7 +25,7 @@ use cfx_types::{option_vec_to_hex, H256};
 use network::node_table::NodeId;
 use primitives::{
     BlockHeaderBuilder, BlockReceipts, EpochId, EpochNumber, StateRoot,
-    StorageKeyWithSpace, NULL_EPOCH,
+    NULL_EPOCH,
 };
 use rand::{rng, seq::IndexedRandom};
 
@@ -481,20 +481,7 @@ impl SnapshotManifestManager {
             offset,
             StateRootWithAuxInfo {
                 state_root: snapshot_state_root,
-                aux_info: StateRootAuxInfo {
-                    snapshot_epoch_id: snapshot_epoch_id.clone(),
-                    // This field will not be used
-                    delta_mpt_key_padding:
-                        StorageKeyWithSpace::delta_mpt_padding(
-                            &state_root_vec[offset].snapshot_root,
-                            &state_root_vec[offset].intermediate_delta_root,
-                        ),
-                    intermediate_epoch_id: parent_snapshot_epoch,
-                    // We don't necessarily need to know because
-                    // the execution of the next epoch shifts delta MPT.
-                    maybe_intermediate_mpt_key_padding: None,
-                    state_root_hash,
-                },
+                aux_info: StateRootAuxInfo::new(state_root_hash),
             },
             SnapshotInfo {
                 snapshot_info_kept_to_provide_sync: Default::default(),

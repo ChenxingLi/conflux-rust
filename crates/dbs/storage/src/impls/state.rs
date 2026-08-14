@@ -71,19 +71,7 @@ impl State {
             intermediate_delta_root: self.intermediate_trie_root_merkle,
             delta_root: merkle_root,
         };
-        let state_root_hash = state_root.compute_state_root_hash();
-        StateRootWithAuxInfo {
-            state_root,
-            aux_info: StateRootAuxInfo {
-                snapshot_epoch_id: self.snapshot_epoch_id.clone(),
-                intermediate_epoch_id: self.intermediate_epoch_id.clone(),
-                maybe_intermediate_mpt_key_padding: self
-                    .maybe_intermediate_trie_key_padding
-                    .clone(),
-                delta_mpt_key_padding: self.delta_trie_key_padding.clone(),
-                state_root_hash,
-            },
-        }
+        StateRootWithAuxInfo::from_state_root(state_root)
     }
 
     /// The two height fields of the index entry, on the convention the open
@@ -1162,7 +1150,7 @@ use crate::{
     utils::{access_mode, to_key_prefix_iter_upper_bound},
     StorageRootProof,
 };
-use cfx_internal_common::{StateRootAuxInfo, StateRootWithAuxInfo};
+use cfx_internal_common::StateRootWithAuxInfo;
 use cfx_types::AddressWithSpace;
 use fallible_iterator::FallibleIterator;
 use primitives::{

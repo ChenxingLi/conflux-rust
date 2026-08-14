@@ -2,9 +2,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use cfx_internal_common::state_root_with_aux_info::{
-    StateRootAuxInfo, StateRootWithAuxInfo,
-};
+use cfx_internal_common::state_root_with_aux_info::StateRootWithAuxInfo;
 use cfx_statedb::{StateDb, StateDbExt};
 use cfx_storage::{
     state_manager::StateManager,
@@ -20,8 +18,7 @@ use log4rs::{
     config::{Appender, Config, Root},
 };
 use primitives::{
-    Account, MerkleHash, StateRoot, StorageKey, StorageKeyWithSpace,
-    MERKLE_NULL_NODE, NULL_EPOCH,
+    Account, MerkleHash, StateRoot, StorageKey, MERKLE_NULL_NODE, NULL_EPOCH,
 };
 use std::{
     cmp::min, collections::HashMap, fs::remove_dir_all, path::PathBuf,
@@ -115,25 +112,7 @@ fn main() -> Result<(), Error> {
         intermediate_delta_root: snapshot1_delta_root,
         delta_root: MERKLE_NULL_NODE,
     };
-    let state_root_hash = state_root.compute_state_root_hash();
-    let state_root_2 = StateRootWithAuxInfo {
-        state_root,
-        aux_info: StateRootAuxInfo {
-            snapshot_epoch_id: NULL_EPOCH,
-            intermediate_epoch_id: snapshot1_epoch,
-            maybe_intermediate_mpt_key_padding: Some(
-                StorageKeyWithSpace::delta_mpt_padding(
-                    &MERKLE_NULL_NODE,
-                    &MERKLE_NULL_NODE,
-                ),
-            ),
-            delta_mpt_key_padding: StorageKeyWithSpace::delta_mpt_padding(
-                &MERKLE_NULL_NODE,
-                &snapshot1_delta_root,
-            ),
-            state_root_hash,
-        },
-    };
+    let state_root_2 = StateRootWithAuxInfo::from_state_root(state_root);
     let (snapshot2_epoch, snapshot2_delta_root) = prepare_state(
         &state_manager,
         snapshot1_epoch,

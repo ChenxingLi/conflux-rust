@@ -129,12 +129,11 @@ impl Restorer {
         // the registry.
         //
         // The two public fields below are still the channel which carries the
-        // sync result into the engine. This entry is the only one this epoch
-        // ever gets, for a state
-        // no other write port of the index can reach: `State::commit` never
-        // runs for a synced snapshot, and the first boot migration derives a
-        // period from the two snapshots below it, which a freshly synced node
-        // does not have.
+        // sync result into the engine. This call puts on disk the only copy of
+        // this epoch's coordinates left, for a state no other write port of
+        // the index can reach: `State::commit` never runs for a synced
+        // snapshot, and the first boot migration derives a period from the two
+        // snapshots below it, which a freshly synced node does not have.
         storage_manager.register_synced_snapshot_state(
             &self.snapshot_epoch_id,
             &snapshot_info,
