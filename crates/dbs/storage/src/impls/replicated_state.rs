@@ -289,17 +289,6 @@ impl<Main: StateTrait> StateTrait for ReplicatedState<Main> {
         self.state.delete(access_key)
     }
 
-    fn read_all_with_callback(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
-        callback: &mut dyn FnMut(MptKeyValue), only_account_key: bool,
-    ) -> Result<()> {
-        self.state.read_all_with_callback(
-            access_key_prefix,
-            callback,
-            only_account_key,
-        )
-    }
-
     fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
         self.replication_handler
             .send_op(StateOperation::ComputeStateRoot);

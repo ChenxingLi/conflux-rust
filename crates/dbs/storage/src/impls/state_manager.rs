@@ -1230,6 +1230,15 @@ fn physical_openable_lower_bound_of(
     lowest_continuous_snapshot_height
 }
 
+/// What the read only open picked for one epoch. The two variants are the two
+/// live state shapes: the layered state tree, and the single MPT replica used
+/// when the layered tree cannot answer for the epoch and the node keeps a
+/// single MPT covering the requested space.
+enum ReadOnlyState {
+    Layered(State),
+    SingleMpt(SingleMptState),
+}
+
 impl StateManager {
     /// Open one version of the state, keyed by its epoch hash alone. The
     /// coordinates of that version come from the engine's own index; nothing
@@ -1252,6 +1261,23 @@ impl StateManager {
         }
     }
 
+    /// Open one version of the state for an operational export. The export
+    /// needs the callback traversal, which `StorageView` does not offer, so it
+    /// gets a concrete export object rather than going through
+    /// `open_state`.
+    pub fn open_state_for_export(
+        self: &Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
+    ) -> Result<Option<StateExport>> {
+        Ok(self.open_read_only_state(epoch_hash, opts)?.map(
+            |state| match state {
+                ReadOnlyState::Layered(state) => StateExport::layered(state),
+                ReadOnlyState::SingleMpt(state) => {
+                    StateExport::single_mpt(state)
+                }
+            },
+        ))
+    }
+
     /// At the boundary of snapshot, getting a state for new epoch will switch
     /// to new Delta MPT, but it's unnecessary getting a no-commit state.
     ///
@@ -1262,6 +1288,23 @@ impl StateManager {
     fn open_read_only(
         self: &Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
     ) -> Result<Option<Box<dyn StateTrait>>> {
+        Ok(self.open_read_only_state(epoch_hash, opts)?.map(
+            |state| match state {
+                ReadOnlyState::Layered(state) => {
+                    Box::new(state) as Box<dyn StateTrait>
+                }
+                ReadOnlyState::SingleMpt(state) => {
+                    Box::new(state) as Box<dyn StateTrait>
+                }
+            },
+        ))
+    }
+
+    /// The body of the read only open, answering with the concrete state it
+    /// picked instead of a boxed trait object.
+    fn open_read_only_state(
+        self: &Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
+    ) -> Result<Option<ReadOnlyState>> {
         let try_open = opts.try_open;
         let space = opts.space;
         let epoch_id = *epoch_hash;
@@ -1271,7 +1314,7 @@ impl StateManager {
         // single_mpt.
         let maybe_state_err = match maybe_state_trees {
             Ok(Some(state_trees)) => {
-                return Ok(Some(Box::new(State::new(
+                return Ok(Some(ReadOnlyState::Layered(State::new(
                     self.clone(),
                     state_trees,
                     false,
@@ -1295,7 +1338,7 @@ impl StateManager {
             warn!("single mpt state missing: epoch={:?}", epoch_id);
             return maybe_state_err;
         } else {
-            Ok(Some(Box::new(single_mpt_state.unwrap())))
+            Ok(Some(ReadOnlyState::SingleMpt(single_mpt_state.unwrap())))
         }
     }
 
@@ -1451,6 +1494,8 @@ use crate::{
         delta_mpt::*,
         errors::*,
         replicated_state::ReplicatedState,
+        single_mpt_state::SingleMptState,
+        state_export::StateExport,
         state_index_db::{StateIndexDb, StateIndexEntry},
         storage_db::{
             delta_db_manager_rocksdb::DeltaDbManagerRocksdb,

@@ -315,17 +315,6 @@ impl StateTrait for State {
         Ok(())
     }
 
-    fn read_all_with_callback(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
-        callback: &mut dyn FnMut(MptKeyValue), only_account_key: bool,
-    ) -> Result<()> {
-        self.read_all_with_callback_impl(
-            access_key_prefix,
-            callback,
-            only_account_key,
-        )
-    }
-
     fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
         self.ensure_temp_slab_for_db_load();
 

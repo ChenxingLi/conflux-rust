@@ -60,8 +60,7 @@ pub type Changeset = BTreeMap<Vec<u8>, Option<Box<[u8]>>>;
 /// height it acts on comes off the state object, where the open path put it,
 /// and holds the same value. `None` only on the transitional path where the
 /// caller hands in a writable state object instead of giving a parent version,
-/// i.e. unit tests, the genesis construction and `state_dump` -- see
-/// `StateDb::new_on_owned_state`.
+/// i.e. unit tests and benchmarks -- see `StateDb::new_on_owned_state`.
 #[derive(Clone, Copy, Debug)]
 pub struct CommitMeta {
     pub epoch_id: EpochId,
@@ -77,13 +76,6 @@ pub trait StateTrait: StorageView {
         &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
     ) -> Result<()>;
     fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()>;
-
-    fn read_all_with_callback(
-        &mut self, _access_key_prefix: StorageKeyWithSpace,
-        _callback: &mut dyn FnMut(MptKeyValue), _only_account_key: bool,
-    ) -> Result<()> {
-        Err(Error::Msg("Not implemented".into()))
-    }
 
     // Finalize
     /// It's costly to compute state root however it's only necessary to compute

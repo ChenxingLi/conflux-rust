@@ -293,7 +293,7 @@ impl SingleMptState {
         }
     }
 
-    fn read_all_with_callback_impl(
+    pub(crate) fn read_all_with_callback_impl(
         &mut self, access_key_prefix: StorageKeyWithSpace,
         callback: &mut dyn FnMut(MptKeyValue), only_account_key: bool,
     ) -> Result<()> {
@@ -387,17 +387,6 @@ impl StateTrait for SingleMptState {
     fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
         self.set(access_key, MptValue::<Box<[u8]>>::TombStone.unwrap())?;
         Ok(())
-    }
-
-    fn read_all_with_callback(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
-        callback: &mut dyn FnMut(MptKeyValue), only_account_key: bool,
-    ) -> Result<()> {
-        self.read_all_with_callback_impl(
-            access_key_prefix,
-            callback,
-            only_account_key,
-        )
     }
 
     fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {

@@ -71,7 +71,6 @@ impl StateTrait for RecordingStorage<State> {
             fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo>;
             fn get_state_root(&self) -> Result<StateRootWithAuxInfo>;
             fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo>;
-            fn read_all_with_callback(&mut self, access_key_prefix: StorageKeyWithSpace, callback: &mut dyn FnMut(MptKeyValue), only_account_key: bool) -> Result<()>;
         }
     }
 }

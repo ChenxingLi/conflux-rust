@@ -2,15 +2,16 @@ use crate::common::initialize_not_light_node_modules;
 use cfx_config::Configuration;
 use cfx_rpc_eth_types::{AccountState, StateDump, EOA_STORAGE_ROOT_H256};
 use cfx_rpc_primitives::Bytes;
-use cfx_statedb::{StateDbExt, StateDbGeneric};
-use cfx_storage::OpenOptions;
+use cfx_statedb::StateDbGeneric;
+use cfx_storage::{OpenOptions, StateExport, StorageView};
 use cfx_types::{Address, Space, H256, U256};
 use cfxcore::NodeType;
 use chrono::Utc;
 use keccak_hash::{keccak, KECCAK_EMPTY};
 use parking_lot::{Condvar, Mutex};
 use primitives::{
-    Account, SkipInputCheck, StorageKey, StorageKeyWithSpace, StorageValue,
+    Account, CodeInfo, SkipInputCheck, StorageKey, StorageKeyWithSpace,
+    StorageValue,
 };
 use rlp::Rlp;
 use std::{
@@ -40,8 +41,12 @@ pub fn dump_whole_state(
     conf: &mut Configuration, exit_cond_var: Arc<(Mutex<bool>, Condvar)>,
     config: &StateDumpConfig,
 ) -> Result<StateDump, String> {
-    let (mut state_db, state_root) =
-        prepare_state_db(conf, exit_cond_var, config)?;
+    let (export, state_root) =
+        prepare_state_export(conf, exit_cond_var, config)?;
+
+    // This path only does prefix reads, which the export handle serves as a
+    // `StorageView`, so it can go through `StateDb`.
+    let mut state_db = StateDbGeneric::new_readonly(Box::new(export));
 
     let accounts =
         export_space_accounts(&mut state_db, Space::Ethereum, config)
@@ -65,11 +70,11 @@ pub fn iterate_dump_whole_state<F: Fn(AccountState)>(
     conf: &mut Configuration, exit_cond_var: Arc<(Mutex<bool>, Condvar)>,
     config: &StateDumpConfig, callback: F,
 ) -> Result<H256, String> {
-    let (mut state_db, state_root) =
-        prepare_state_db(conf, exit_cond_var, config)?;
+    let (mut export, state_root) =
+        prepare_state_export(conf, exit_cond_var, config)?;
 
     export_space_accounts_with_callback(
-        &mut state_db,
+        &mut export,
         Space::Ethereum,
         config,
         callback,
@@ -79,10 +84,14 @@ pub fn iterate_dump_whole_state<F: Fn(AccountState)>(
     Ok(state_root)
 }
 
-fn prepare_state_db(
+/// Open the state to export. A callback driven full traversal needs more than
+/// a `StorageView` read, so the storage engine hands back a concrete export
+/// handle and picks between the layered state and the single MPT replica
+/// itself.
+fn prepare_state_export(
     conf: &mut Configuration, exit_cond_var: Arc<(Mutex<bool>, Condvar)>,
     config: &StateDumpConfig,
-) -> Result<(StateDbGeneric, H256), String> {
+) -> Result<(StateExport, H256), String> {
     println("Preparing state...");
     let (data_man, _, _, consensus, sync_service, _, _, _, _, _, _, _) =
         initialize_not_light_node_modules(
@@ -122,8 +131,8 @@ fn prepare_state_db(
         .get_epoch_execution_commitment_with_db(&epoch_hash)
         .ok_or("Failed to get state index")?;
 
-    let state = state_manager
-        .open_state(
+    let export = state_manager
+        .open_state_for_export(
             &epoch_hash,
             OpenOptions::read_only()
                 .with_try_open(true)
@@ -132,12 +141,7 @@ fn prepare_state_db(
         .map_err(|e| e.to_string())?
         .ok_or("Failed to get state")?;
 
-    // Not `new_readonly`: the export walks the state with a callback, which is
-    // not one of the two methods `StorageView` has. TODO: this becomes a read
-    // only instance once the engine has its own export entry point.
-    let state_db = StateDbGeneric::new_on_owned_state(state);
-
-    Ok((state_db, *state_root))
+    Ok((export, *state_root))
 }
 
 fn export_space_accounts(
@@ -248,7 +252,7 @@ fn export_space_accounts(
 }
 
 pub fn export_space_accounts_with_callback<F: Fn(AccountState)>(
-    state: &mut StateDbGeneric, space: Space, config: &StateDumpConfig,
+    state: &mut StateExport, space: Space, config: &StateDumpConfig,
     callback: F,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println("Start to iterate state...");
@@ -313,7 +317,7 @@ pub fn export_space_accounts_with_callback<F: Fn(AccountState)>(
 
 #[allow(unused)]
 fn get_account_state(
-    state: &mut StateDbGeneric, account: &Account, config: &StateDumpConfig,
+    state: &mut StateExport, account: &Account, config: &StateDumpConfig,
     space: Space,
 ) -> Result<AccountState, Box<dyn std::error::Error>> {
     let address = account.address();
@@ -321,9 +325,16 @@ fn get_account_state(
     let is_contract = account.code_hash != KECCAK_EMPTY;
     // get code
     let code = if is_contract && !config.no_code {
-        state
-            .get_code(address, &account.code_hash)?
-            .map(|code_info| Bytes(code_info.code.deref().to_vec()))
+        let code_key =
+            StorageKey::new_code_key(&address.address, &account.code_hash)
+                .with_space(address.space);
+        match state.get(code_key)? {
+            None => None,
+            Some(raw) => {
+                let code_info: CodeInfo = rlp::decode(&raw)?;
+                Some(Bytes(code_info.code.deref().to_vec()))
+            }
+        }
     } else {
         None
     };
@@ -354,7 +365,7 @@ fn get_account_state(
 }
 
 fn get_contract_storage(
-    state: &mut StateDbGeneric, address: &Address, space: Space,
+    state: &mut StateExport, address: &Address, space: Space,
     config: &StateDumpConfig,
 ) -> Result<BTreeMap<H256, U256>, Box<dyn std::error::Error>> {
     let mut storage: BTreeMap<H256, U256> = Default::default();

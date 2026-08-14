@@ -66,13 +66,8 @@ mod impls {
 
         /// A writable state object handed in from outside, which serves both
         /// the reads and the commit. It is kept for the callers which cannot
-        /// name a parent version yet:
-        ///
-        /// - unit tests and benchmarks, which commit into a mock state, until
-        ///   an in memory engine replaces the mocks;
-        /// - `state_dump`, which needs the callback traversal, a method
-        ///   `StorageView` does not have, until the engine grows its own
-        ///   export entry point.
+        /// name a parent version yet: unit tests and benchmarks, which commit
+        /// into a mock state, until an in memory engine replaces the mocks.
         OwnedState(Box<dyn StorageStateTrait>),
     }
 
@@ -303,29 +298,6 @@ mod impls {
             debug_record: Option<&mut ComputeEpochDebugRecord>,
         ) -> Result<Vec<MptKeyValue>> {
             self.delete_all::<access_mode::Read>(key_prefix, debug_record)
-        }
-
-        /// The callback traversal is not one of the two methods `StorageView`
-        /// has, so it is only available on an instance which owns a
-        /// state object. `state_dump` is the only caller. TODO: this
-        /// method goes away once the engine has its own export entry
-        /// point.
-        pub fn read_all_with_callback(
-            &mut self, access_key_prefix: StorageKeyWithSpace,
-            callback: &mut dyn FnMut(MptKeyValue), only_account_key: bool,
-        ) -> Result<()> {
-            match &mut self.storage {
-                Storage::OwnedState(state) => state
-                    .read_all_with_callback(
-                        access_key_prefix,
-                        callback,
-                        only_account_key,
-                    )
-                    .map_err(|err| err.into()),
-                _ => Err(Error::Msg(
-                    "read_all_with_callback needs a state object".into(),
-                )),
-            }
         }
 
         pub fn delete_all<AM: access_mode::AccessMode>(

@@ -217,6 +217,7 @@ pub use self::{
         proof_merger::StateProofMerger,
         recording_storage::RecordingStorage,
         snapshot_sync::{FullSyncVerifier, MptSlicer},
+        state_export::StateExport,
         state_proof::StateProof,
         storage_db::{
             kvdb_rocksdb::KvdbRocksdb,
