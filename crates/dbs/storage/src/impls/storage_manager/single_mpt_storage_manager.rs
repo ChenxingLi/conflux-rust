@@ -2,12 +2,11 @@ use super::super::errors::*;
 use crate::{
     impls::{
         delta_mpt::node_ref_map::DeltaMptId, single_mpt_state::SingleMptState,
-        state_manager::DeltaDbManager,
+        state_manager::DeltaDbManager, writable_state::StateFilter,
     },
     node_memory_manager::{
         DeltaMptsCacheAlgorithm, DeltaMptsNodeMemoryManager,
     },
-    replicated_state::StateFilter,
     storage_db::DeltaDbManagerTrait,
     ArcDeltaDbWrapper, DeltaMpt, OpenableOnDemandOpenDeltaDbTrait,
 };

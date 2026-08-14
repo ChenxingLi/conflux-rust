@@ -26,18 +26,16 @@ pub enum StorageVersion {
 /// which cannot be recovered from a `&self` receiver. The other methods need
 /// only a borrow and take the ordinary `&self`.
 ///
-/// One member is not in its final shape yet: `open_state` answers with
-/// `Box<dyn StateTrait>`, the write capable supertrait of `StorageView`.
-/// `StateDb` still holds a write capable trait object in its transitional
-/// constructor, so the write methods have to come off `StateTrait` before this
-/// can narrow to `StorageView`.
+/// `open_state` answers with `Box<dyn StorageView>`, which is read only. A
+/// caller that has to write names a parent version and hands the engine a
+/// changeset; the writable state object never leaves the engine.
 pub trait StorageEngine: Send + Sync {
     /// Open one version of the state for reading. `Ok(None)` means the
     /// version is not available on this node, which the caller tells apart
     /// from an engine failure by the `Result` around it.
     fn open_state(
         self: Arc<Self>, version: StorageVersion, opts: OpenOptions,
-    ) -> Result<Option<Box<dyn StateTrait>>>;
+    ) -> Result<Option<Box<dyn StorageView>>>;
 
     /// Apply a whole changeset on top of `parent` and persist it under
     /// `meta.epoch_id`, answering with the consensus commitment.
@@ -265,7 +263,7 @@ impl StateIndex {
 use crate::{
     delta_mpt_key::DeltaMptKeyPadding,
     impls::errors::Result,
-    state::{Changeset, CommitMeta, StateTrait},
+    state::{Changeset, CommitMeta, StorageView},
 };
 use cfx_types::Space;
 use primitives::{EpochId, MerkleHash, StateRoot};

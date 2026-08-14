@@ -284,8 +284,11 @@ impl StorageView for State {
     }
 }
 
-impl StateTrait for State {
-    fn set(
+/// The write and finalize half of the layered state. Outside this crate's own
+/// tests the only caller is `WritableState`, which forwards each write here
+/// and mirrors it into the single MPT replica when there is one.
+impl State {
+    pub(crate) fn set(
         &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
     ) -> Result<()> {
         self.pre_modification();
@@ -305,26 +308,35 @@ impl StateTrait for State {
         Ok(())
     }
 
-    fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
+    pub(crate) fn delete(
+        &mut self, access_key: StorageKeyWithSpace,
+    ) -> Result<()> {
         self.set(access_key, MptValue::<Box<[u8]>>::TombStone.unwrap())?;
         Ok(())
     }
 
-    fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
+    pub(crate) fn compute_state_root(
+        &mut self,
+    ) -> Result<StateRootWithAuxInfo> {
         self.ensure_temp_slab_for_db_load();
 
         let merkle_root = self.compute_merkle_root()?;
         Ok(self.state_root(merkle_root))
     }
 
-    fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
+    /// The state root triplet of the epoch this object holds. Read off the
+    /// concrete engine state by the light protocol server and by the one place
+    /// that needs the true genesis state root.
+    pub fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
         self.ensure_temp_slab_for_db_load();
 
         Ok(self.state_root(self.state_root_check()?))
     }
 
     // TODO(yz): replace coarse lock with a queue.
-    fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo> {
+    pub(crate) fn commit(
+        &mut self, epoch_id: EpochId,
+    ) -> Result<StateRootWithAuxInfo> {
         self.ensure_temp_slab_for_db_load();
 
         let merkle_root = self.state_root_check()?;
@@ -398,6 +410,16 @@ impl StateTrait for State {
 }
 
 impl State {
+    /// Apply a whole changeset, in key order.
+    pub(crate) fn apply_changeset(
+        &mut self, changeset: &Changeset,
+    ) -> Result<()> {
+        replay_changeset(changeset, |access_key, value| match value {
+            Some(value) => self.set(access_key, value),
+            None => self.delete(access_key),
+        })
+    }
+
     /// Apply a changeset, compute the state root it produces, then throw the
     /// whole thing away: the root of an epoch computed before that epoch has
     /// an id.

@@ -1273,7 +1273,7 @@ impl StateManager {
     /// this method keeps the `Option` shape its callers already branch on.
     pub fn open_state(
         self: &Arc<Self>, version: StorageVersion, opts: OpenOptions,
-    ) -> Result<Option<Box<dyn StateTrait>>> {
+    ) -> Result<Option<Box<dyn StorageView>>> {
         let epoch_hash = match version {
             // The empty base is built rather than looked up: nothing has been
             // committed for it to be found under. Every key is answered out of
@@ -1285,12 +1285,13 @@ impl StateManager {
             }
             StorageVersion::Epoch(epoch_hash) => epoch_hash,
         };
-        match opts.mode {
-            OpenMode::ReadOnly => self.open_read_only(&epoch_hash, opts),
-            OpenMode::NextEpochBase => {
-                self.open_next_epoch_base(&epoch_hash, opts)
-            }
-        }
+        let maybe_state: Option<Box<dyn StorageView>> = match opts.mode {
+            OpenMode::ReadOnly => self.open_read_only(&epoch_hash, opts)?,
+            OpenMode::NextEpochBase => self
+                .open_next_epoch_base(&epoch_hash, opts)?
+                .map(|state| Box::new(state) as Box<dyn StorageView>),
+        };
+        Ok(maybe_state)
     }
 
     /// Asked when the sync path skips epochs it cannot execute and when the
@@ -1334,21 +1335,16 @@ impl StateManager {
 
     /// At the boundary of snapshot, getting a state for new epoch will switch
     /// to new Delta MPT, but it's unnecessary getting a no-commit state.
-    ///
-    /// With try_open == true, the call fails immediately when the max number of
-    /// snapshot open is reached.
-    ///
-    /// If `space` is `None`, we need data from all spaces.
     fn open_read_only(
         self: &Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
-    ) -> Result<Option<Box<dyn StateTrait>>> {
+    ) -> Result<Option<Box<dyn StorageView>>> {
         Ok(self.open_read_only_state(epoch_hash, opts)?.map(
             |state| match state {
                 ReadOnlyState::Layered(state) => {
-                    Box::new(state) as Box<dyn StateTrait>
+                    Box::new(state) as Box<dyn StorageView>
                 }
                 ReadOnlyState::SingleMpt(state) => {
-                    Box::new(state) as Box<dyn StateTrait>
+                    Box::new(state) as Box<dyn StorageView>
                 }
             },
         ))
@@ -1401,16 +1397,16 @@ impl StateManager {
     /// which decides whether the single MPT covers the parent epoch; it now
     /// comes from the parent's index entry, which holds the engine's own copy
     /// of the very number the caller passed, see `resolve_coordinates`.
-    fn open_next_epoch_base(
+    pub fn open_next_epoch_base(
         self: &Arc<Self>, parent_epoch_hash: &EpochId, opts: OpenOptions,
-    ) -> Result<Option<Box<dyn StateTrait>>> {
+    ) -> Result<Option<WritableState>> {
         let mut parent_epoch = *parent_epoch_hash;
         let state = self.open_layered_state(parent_epoch_hash, opts, false)?;
         if state.is_none() {
             return Ok(None);
         }
         if self.single_mpt_storage_manager.is_none() {
-            return Ok(Some(Box::new(state.unwrap())));
+            return Ok(Some(WritableState::plain(state.unwrap())));
         }
         let single_mpt_storage_manager =
             self.single_mpt_storage_manager.as_ref().unwrap();
@@ -1428,7 +1424,7 @@ impl StateManager {
                 single_mpt_storage_manager.available_height
             );
             if single_mpt_storage_manager.available_height > parent_height {
-                return Ok(Some(Box::new(state.unwrap())));
+                return Ok(Some(WritableState::plain(state.unwrap())));
             } else if single_mpt_storage_manager.available_height
                 == parent_height
             {
@@ -1445,11 +1441,11 @@ impl StateManager {
             error!("open_next_epoch_base: single_mpt_state is required but is not found!");
             return Ok(None);
         }
-        Ok(Some(Box::new(ReplicatedState::new(
+        Ok(Some(WritableState::replicated(
             state.unwrap(),
             single_mpt_state.unwrap(),
             single_mpt_storage_manager.get_state_filter(),
-        ))))
+        )))
     }
 
     /// Opening the three layers of the next epoch happens here, inside the
@@ -1464,10 +1460,7 @@ impl StateManager {
         let mut state = match parent {
             StorageVersion::Empty => self.get_state_for_genesis_write(),
             StorageVersion::Epoch(parent) => self
-                .open_state(
-                    StorageVersion::Epoch(parent),
-                    OpenOptions::next_epoch_base(),
-                )?
+                .open_next_epoch_base(&parent, OpenOptions::next_epoch_base())?
                 .ok_or_else(|| {
                     Error::Msg(format!(
                         "commit: the parent version {:?} is not available",
@@ -1497,30 +1490,28 @@ impl StateManager {
     /// of. It is spelled as the null epoch, which the genesis state object
     /// already carries as its parent epoch id and which no real epoch can
     /// collide with.
-    pub fn get_state_for_genesis_write(
-        self: &Arc<Self>,
-    ) -> Box<dyn StateTrait> {
+    pub fn get_state_for_genesis_write(self: &Arc<Self>) -> WritableState {
         let state = self.get_state_for_genesis_write_inner();
         if self.single_mpt_storage_manager.is_none() {
-            return Box::new(state);
+            return WritableState::plain(state);
         }
         let single_mpt_storage_manager =
             self.single_mpt_storage_manager.as_ref().unwrap();
         let single_mpt_state = single_mpt_storage_manager
             .get_state_for_genesis()
             .expect("single_mpt genesis initialize error");
-        Box::new(ReplicatedState::new(
+        WritableState::replicated(
             state,
             single_mpt_state,
             single_mpt_storage_manager.get_state_filter(),
-        ))
+        )
     }
 }
 
 impl StorageEngine for StateManager {
     fn open_state(
         self: Arc<Self>, version: StorageVersion, opts: OpenOptions,
-    ) -> Result<Option<Box<dyn StateTrait>>> {
+    ) -> Result<Option<Box<dyn StorageView>>> {
         StateManager::open_state(&self, version, opts)
     }
 
@@ -1557,7 +1548,6 @@ use crate::{
     impls::{
         delta_mpt::*,
         errors::*,
-        replicated_state::ReplicatedState,
         single_mpt_state::SingleMptState,
         state_export::StateExport,
         state_index_db::{StateIndexDb, StateIndexEntry},
@@ -1569,6 +1559,7 @@ use crate::{
             single_mpt_storage_manager::SingleMptStorageManager,
             storage_manager::StorageManager,
         },
+        writable_state::WritableState,
     },
     state::*,
     state_manager::*,

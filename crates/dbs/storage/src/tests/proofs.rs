@@ -596,8 +596,8 @@ fn test_recording_storage() {
     // note: do not drop state_manager (_mgr)
     let (_mgr, state, padding, keys) = generate_random_state(&mut rng);
 
-    let state = RecordingStorage::new(state);
     let root = state.get_state_root().unwrap().state_root;
+    let state = RecordingStorage::new(state);
 
     let read_some = select_keys(&mut rng, &keys);
     let read_none = generate_nonexistent_keys(&mut rng, &keys);

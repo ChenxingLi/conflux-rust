@@ -8,7 +8,6 @@ pub(super) mod delta_mpt;
 pub(super) mod node_merkle_proof;
 pub(super) mod proof_merger;
 pub(super) mod recording_storage;
-pub(super) mod replicated_state;
 pub(super) mod single_mpt_state;
 pub(super) mod snapshot_sync;
 pub(super) mod state;
@@ -18,6 +17,7 @@ pub(super) mod state_manager;
 pub(super) mod state_proof;
 pub(super) mod storage_db;
 pub(super) mod storage_manager;
+pub(super) mod writable_state;
 
 pub(super) use cfx_db_errors::storage as errors;
 

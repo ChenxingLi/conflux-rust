@@ -13,9 +13,7 @@ use cfx_parameters::{
     tx_pool::TXPOOL_DEFAULT_NONCE_BITS,
     WORKER_COMPUTATION_PARALLELISM,
 };
-use cfx_storage::{
-    OpenOptions, StorageConfiguration, StorageManager, StorageVersion,
-};
+use cfx_storage::{OpenOptions, StorageConfiguration, StorageManager};
 use cfx_types::{
     address_util::AddressUtil, Address, AddressSpaceUtil, AllChainID, H256,
     U256,
@@ -172,13 +170,13 @@ pub fn initialize_data_manager(
         cfx_parameters::consensus::SNAPSHOT_EPOCHS_CAPACITY,
         || {
             storage_manager
-                .clone()
-                .open_state(
-                    StorageVersion::Epoch(genesis_hash),
+                .open_layered_state(
+                    &genesis_hash,
                     OpenOptions::read_only(),
+                    /* open_mpt_snapshot = */ false,
                 )
                 .unwrap()
-                .unwrap()
+                .expect("the true genesis state was just committed")
                 .get_state_root()
                 .unwrap()
         },

@@ -231,12 +231,9 @@ pub use self::{
             snapshot_db_manager_sqlite::SnapshotDbManagerSqlite,
             sqlite::SqliteConnection,
         },
+        writable_state::WritableState,
     },
-    replicated_state::ReplicatedState,
-    state::{
-        Changeset, CommitMeta, State as StorageState,
-        StateTrait as StorageStateTrait, StorageView,
-    },
+    state::{Changeset, CommitMeta, State as StorageState, StorageView},
     state_manager::{
         ConsensusRecoveryView, OpenMode, OpenOptions, RecoveryPlan,
         StateConfirmedView, StateIndex, StateManager as StorageManager,
@@ -247,7 +244,5 @@ pub use self::{
 
 #[cfg(any(test, feature = "testonly_code"))]
 pub use self::tests::new_state_manager_for_unit_test as new_storage_manager_for_testing;
-use crate::impls::replicated_state;
-use cfx_internal_common::StateRootWithAuxInfo;
 use cfx_types::Space;
 use std::path::{Path, PathBuf};

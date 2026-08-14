@@ -191,9 +191,8 @@ fn test_overlay_account_create() {
 #[test]
 fn test_deposit_and_withdraw() {
     let storage_manager = new_state_manager_for_unit_test();
-    let db = StateDb::new_on_owned_state(
-        storage_manager.get_state_for_genesis_write(),
-    );
+    let db = StateDb::new_for_genesis((*storage_manager).clone())
+        .expect("the empty base is always open");
     let mut address = Address::random();
     address.set_user_account_type_bits();
     let address_with_space = address.with_native_space();
@@ -495,9 +494,8 @@ fn check_ordered_feature(vote_stake_list: &VoteStakeList) {
 
 fn init_test_account() -> OverlayAccount {
     let storage_manager = new_state_manager_for_unit_test();
-    let db = StateDb::new_on_owned_state(
-        storage_manager.get_state_for_genesis_write(),
-    );
+    let db = StateDb::new_for_genesis((*storage_manager).clone())
+        .expect("the empty base is always open");
     let mut address = Address::random();
     address.set_user_account_type_bits();
     let address_with_space = address.with_native_space();

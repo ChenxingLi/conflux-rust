@@ -62,14 +62,6 @@ mod impls {
             view: Box<dyn StorageView>,
             ctx: CommitContext,
         },
-
-        /// A writable state object handed in from outside, which serves both
-        /// the reads and the commit. It is kept for the callers which cannot
-        /// name a parent version yet: the executor's account level tests, an
-        /// example and the storage benchmark, all of which open a writable
-        /// state on the engine themselves. It goes away together with the
-        /// write capable trait object it holds.
-        OwnedState(Box<dyn StorageStateTrait>),
     }
 
     impl Storage {
@@ -77,7 +69,6 @@ mod impls {
             match self {
                 Storage::ReadOnly(view) => &**view,
                 Storage::Commit { view, .. } => &**view,
-                Storage::OwnedState(state) => &**state,
             }
         }
     }
@@ -160,14 +151,6 @@ mod impls {
             })
         }
 
-        /// The transitional constructor, see `Storage::OwnedState`.
-        pub fn new_on_owned_state(state: Box<dyn StorageStateTrait>) -> Self {
-            StateDb {
-                accessed_entries: Default::default(),
-                storage: Storage::OwnedState(state),
-            }
-        }
-
         /// A commit capable instance on the in memory engine's empty base.
         /// The engine is the one shared by every unit test on this thread, so
         /// an epoch committed here can be opened again by
@@ -182,8 +165,7 @@ mod impls {
 
         /// A commit capable instance on top of an epoch some earlier unit test
         /// step committed into the in memory engine of this thread. It panics
-        /// on an epoch that was never committed, which is what the
-        /// `InmemoryStorage` lookup it replaces did.
+        /// on an epoch that was never committed.
         #[cfg(any(test, feature = "testonly_code"))]
         pub fn new_for_unit_test_with_epoch(epoch_id: &EpochId) -> Self {
             use super::inmemory_manager::InmemoryManager;
@@ -674,44 +656,7 @@ mod impls {
                         .map_err(Into::into)
                 }
                 Storage::ReadOnly(_) => Err(Error::ReadOnlyStateDb),
-                Storage::OwnedState(_) => Err(Error::Msg(
-                    "preview_genesis_root needs a parent version, not a state \
-                     object"
-                        .into(),
-                )),
             }
-        }
-
-        /// Apply the changeset into the state object this instance owns and
-        /// compute the root, without committing. This is the shape the genesis
-        /// path had before it became `preview_genesis_root` plus `commit`, and
-        /// the only caller left is the storage benchmark's replay driver,
-        /// which derives a fake epoch id from the delta root and therefore has
-        /// the same chicken and egg problem genesis had — on a non-empty base,
-        /// which the genesis preview does not serve.
-        ///
-        /// It does persist, in the sense that the changeset is now in the MPT
-        /// of the state object which will be committed, so it has to clear the
-        /// cache: the `commit` that follows must not apply the same changeset
-        /// twice, which would run `compute_state_root` a second time on a
-        /// state whose `children_merkle_map` is no longer empty.
-        pub fn compute_state_root(
-            &mut self, debug_record: Option<&mut ComputeEpochDebugRecord>,
-        ) -> Result<StateRootWithAuxInfo> {
-            let changeset = self.build_changeset(debug_record)?;
-            let state_root = match &mut self.storage {
-                Storage::OwnedState(state) => {
-                    state.apply_changeset(&changeset)?;
-                    state.compute_state_root()?
-                }
-                _ => {
-                    return Err(Error::Msg(
-                        "compute_state_root needs a state object".into(),
-                    ))
-                }
-            };
-            self.accessed_entries = Default::default();
-            Ok(state_root)
         }
 
         /// Hand the whole changeset to the engine and let it apply, hash and
@@ -729,14 +674,7 @@ mod impls {
                     changeset,
                     CommitMeta {
                         epoch_id,
-                        height: Some(ctx.height),
-                    },
-                )?,
-                Storage::OwnedState(state) => state.commit_changeset(
-                    changeset,
-                    CommitMeta {
-                        epoch_id,
-                        height: None,
+                        height: ctx.height,
                     },
                 )?,
             };
@@ -784,14 +722,11 @@ mod impls {
     }
 
     use super::*;
-    use cfx_internal_common::{
-        debug::{ComputeEpochDebugRecord, StateOp},
-        StateRootWithAuxInfo,
-    };
+    use cfx_internal_common::debug::{ComputeEpochDebugRecord, StateOp};
     use cfx_storage::{
         utils::{access_mode, to_key_prefix_iter_upper_bound},
         Changeset, CommitMeta, MptKeyValue, OpenOptions, StorageEngine,
-        StorageStateTrait, StorageVersion, StorageView,
+        StorageVersion, StorageView,
     };
     use cfx_types::{
         address_util::AddressUtil, Address, AddressWithSpace, Space,

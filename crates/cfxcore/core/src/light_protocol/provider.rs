@@ -45,7 +45,7 @@ use cfx_parameters::light::{
     MAX_TXS_TO_SEND, MAX_WITNESSES_TO_SEND,
 };
 use cfx_storage::{
-    state::{State, StateDbGetOriginalMethods, StateTrait},
+    state::{State, StateDbGetOriginalMethods},
     OpenOptions, StateProof, StorageManager,
     StorageRootProof as EngineStorageRootProof,
 };

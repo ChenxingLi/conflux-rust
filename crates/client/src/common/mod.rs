@@ -24,7 +24,7 @@ use cfx_parameters::genesis::{
     DEV_GENESIS_KEY_PAIR_2, GENESIS_ACCOUNT_ADDRESS,
 };
 use cfx_rpc_cfx_types::apis::ApiSet;
-use cfx_storage::{OpenOptions, StorageManager, StorageVersion};
+use cfx_storage::{OpenOptions, StorageManager};
 use cfx_tasks::TaskManager;
 use cfx_types::{address_util::AddressUtil, Address, Space, U256};
 pub use cfxcore::pos::pos::PosDropHandle;
@@ -389,13 +389,13 @@ pub fn initialize_common_modules(
             .snapshot_epoch_count,
         || {
             storage_manager
-                .clone()
-                .open_state(
-                    StorageVersion::Epoch(genesis_hash),
+                .open_layered_state(
+                    &genesis_hash,
                     OpenOptions::read_only(),
+                    /* open_mpt_snapshot = */ false,
                 )
                 .unwrap()
-                .unwrap()
+                .expect("the true genesis state was just committed")
                 .get_state_root()
                 .unwrap()
         },

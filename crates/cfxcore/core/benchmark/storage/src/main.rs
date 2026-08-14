@@ -1563,7 +1563,7 @@ struct TxReplayer {
     ops_counts: Cell<u64>,
     block_height: Cell<i64>,
     commit_log: KvdbSqlite<Box<[u8]>>,
-    commit_log_vec: Mutex<Vec<StateRootWithAuxInfo>>,
+    commit_log_vec: Mutex<Vec<StateRoot>>,
 
     exit: Arc<(Mutex<bool>, Condvar)>,
 }
@@ -1648,27 +1648,29 @@ impl TxReplayer {
         })
     }
 
+    /// The epoch id of the epoch replayed at `block_height`. The driver has to
+    /// know the id before it commits, so it derives one from the height rather
+    /// than from anything the commit produces.
+    pub fn epoch_id_at(block_height: i64) -> H256 {
+        H256::from_low_u64_be(block_height as u64)
+    }
+
     pub fn commit(
         &self, latest_state: &mut StateDb, txs: u64, ops: u64,
-    ) -> errors::Result<StateRootWithAuxInfo> {
+    ) -> errors::Result<StateRoot> {
         let block_height = self.block_height.get();
         warn!(
             "Committing epoch at tx {}, ops {}, block_height {}.",
             txs, ops, block_height
         );
 
-        let state_root_with_aux =
-            latest_state.compute_state_root(None).unwrap();
-        let epoch_id = state_root_with_aux.state_root.delta_root;
-        latest_state.commit(epoch_id, None).unwrap();
+        let epoch_id = Self::epoch_id_at(block_height);
+        let state_root = latest_state.commit(epoch_id, None).unwrap();
         let confirmation_lag = 20;
         if block_height > confirmation_lag {
             let confirmed_height = (block_height - confirmation_lag) as u64;
-            let commit_log_vec_locked = self.commit_log_vec.lock();
-            let confirmed_epoch_state_root =
-                &commit_log_vec_locked[(confirmed_height - 1) as usize];
             let confirmed_epoch_hash =
-                &confirmed_epoch_state_root.state_root.delta_root;
+                &Self::epoch_id_at(confirmed_height as i64);
             self.storage_manager
                 .get_storage_manager()
                 .maintain_snapshots_pivot_chain_confirmed(
@@ -1693,17 +1695,17 @@ impl TxReplayer {
         self.block_height.set(block_height + 1);
         self.commit_log.put_with_number_key(
             block_height,
-            &state_root_with_aux.to_rlp_bytes(),
+            &rlp::encode(&state_root),
         )?;
-        self.commit_log_vec.lock().push(state_root_with_aux.clone());
+        self.commit_log_vec.lock().push(state_root.clone());
 
-        Ok(state_root_with_aux)
+        Ok(state_root)
     }
 
     // FIXME: use and test performance with ExecutionStatePrefetcher
     pub fn add_tx(
         &self, tx: RealizedEthTx, latest_state: &mut StateDb,
-        last_state_root: &mut StateRootWithAuxInfo,
+        last_state_root: &mut StateRoot,
     ) -> errors::Result<()>
     {
         if let Some(sender) = tx.sender {
@@ -1813,15 +1815,13 @@ impl TxReplayer {
                 self.tx_counts.get(),
                 self.ops_counts.get(),
             )?;
-            *latest_state = StateDb::new_on_owned_state(
-                self.storage_manager
-                    .open_state(
-                        &last_state_root.state_root.delta_root,
-                        OpenOptions::next_epoch_base(),
-                    )
-                    .unwrap()
-                    .unwrap(),
-            );
+            let committed_height = self.block_height.get() - 1;
+            *latest_state = StateDb::new_for_commit(
+                self.storage_manager.clone(),
+                Self::epoch_id_at(committed_height),
+                (committed_height + 1) as u64,
+            )
+            .unwrap();
         }
 
         Ok(())
@@ -1849,38 +1849,33 @@ fn tx_replay(matches: ArgMatches) -> errors::Result<()> {
     let mut last_state_root;
 
     if matches.occurrences_of("reset_db") > 0 {
-        last_state_root = StateRootWithAuxInfo::genesis(&MERKLE_NULL_NODE);
-        latest_state = StateDb::new_on_owned_state(
-            tx_replayer.storage_manager.get_state_for_genesis_write(),
+        last_state_root = StateRoot::default();
+        latest_state = StateDb::new_for_genesis(
+            tx_replayer.storage_manager.clone(),
         );
     } else {
         match matches.value_of("last_epoch_number") {
             None => {
-                last_state_root =
-                    StateRootWithAuxInfo::genesis(&MERKLE_NULL_NODE);
-                latest_state = StateDb::new_on_owned_state(
-                    tx_replayer.storage_manager.get_state_for_genesis_write(),
+                last_state_root = StateRoot::default();
+                latest_state = StateDb::new_for_genesis(
+                    tx_replayer.storage_manager.clone(),
                 );
             }
             Some(state_to_load) => {
                 let block_height = state_to_load.parse::<i64>()?;
                 tx_replayer.block_height.set(block_height);
-                last_state_root = StateRootWithAuxInfo::from_rlp_bytes(
+                last_state_root = rlp::decode(
                     &tx_replayer
                         .commit_log
                         .get_with_number_key(block_height)?
                         .unwrap(),
                 )?;
-                latest_state = StateDb::new_on_owned_state(
-                    tx_replayer
-                        .storage_manager
-                        .open_state(
-                            &last_state_root.state_root.delta_root,
-                            OpenOptions::next_epoch_base(),
-                        )
-                        .unwrap()
-                        .unwrap(),
-                );
+                latest_state = StateDb::new_for_commit(
+                    tx_replayer.storage_manager.clone(),
+                    TxReplayer::epoch_id_at(block_height),
+                    (block_height + 1) as u64,
+                )
+                .unwrap();
             }
         }
     }
@@ -2129,15 +2124,12 @@ fn main() -> errors::Result<()> {
     }
 }
 
-use cfx_internal_common::state_root_with_aux_info::StateRootWithAuxInfo;
 use cfx_statedb::{StateDb, StateDbExt};
 use cfx_storage::{
     storage_db::key_value_db::{KeyValueDbTrait, KeyValueDbTraitRead},
-    utils::StateRootWithAuxInfoToFromRlpBytes,
-    KvdbSqlite, KvdbSqliteStatements, OpenOptions, StorageConfiguration,
-    StorageManager,
+    KvdbSqlite, KvdbSqliteStatements, StorageConfiguration, StorageManager,
 };
-use cfx_types::hexstr_to_h256;
+use cfx_types::{hexstr_to_h256, H256};
 use clap::{App, Arg, ArgMatches};
 use env_logger;
 use cfx_util_macros::bail;
@@ -2157,7 +2149,7 @@ use lazy_static::*;
 use log::*;
 use parking_lot::{Condvar, Mutex, RwLock};
 use primitives::{
-    is_default::IsDefault, Account, StorageKey, MERKLE_NULL_NODE,
+    is_default::IsDefault, Account, StateRoot, StorageKey, MERKLE_NULL_NODE,
 };
 use rlp::{Decodable, *};
 use std::{

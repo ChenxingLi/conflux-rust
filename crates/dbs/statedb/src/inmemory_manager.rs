@@ -21,7 +21,7 @@ use cfx_internal_common::StateRootWithAuxInfo;
 use cfx_storage::{
     Changeset, CommitMeta, ConsensusRecoveryView, Error, MptKeyValue,
     OpenOptions, RecoveryPlan, Result, StateConfirmedView, StorageEngine,
-    StorageStateTrait, StorageVersion, StorageView,
+    StorageVersion, StorageView,
 };
 use cfx_types::H256;
 use parking_lot::RwLock;
@@ -111,9 +111,9 @@ impl InmemoryManager {
 impl StorageEngine for InmemoryManager {
     fn open_state(
         self: Arc<Self>, version: StorageVersion, _opts: OpenOptions,
-    ) -> Result<Option<Box<dyn StorageStateTrait>>> {
+    ) -> Result<Option<Box<dyn StorageView>>> {
         Ok(self.contents_of(version).map(|version| {
-            Box::new(InmemoryView { version }) as Box<dyn StorageStateTrait>
+            Box::new(InmemoryView { version }) as Box<dyn StorageView>
         }))
     }
 
@@ -185,34 +185,5 @@ impl StorageView for InmemoryView {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         Ok(Box::new(kvs.into_iter()))
-    }
-}
-
-/// `StorageEngine::open_state` answers with the write capable supertrait of
-/// `StorageView`, so this handle has to name the write half. Nothing calls it:
-/// the writes of a `StateDb` built on this engine go into its changeset and
-/// reach the engine through `StorageEngine::commit`. This block goes away with
-/// the write methods on the trait.
-impl StorageStateTrait for InmemoryView {
-    fn set(
-        &mut self, _access_key: StorageKeyWithSpace, _value: Box<[u8]>,
-    ) -> Result<()> {
-        Err(Error::Msg("the in memory view is read only".into()).into())
-    }
-
-    fn delete(&mut self, _access_key: StorageKeyWithSpace) -> Result<()> {
-        Err(Error::Msg("the in memory view is read only".into()).into())
-    }
-
-    fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
-        Err(Error::Msg("the in memory view is read only".into()).into())
-    }
-
-    fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
-        Err(Error::Msg("the in memory view is read only".into()).into())
-    }
-
-    fn commit(&mut self, _epoch: EpochId) -> Result<StateRootWithAuxInfo> {
-        Err(Error::Msg("the in memory view is read only".into()).into())
     }
 }

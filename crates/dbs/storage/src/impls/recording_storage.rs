@@ -6,7 +6,7 @@
 // tracks all read accesses. It can then be turned into a `StateProof` that is
 // able to prove all key-value accesses.
 
-pub struct RecordingStorage<Storage: StateTrait> {
+pub struct RecordingStorage<Storage> {
     storage: Storage,
 
     // note: we need interior mutability so that we can record accesses and we
@@ -15,7 +15,7 @@ pub struct RecordingStorage<Storage: StateTrait> {
     proof_merger: Mutex<StateProofMerger>,
 }
 
-impl<Storage: StateTrait> RecordingStorage<Storage> {
+impl<Storage> RecordingStorage<Storage> {
     pub fn new(storage: Storage) -> Self {
         Self {
             storage,
@@ -63,18 +63,6 @@ impl StorageView for RecordingStorage<State> {
     }
 }
 
-impl StateTrait for RecordingStorage<State> {
-    delegate! {
-        to self.storage {
-            fn set(&mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>) -> Result<()>;
-            fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()>;
-            fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo>;
-            fn get_state_root(&self) -> Result<StateRootWithAuxInfo>;
-            fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo>;
-        }
-    }
-}
-
 use crate::{
     impls::{
         errors::*, merkle_patricia_trie::MptKeyValue, state_proof::StateProof,
@@ -82,7 +70,5 @@ use crate::{
     state::*,
     StateProofMerger,
 };
-use cfx_internal_common::StateRootWithAuxInfo;
-use delegate::delegate;
 use parking_lot::Mutex;
-use primitives::{CheckInput, EpochId, StorageKeyWithSpace};
+use primitives::{CheckInput, StorageKeyWithSpace};

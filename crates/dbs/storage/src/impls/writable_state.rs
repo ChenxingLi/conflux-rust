@@ -1,20 +1,27 @@
 use crate::{
-    impls::errors::*,
-    state::{StateTrait, StorageView},
+    impls::{errors::*, single_mpt_state::SingleMptState, state::State},
+    state::{replay_changeset, Changeset, CommitMeta, StorageView},
     MptKeyValue,
 };
 use cfx_internal_common::StateRootWithAuxInfo;
 use cfx_types::Space;
 use parking_lot::Mutex;
-use primitives::{EpochId, StorageKey, StorageKeyWithSpace};
+use primitives::{EpochId, StateRoot, StorageKey, StorageKeyWithSpace};
 use std::{
     sync::mpsc::{channel, Sender},
     thread::{self, JoinHandle},
 };
 
-pub struct ReplicatedState<Main> {
-    state: Main,
-    replication_handler: ReplicationHandler,
+/// The writable state of one epoch: the layered state the engine executes on,
+/// plus the single MPT replica when this node keeps one.
+///
+/// Every writable state the engine hands out is one of these. The replica is
+/// optional, and with `replication` at `None` every method here is the plain
+/// forward to the layered state, which is what the bare `State` did when it
+/// was handed out on its own.
+pub struct WritableState {
+    state: State,
+    replication: Option<ReplicationHandler>,
 }
 
 pub trait StateFilter: Sync + Send {
@@ -25,16 +32,30 @@ impl StateFilter for Space {
     fn keep_key(&self, key: &StorageKeyWithSpace) -> bool { key.space == *self }
 }
 
-impl<Main: StateTrait> ReplicatedState<Main> {
-    pub fn new<Replicate: StateTrait + Send + 'static>(
-        main_state: Main, replicated_state: Replicate,
-        filter: Option<Box<dyn StateFilter>>,
-    ) -> ReplicatedState<Main> {
-        let replication_handler =
-            ReplicationHandler::new(replicated_state, filter);
+impl WritableState {
+    /// A writable state that writes to the layered state alone.
+    pub(crate) fn plain(state: State) -> Self {
         Self {
-            state: main_state,
-            replication_handler,
+            state,
+            replication: None,
+        }
+    }
+
+    /// A writable state that also mirrors every write into `replica`, keeping
+    /// the keys `filter` accepts.
+    pub(crate) fn replicated(
+        state: State, replica: SingleMptState,
+        filter: Option<Box<dyn StateFilter>>,
+    ) -> Self {
+        Self {
+            state,
+            replication: Some(ReplicationHandler::new(replica, filter)),
+        }
+    }
+
+    fn send_op(&self, op: StateOperation) {
+        if let Some(replication) = &self.replication {
+            replication.send_op(op);
         }
     }
 }
@@ -47,8 +68,9 @@ struct ReplicationHandler {
 }
 
 impl ReplicationHandler {
-    fn new<Replicate: StateTrait + Send + 'static>(
-        mut replicated_state: Replicate, filter: Option<Box<dyn StateFilter>>,
+    fn new(
+        mut replicated_state: SingleMptState,
+        filter: Option<Box<dyn StateFilter>>,
     ) -> ReplicationHandler {
         let (op_tx, op_rx) = channel();
         let thread_handle = thread::Builder::new()
@@ -257,7 +279,7 @@ impl<'a> From<StorageKeyWithSpace<'a>> for OwnedStorageKeyWithSpace {
     }
 }
 
-impl<Main: StateTrait> StorageView for ReplicatedState<Main> {
+impl StorageView for WritableState {
     fn get(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<Option<Box<[u8]>>> {
@@ -271,45 +293,79 @@ impl<Main: StateTrait> StorageView for ReplicatedState<Main> {
     }
 }
 
-impl<Main: StateTrait> StateTrait for ReplicatedState<Main> {
-    fn set(
+impl WritableState {
+    pub fn set(
         &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
     ) -> Result<()> {
-        self.replication_handler.send_op(StateOperation::Set {
+        self.send_op(StateOperation::Set {
             access_key: access_key.into(),
             value: value.clone(),
         });
         self.state.set(access_key, value)
     }
 
-    fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
-        self.replication_handler.send_op(StateOperation::Delete {
+    pub fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
+        self.send_op(StateOperation::Delete {
             access_key: access_key.into(),
         });
         self.state.delete(access_key)
     }
 
-    fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
-        self.replication_handler
-            .send_op(StateOperation::ComputeStateRoot);
+    pub fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
+        self.send_op(StateOperation::ComputeStateRoot);
         self.state.compute_state_root()
     }
 
-    fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
+    pub fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
         self.state.get_state_root()
     }
 
-    fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo> {
+    pub fn commit(
+        &mut self, epoch_id: EpochId,
+    ) -> Result<StateRootWithAuxInfo> {
         let r = self.state.commit(epoch_id);
-        self.replication_handler
-            .send_op(StateOperation::Commit { epoch_id });
-        // TODO(lpl): This can be probably delayed.
-        self.replication_handler
-            .thread_handle
-            .take()
-            .expect("only commit once")
-            .join()
-            .expect("ReplicationHandler thread join error")?;
+        self.send_op(StateOperation::Commit { epoch_id });
+        if let Some(replication) = &mut self.replication {
+            // TODO(lpl): This can be probably delayed.
+            replication
+                .thread_handle
+                .take()
+                .expect("only commit once")
+                .join()
+                .expect("ReplicationHandler thread join error")?;
+        }
         r
+    }
+
+    /// Apply a whole changeset, in key order.
+    fn apply_changeset(&mut self, changeset: &Changeset) -> Result<()> {
+        replay_changeset(changeset, |access_key, value| match value {
+            Some(value) => self.set(access_key, value),
+            None => self.delete(access_key),
+        })
+    }
+
+    /// The commit entry point: one changeset plus the meta of the epoch it
+    /// belongs to, in a single call. Apply, compute the root, persist.
+    ///
+    /// The root is read back rather than recomputed when it is already there.
+    /// Normally the delta nodes are still dirty, `get_state_root` fails on
+    /// them, and the root is computed here.
+    ///
+    /// The answer is the consensus commitment, the state root triplet alone.
+    /// The physical coordinates stay with the engine's own index.
+    pub(crate) fn commit_changeset(
+        &mut self, changeset: Changeset, meta: CommitMeta,
+    ) -> Result<StateRoot> {
+        self.apply_changeset(&changeset)?;
+
+        let state_root = match self.get_state_root() {
+            Ok(root) => root,
+            Err(_) => self.compute_state_root()?,
+        };
+
+        self.commit(meta.epoch_id)?;
+
+        Ok(state_root.state_root)
     }
 }

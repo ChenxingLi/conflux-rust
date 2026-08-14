@@ -1,6 +1,6 @@
 use crate::{
     impls::{errors::*, state::ChildrenMerkleMap},
-    state::{StateTrait, StorageView},
+    state::StorageView,
     CowNodeRef, DeltaMpt, MptKeyValue, NodeRefDeltaMpt, OwnedNodeSet,
     SubTrieVisitor,
 };
@@ -367,8 +367,10 @@ impl StorageView for SingleMptState {
     }
 }
 
-impl StateTrait for SingleMptState {
-    fn set(
+/// The write and finalize half of the single MPT replica. The only caller is
+/// `WritableState`, which mirrors each write of the layered state here.
+impl SingleMptState {
+    pub(crate) fn set(
         &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
     ) -> Result<()> {
         self.pre_modification();
@@ -384,26 +386,26 @@ impl StateTrait for SingleMptState {
         Ok(())
     }
 
-    fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
+    pub(crate) fn delete(
+        &mut self, access_key: StorageKeyWithSpace,
+    ) -> Result<()> {
         self.set(access_key, MptValue::<Box<[u8]>>::TombStone.unwrap())?;
         Ok(())
     }
 
-    fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
+    pub(crate) fn compute_state_root(
+        &mut self,
+    ) -> Result<StateRootWithAuxInfo> {
         self.ensure_temp_slab_for_db_load();
 
         let merkle_root = self.compute_merkle_root()?;
         Ok(self.state_root(merkle_root))
     }
 
-    fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
-        self.ensure_temp_slab_for_db_load();
-
-        Ok(self.state_root(self.state_root_check()?))
-    }
-
     // TODO(yz): replace coarse lock with a queue.
-    fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo> {
+    pub(crate) fn commit(
+        &mut self, epoch_id: EpochId,
+    ) -> Result<StateRootWithAuxInfo> {
         self.ensure_temp_slab_for_db_load();
 
         let merkle_root = self.state_root_check()?;

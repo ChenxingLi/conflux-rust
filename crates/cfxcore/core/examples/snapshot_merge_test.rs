@@ -8,7 +8,6 @@ use cfx_storage::{
     state_manager::StateManager,
     storage_db::{KeyValueDbTraitRead, SnapshotDbManagerTrait, SnapshotInfo},
     DeltaMptIterator, Error as StorageError, OpenOptions, StorageConfiguration,
-    StorageVersion,
 };
 use cfx_types::{Address, AddressSpaceUtil, AddressWithSpace, H256};
 use cfxcore::sync::Error;
@@ -346,8 +345,13 @@ fn add_accounts(
     while pending > 0 {
         let n = min(accounts_per_epoch, pending);
         let start2 = Instant::now();
-        epoch_id =
-            add_accounts_and_commit(manager, n, &mut account_iter, epoch_id);
+        epoch_id = add_accounts_and_commit(
+            manager,
+            n,
+            &mut account_iter,
+            epoch_id,
+            *height + 1,
+        );
         *height += 1;
         pending -= n;
         let progress = (accounts - pending) * 100 / accounts;
@@ -363,8 +367,12 @@ fn add_accounts(
 
     let root = manager
         // TODO consider snapshot.
-        .open_state(StorageVersion::Epoch(epoch_id), OpenOptions::read_only())?
-        .unwrap()
+        .open_layered_state(
+            &epoch_id,
+            OpenOptions::read_only(),
+            /* open_mpt_snapshot = */ false,
+        )?
+        .expect("the epoch just committed is available")
         .get_state_root()?
         .state_root
         .delta_root;
@@ -374,19 +382,14 @@ fn add_accounts(
 
 fn add_accounts_and_commit<'a, Iter>(
     manager: &Arc<StateManager>, accounts: usize, account_map: &mut Iter,
-    parent_epoch_id: H256,
+    parent_epoch_id: H256, height: u64,
 ) -> H256
 where
     Iter: Iterator<Item = (&'a AddressWithSpace, &'a Account)>,
 {
-    let state = manager
-        .open_state(
-            StorageVersion::Epoch(parent_epoch_id),
-            OpenOptions::next_epoch_base(),
-        )
-        .unwrap()
-        .unwrap();
-    let mut state = StateDb::new_on_owned_state(state);
+    let mut state =
+        StateDb::new_for_commit(manager.clone(), parent_epoch_id, height)
+            .unwrap();
     for _ in 0..accounts {
         let (addr, account) =
             account_map.next().expect("Caller has checked the size");
