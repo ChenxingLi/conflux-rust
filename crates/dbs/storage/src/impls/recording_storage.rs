@@ -65,18 +65,6 @@ impl StateTrait for RecordingStorage<State> {
         Ok(val)
     }
 
-    fn delete_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>> {
-        match self.storage.delete_all(access_key_prefix)? {
-            None => Ok(None),
-            Some(kvs) => {
-                self.record_kvs(&kvs)?;
-                Ok(Some(kvs))
-            }
-        }
-    }
-
     fn read_all(
         &mut self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<MptKeyValue>>> {

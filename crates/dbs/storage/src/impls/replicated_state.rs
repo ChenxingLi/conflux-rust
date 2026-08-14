@@ -63,11 +63,6 @@ impl ReplicationHandler {
                                 .delete(access_key.as_storage_key())
                                 .err()
                         }
-                        StateOperation::DeleteAll { access_key_prefix } => {
-                            replicated_state
-                                .delete_all(access_key_prefix.as_storage_key())
-                                .err()
-                        }
                         StateOperation::ComputeStateRoot => {
                             replicated_state.compute_state_root().err()
                         }
@@ -116,9 +111,6 @@ enum StateOperation {
     Delete {
         access_key: OwnedStorageKeyWithSpace,
     },
-    DeleteAll {
-        access_key_prefix: OwnedStorageKeyWithSpace,
-    },
     ComputeStateRoot,
     Commit {
         epoch_id: EpochId,
@@ -129,11 +121,9 @@ impl StateOperation {
     fn get_key(&self) -> Option<StorageKeyWithSpace<'_>> {
         match self {
             StateOperation::Set { access_key, .. }
-            | StateOperation::Delete { access_key, .. }
-            | StateOperation::DeleteAll {
-                access_key_prefix: access_key,
-                ..
-            } => Some(access_key.as_storage_key()),
+            | StateOperation::Delete { access_key, .. } => {
+                Some(access_key.as_storage_key())
+            }
             StateOperation::ComputeStateRoot
             | StateOperation::Commit { .. } => None,
         }
@@ -291,15 +281,6 @@ impl<Main: StateTrait> StateTrait for ReplicatedState<Main> {
         &mut self, _access_key: StorageKeyWithSpace,
     ) -> Result<Option<Box<[u8]>>> {
         todo!()
-    }
-
-    fn delete_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>> {
-        self.replication_handler.send_op(StateOperation::DeleteAll {
-            access_key_prefix: access_key_prefix.into(),
-        });
-        self.state.delete_all(access_key_prefix)
     }
 
     fn read_all(

@@ -397,12 +397,6 @@ impl StateTrait for SingleMptState {
         todo!()
     }
 
-    fn delete_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>> {
-        self.delete_all_impl::<access_mode::Write>(access_key_prefix)
-    }
-
     fn read_all(
         &mut self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<MptKeyValue>>> {

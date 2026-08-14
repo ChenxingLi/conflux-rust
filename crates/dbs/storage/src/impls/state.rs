@@ -289,20 +289,6 @@ impl StateTrait for State {
         }
     }
 
-    /// Delete all key/value pairs with access_key_prefix as prefix. These
-    /// key/value pairs exist in three places: Delta Trie, Intermediate Trie
-    /// and Snapshot DB.
-    ///
-    /// For key/value pairs in Delta Trie, we can simply delete them. For
-    /// key/value pairs in Intermediate Trie and Snapshot DB, we try to
-    /// enumerate all key/value pairs and set tombstone in Delta Trie only when
-    /// necessary.
-    fn delete_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>> {
-        self.delete_all_impl::<access_mode::Write>(access_key_prefix)
-    }
-
     fn read_all(
         &mut self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<MptKeyValue>>> {

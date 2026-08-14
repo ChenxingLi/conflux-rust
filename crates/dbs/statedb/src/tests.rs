@@ -62,32 +62,6 @@ impl StorageStateTrait for MockStorage {
         Ok(())
     }
 
-    fn delete_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>> {
-        let prefix = access_key_prefix.to_key_bytes();
-
-        let keys_to_delete: Vec<_> = self
-            .contents
-            .keys()
-            .filter(|k| k.starts_with(&prefix[..]))
-            .cloned()
-            .collect();
-
-        let mut deleted_kvs = vec![];
-
-        for k in keys_to_delete {
-            *self.num_reads.get_mut() += 1;
-            let v = self.contents.get(&k).unwrap();
-            deleted_kvs.push((k.clone(), v.clone()));
-
-            self.num_writes += 1;
-            self.contents.remove(&k);
-        }
-
-        Ok(Some(deleted_kvs))
-    }
-
     fn delete_test_only(
         &mut self, access_key: StorageKeyWithSpace,
     ) -> Result<Option<Box<[u8]>>> {

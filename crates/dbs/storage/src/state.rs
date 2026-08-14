@@ -29,11 +29,6 @@ pub trait StateTrait: Sync + Send {
     fn delete_test_only(
         &mut self, access_key: StorageKeyWithSpace,
     ) -> Result<Option<Box<[u8]>>>;
-    // Delete everything prefixed by access_key and return deleted key value
-    // pairs.
-    fn delete_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>>;
     // TODO: Remove this mut.
     fn read_all(
         &mut self, access_key_prefix: StorageKeyWithSpace,

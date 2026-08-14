@@ -55,18 +55,6 @@ impl StorageTrait for InmemoryStorage {
         Ok(self.inner.remove(&access_key.to_key_bytes()))
     }
 
-    fn delete_all(
-        &mut self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<cfx_storage::MptKeyValue>>> {
-        let prefix = access_key_prefix.to_key_bytes();
-        let deleted = extract_prefix(&mut self.inner, &prefix);
-        if deleted.is_empty() {
-            return Ok(None);
-        }
-
-        Ok(Some(deleted.into_iter().collect()))
-    }
-
     fn read_all(
         &mut self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<cfx_storage::MptKeyValue>>> {
@@ -115,24 +103,4 @@ fn read_prefix<'a, K: AsRef<[u8]> + Ord + Clone, V: Clone>(
         .take_while(|(k, _)| k.as_ref().starts_with(prefix.as_ref()))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect()
-}
-
-fn extract_prefix<K: AsRef<[u8]> + Ord + Clone, V>(
-    map: &mut BTreeMap<K, V>, prefix: &K,
-) -> BTreeMap<K, V> {
-    let mut extracted = BTreeMap::new();
-
-    let keys_to_remove: Vec<K> = map
-        .range(prefix..)
-        .take_while(|(k, _)| k.as_ref().starts_with(prefix.as_ref()))
-        .map(|(k, _)| k.clone())
-        .collect();
-
-    for key in keys_to_remove {
-        if let Some(value) = map.remove(&key) {
-            extracted.insert(key, value);
-        }
-    }
-
-    extracted
 }
