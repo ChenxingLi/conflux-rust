@@ -29,7 +29,8 @@ use std::{path::Path, sync::Arc};
 /// against `std::result::Result`; this file's `Result` is the engine's own
 /// one argument alias.
 mod entry {
-    use primitives::{DeltaMptKeyPadding, EpochId, MerkleHash, StateRoot};
+    use crate::delta_mpt_key::DeltaMptKeyPadding;
+    use primitives::{EpochId, MerkleHash, StateRoot};
     use rlp_derive::{RlpDecodable, RlpEncodable};
 
     /// The value stored for one epoch. The key is the epoch id itself.
@@ -206,7 +207,8 @@ const LOWER_BOUND_KEY: &[u8] = b"__physical_openable_lower_bound__";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use primitives::{DeltaMptKeyPadding, MerkleHash, MERKLE_NULL_NODE};
+    use crate::delta_mpt_key::DeltaMptKeyPadding;
+    use primitives::{MerkleHash, MERKLE_NULL_NODE};
     use rand::random;
     use std::fs;
 

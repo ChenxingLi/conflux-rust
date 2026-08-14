@@ -174,7 +174,7 @@ impl KVInserter<MptKeyValue> for DumpedMptKvIterator {
     fn push(&mut self, v: MptKeyValue) -> Result<()> {
         let (mpt_key, value) = v;
         let snapshot_key =
-            StorageKeyWithSpace::from_delta_mpt_key(&mpt_key).to_key_bytes();
+            storage_key_from_delta_mpt_key(&mpt_key).to_key_bytes();
 
         self.kv.push((snapshot_key, value));
         Ok(())
@@ -242,18 +242,18 @@ pub fn print_mpt_key(key: &[u8]) {
     println!(")");
 }
 
-#[cfg(any(test, feature = "testonly_code"))]
-use crate::{impls::state_manager::StateManager, StorageConfiguration};
 use crate::{
+    delta_mpt_key::storage_key_from_delta_mpt_key,
     impls::{
         errors::*,
         merkle_patricia_trie::{CompressedPathRaw, MptKeyValue},
     },
     KVInserter,
 };
+#[cfg(any(test, feature = "testonly_code"))]
+use crate::{impls::state_manager::StateManager, StorageConfiguration};
 use fallible_iterator::FallibleIterator;
 use kvdb::{DBTransaction, DBValue, KeyValueDB};
-use primitives::StorageKeyWithSpace;
 #[cfg(any(test, feature = "testonly_code"))]
 use rand::random;
 #[cfg(test)]

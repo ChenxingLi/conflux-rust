@@ -202,8 +202,10 @@ impl State {
             .get_from_delta::<WithProof>(
                 &self.delta_trie,
                 self.delta_trie_root.clone(),
-                &access_key
-                    .to_delta_mpt_key_bytes(&self.delta_trie_key_padding),
+                &to_delta_mpt_key_bytes(
+                    &access_key,
+                    &self.delta_trie_key_padding,
+                ),
             )?;
         proof.with_delta(maybe_delta_proof);
 
@@ -227,7 +229,8 @@ impl State {
                     .get_from_delta::<WithProof>(
                         intermediate_trie,
                         self.intermediate_trie_root.clone(),
-                        &access_key.to_delta_mpt_key_bytes(
+                        &to_delta_mpt_key_bytes(
+                            &access_key,
                             &self
                                 .maybe_intermediate_trie_key_padding
                                 .as_ref()
@@ -299,7 +302,7 @@ impl StateTrait for State {
             &mut self.owned_node_set,
         )?
         .set(
-            &access_key.to_delta_mpt_key_bytes(&self.delta_trie_key_padding),
+            &to_delta_mpt_key_bytes(&access_key, &self.delta_trie_key_padding),
             value,
         )?
         .into();
@@ -456,8 +459,10 @@ impl State {
         // ----------- get from delta -----------
         let delta = match self.delta_trie_root {
             Some(ref root_node) => {
-                let key = access_key
-                    .to_delta_mpt_key_bytes(&self.delta_trie_key_padding);
+                let key = to_delta_mpt_key_bytes(
+                    &access_key,
+                    &self.delta_trie_key_padding,
+                );
 
                 let mut owned_node_set = Some(Default::default());
 
@@ -506,8 +511,10 @@ impl State {
                 Some(ref intermediate_trie),
                 Some(ref intermediate_trie_key_padding),
             ) => {
-                let key = access_key
-                    .to_delta_mpt_key_bytes(&intermediate_trie_key_padding);
+                let key = to_delta_mpt_key_bytes(
+                    &access_key,
+                    &intermediate_trie_key_padding,
+                );
 
                 let mut owned_node_set = Some(Default::default());
 
@@ -890,8 +897,10 @@ impl State {
         let delta_trie_kvs = match &self.delta_trie_root {
             None => None,
             Some(old_root_node) => {
-                let delta_mpt_key_prefix = access_key_prefix
-                    .to_delta_mpt_key_bytes(&self.delta_trie_key_padding);
+                let delta_mpt_key_prefix = to_delta_mpt_key_bytes(
+                    &access_key_prefix,
+                    &self.delta_trie_key_padding,
+                );
                 SubTrieVisitor::new(
                     &self.delta_trie,
                     old_root_node.clone(),
@@ -912,8 +921,10 @@ impl State {
                         .maybe_intermediate_trie_key_padding
                         .as_ref()
                         .unwrap();
-                    let intermediate_mpt_key_prefix = access_key_prefix
-                        .to_delta_mpt_key_bytes(intermediate_trie_key_padding);
+                    let intermediate_mpt_key_prefix = to_delta_mpt_key_bytes(
+                        &access_key_prefix,
+                        intermediate_trie_key_padding,
+                    );
                     let values = SubTrieVisitor::new(
                         self.maybe_intermediate_trie.as_ref().unwrap(),
                         root_node.clone(),
@@ -961,7 +972,7 @@ impl State {
         let mut deleted_keys = HashSet::new();
         if let Some(kvs) = delta_trie_kvs {
             for (k, v) in kvs {
-                let storage_key = StorageKeyWithSpace::from_delta_mpt_key(&k);
+                let storage_key = storage_key_from_delta_mpt_key(&k);
                 let k = storage_key.to_key_bytes();
 
                 // If it's an address search prefix, and k is not start with
@@ -981,7 +992,7 @@ impl State {
 
         if let Some(kvs) = intermediate_trie_kvs {
             for (k, v) in kvs {
-                let storage_key = StorageKeyWithSpace::from_delta_mpt_key(&k);
+                let storage_key = storage_key_from_delta_mpt_key(&k);
                 let k = storage_key.to_key_bytes();
 
                 // If it's an address search prefix, and k is not start with
@@ -1036,7 +1047,7 @@ impl State {
         // Retrieve and delete key/value pairs from delta trie
         if let Some(old_root_node) = &self.delta_trie_root {
             let mut inner_callback = |(k, v): MptKeyValue| {
-                let storage_key = StorageKeyWithSpace::from_delta_mpt_key(&k);
+                let storage_key = storage_key_from_delta_mpt_key(&k);
                 let k = storage_key.to_key_bytes();
 
                 // If it's an address search prefix, and k is not start with
@@ -1051,8 +1062,10 @@ impl State {
                     callback((k, v));
                 }
             };
-            let delta_mpt_key_prefix = access_key_prefix
-                .to_delta_mpt_key_bytes(&self.delta_trie_key_padding);
+            let delta_mpt_key_prefix = to_delta_mpt_key_bytes(
+                &access_key_prefix,
+                &self.delta_trie_key_padding,
+            );
             SubTrieVisitor::new(
                 &self.delta_trie,
                 old_root_node.clone(),
@@ -1070,7 +1083,7 @@ impl State {
         // Retrieve key/value pairs from intermediate trie
         if let Some(root_node) = &self.intermediate_trie_root {
             let mut inner_callback = |(k, v): MptKeyValue| {
-                let storage_key = StorageKeyWithSpace::from_delta_mpt_key(&k);
+                let storage_key = storage_key_from_delta_mpt_key(&k);
                 let k = storage_key.to_key_bytes();
 
                 // If it's an address search prefix, and k is not start with
@@ -1093,8 +1106,10 @@ impl State {
             {
                 let intermediate_trie_key_padding =
                     self.maybe_intermediate_trie_key_padding.as_ref().unwrap();
-                let intermediate_mpt_key_prefix = access_key_prefix
-                    .to_delta_mpt_key_bytes(intermediate_trie_key_padding);
+                let intermediate_mpt_key_prefix = to_delta_mpt_key_bytes(
+                    &access_key_prefix,
+                    intermediate_trie_key_padding,
+                );
                 SubTrieVisitor::new(
                     self.maybe_intermediate_trie.as_ref().unwrap(),
                     root_node.clone(),
@@ -1133,6 +1148,10 @@ impl State {
 }
 
 use crate::{
+    delta_mpt_key::{
+        storage_key_from_delta_mpt_key, to_delta_mpt_key_bytes,
+        DeltaMptKeyPadding,
+    },
     impls::{
         delta_mpt::{node_memory_manager::ActualSlabIndex, *},
         errors::*,
@@ -1154,9 +1173,8 @@ use cfx_internal_common::StateRootWithAuxInfo;
 use cfx_types::AddressWithSpace;
 use fallible_iterator::FallibleIterator;
 use primitives::{
-    DeltaMptKeyPadding, EpochId, MerkleHash, MptValue, NodeMerkleTriplet,
-    StateRoot, StaticBool, StorageKey, StorageKeyWithSpace, StorageRoot,
-    MERKLE_NULL_NODE, NULL_EPOCH,
+    EpochId, MerkleHash, MptValue, NodeMerkleTriplet, StateRoot, StaticBool,
+    StorageKey, StorageKeyWithSpace, StorageRoot, MERKLE_NULL_NODE, NULL_EPOCH,
 };
 use rustc_hex::ToHex;
 use std::{

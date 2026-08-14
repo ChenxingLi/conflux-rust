@@ -22,11 +22,11 @@ use cfx_parameters::light::{
     CACHE_TIMEOUT, MAX_STATE_ENTRIES_IN_FLIGHT, STATE_ENTRY_REQUEST_BATCH_SIZE,
     STATE_ENTRY_REQUEST_TIMEOUT,
 };
+use cfx_storage::delta_mpt_padding;
 use futures::future::FutureExt;
 use lru_time_cache::LruCache;
 use network::{node_table::NodeId, NetworkContext};
 use parking_lot::RwLock;
-use primitives::StorageKeyWithSpace;
 use std::{future::Future, sync::Arc};
 
 pub type StateEntry = Option<Vec<u8>>;
@@ -245,7 +245,7 @@ impl StateEntries {
 
         // construct padding
         let maybe_intermediate_padding = maybe_prev_root.map(|root| {
-            StorageKeyWithSpace::delta_mpt_padding(
+            delta_mpt_padding(
                 &root.snapshot_root,
                 &root.intermediate_delta_root,
             )

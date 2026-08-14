@@ -255,12 +255,10 @@ impl StateManager {
                 None
             } else {
                 match state_root_of_epoch(&intermediate_epoch_id) {
-                    Some(roots) => {
-                        Some(StorageKeyWithSpace::delta_mpt_padding(
-                            &roots.snapshot_root,
-                            &roots.intermediate_delta_root,
-                        ))
-                    }
+                    Some(roots) => Some(delta_mpt_padding(
+                        &roots.snapshot_root,
+                        &roots.intermediate_delta_root,
+                    )),
                     None => {
                         warn!(
                             "state index rebuild: no commitment row for \
@@ -334,11 +332,10 @@ impl StateManager {
                     intermediate_delta_root: roots.intermediate_delta_root,
                     maybe_intermediate_mpt_key_padding:
                         maybe_intermediate_mpt_key_padding.clone(),
-                    delta_mpt_key_padding:
-                        StorageKeyWithSpace::delta_mpt_padding(
-                            &roots.snapshot_root,
-                            &roots.intermediate_delta_root,
-                        ),
+                    delta_mpt_key_padding: delta_mpt_padding(
+                        &roots.snapshot_root,
+                        &roots.intermediate_delta_root,
+                    ),
                     delta_root: roots.delta_root,
                     maybe_height: Some(height),
                     maybe_delta_trie_height: Some(
@@ -392,7 +389,7 @@ impl StateManager {
                 intermediate_epoch_id: period_snapshot.parent_snapshot_epoch_id,
                 intermediate_delta_root: roots.intermediate_delta_root,
                 maybe_intermediate_mpt_key_padding: None,
-                delta_mpt_key_padding: StorageKeyWithSpace::delta_mpt_padding(
+                delta_mpt_key_padding: delta_mpt_padding(
                     &roots.snapshot_root,
                     &roots.intermediate_delta_root,
                 ),
@@ -569,7 +566,7 @@ impl StateManager {
             None => {
                 // TODO: maybe we can move the calculation to a central place
                 // and cache the result?
-                StorageKeyWithSpace::delta_mpt_padding(
+                delta_mpt_padding(
                     &snapshot_merkle_root,
                     &intermediate_trie_root_merkle,
                 )
@@ -1447,6 +1444,9 @@ impl StateManager {
 }
 
 use crate::{
+    delta_mpt_key::{
+        delta_mpt_padding, DeltaMptKeyPadding, GENESIS_DELTA_MPT_KEY_PADDING,
+    },
     impls::{
         delta_mpt::*,
         errors::*,
@@ -1469,8 +1469,7 @@ use crate::{
 };
 use malloc_size_of_derive::MallocSizeOf as MallocSizeOfDerive;
 use primitives::{
-    DeltaMptKeyPadding, EpochId, MerkleHash, StateRoot, StorageKeyWithSpace,
-    GENESIS_DELTA_MPT_KEY_PADDING, MERKLE_NULL_NODE, NULL_EPOCH,
+    EpochId, MerkleHash, StateRoot, MERKLE_NULL_NODE, NULL_EPOCH,
 };
 use std::sync::{
     atomic::{AtomicUsize, Ordering},

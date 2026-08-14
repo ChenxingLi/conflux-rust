@@ -497,7 +497,7 @@ impl StorageManager {
             intermediate_epoch_id: snapshot_info.parent_snapshot_epoch_id,
             intermediate_delta_root: synced_state_root.intermediate_delta_root,
             maybe_intermediate_mpt_key_padding: None,
-            delta_mpt_key_padding: StorageKeyWithSpace::delta_mpt_padding(
+            delta_mpt_key_padding: delta_mpt_padding(
                 &synced_state_root.snapshot_root,
                 &synced_state_root.intermediate_delta_root,
             ),
@@ -1737,6 +1737,7 @@ lazy_static! {
 }
 
 use crate::{
+    delta_mpt_key::delta_mpt_padding,
     impls::{
         delta_mpt::{
             node_memory_manager::{
@@ -1774,8 +1775,7 @@ use fallible_iterator::FallibleIterator;
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use parking_lot::{Mutex, RwLock, RwLockReadGuard};
 use primitives::{
-    EpochId, MerkleHash, StateRoot, StorageKeyWithSpace, MERKLE_NULL_NODE,
-    NULL_EPOCH,
+    EpochId, MerkleHash, StateRoot, MERKLE_NULL_NODE, NULL_EPOCH,
 };
 use rlp::{Decodable, DecoderError, Encodable, Rlp};
 use sqlite::Statement;

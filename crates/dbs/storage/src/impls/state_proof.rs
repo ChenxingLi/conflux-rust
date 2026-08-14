@@ -53,10 +53,8 @@ impl StateProof {
         let intermediate_root = &root.intermediate_delta_root;
         let snapshot_root = &root.snapshot_root;
 
-        let delta_mpt_padding = StorageKeyWithSpace::delta_mpt_padding(
-            &snapshot_root,
-            &intermediate_root,
-        );
+        let delta_padding =
+            delta_mpt_padding(&snapshot_root, &intermediate_root);
 
         let storage_key =
             match StorageKeyWithSpace::from_key_bytes::<CheckInput>(&key) {
@@ -68,10 +66,10 @@ impl StateProof {
             };
 
         let delta_mpt_key =
-            storage_key.to_delta_mpt_key_bytes(&delta_mpt_padding);
+            to_delta_mpt_key_bytes(&storage_key, &delta_padding);
         let maybe_intermediate_mpt_key = maybe_intermediate_padding
             .as_ref()
-            .map(|p| storage_key.to_delta_mpt_key_bytes(p));
+            .map(|p| to_delta_mpt_key_bytes(&storage_key, p));
 
         let tombstone_value = MptValue::<Box<[u8]>>::TombStone.unwrap();
         let delta_value = if value.is_some() {
@@ -138,9 +136,13 @@ impl StateProof {
     }
 }
 
-use crate::impls::merkle_patricia_trie::TrieProof;
+use crate::{
+    delta_mpt_key::{
+        delta_mpt_padding, to_delta_mpt_key_bytes, DeltaMptKeyPadding,
+    },
+    impls::merkle_patricia_trie::TrieProof,
+};
 use primitives::{
-    CheckInput, DeltaMptKeyPadding, MptValue, StateRoot, StorageKeyWithSpace,
-    MERKLE_NULL_NODE,
+    CheckInput, MptValue, StateRoot, StorageKeyWithSpace, MERKLE_NULL_NODE,
 };
 use rlp_derive::{RlpDecodable, RlpEncodable};

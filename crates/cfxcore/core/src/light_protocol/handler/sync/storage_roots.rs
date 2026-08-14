@@ -22,12 +22,13 @@ use cfx_parameters::light::{
     CACHE_TIMEOUT, MAX_STORAGE_ROOTS_IN_FLIGHT,
     STORAGE_ROOT_REQUEST_BATCH_SIZE, STORAGE_ROOT_REQUEST_TIMEOUT,
 };
+use cfx_storage::delta_mpt_padding;
 use cfx_types::H160;
 use futures::future::FutureExt;
 use lru_time_cache::LruCache;
 use network::{node_table::NodeId, NetworkContext};
 use parking_lot::RwLock;
-use primitives::{StorageKey, StorageKeyWithSpace, StorageRoot};
+use primitives::{StorageKey, StorageRoot};
 use std::{future::Future, sync::Arc};
 
 #[derive(Debug)]
@@ -238,7 +239,7 @@ impl StorageRoots {
 
         // construct padding
         let maybe_intermediate_padding = maybe_prev_root.map(|root| {
-            StorageKeyWithSpace::delta_mpt_padding(
+            delta_mpt_padding(
                 &root.snapshot_root,
                 &root.intermediate_delta_root,
             )

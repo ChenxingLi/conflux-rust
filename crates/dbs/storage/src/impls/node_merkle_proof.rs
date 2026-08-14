@@ -66,12 +66,10 @@ impl NodeMerkleProof {
 
             Some(ref proof) => {
                 // convert storage key into delta mpt key
-                let padding = StorageKeyWithSpace::delta_mpt_padding(
-                    &snapshot_root,
-                    &intermediate_root,
-                );
+                let padding =
+                    delta_mpt_padding(&snapshot_root, &intermediate_root);
 
-                let key = storage_key.to_delta_mpt_key_bytes(&padding);
+                let key = to_delta_mpt_key_bytes(&storage_key, &padding);
 
                 // check if delta proof is valid
                 if !proof.is_valid_node_merkle(
@@ -101,7 +99,7 @@ impl NodeMerkleProof {
                 // convert storage key into delta mpt key
                 let key = match maybe_intermediate_padding {
                     None => return false,
-                    Some(p) => storage_key.to_delta_mpt_key_bytes(&p),
+                    Some(p) => to_delta_mpt_key_bytes(&storage_key, &p),
                 };
 
                 // check if intermediate proof is valid
@@ -145,8 +143,11 @@ impl NodeMerkleProof {
 }
 
 use super::merkle_patricia_trie::TrieProof;
+use crate::delta_mpt_key::{
+    delta_mpt_padding, to_delta_mpt_key_bytes, DeltaMptKeyPadding,
+};
 use primitives::{
-    CheckInput, DeltaMptKeyPadding, MptValue, StateRoot, StorageKeyWithSpace,
-    StorageRoot, MERKLE_NULL_NODE,
+    CheckInput, MptValue, StateRoot, StorageKeyWithSpace, StorageRoot,
+    MERKLE_NULL_NODE,
 };
 use rlp_derive::{RlpDecodable, RlpEncodable};

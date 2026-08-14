@@ -106,6 +106,7 @@ impl StateIndex {
     }
 }
 
+use crate::delta_mpt_key::DeltaMptKeyPadding;
 use cfx_types::Space;
-use primitives::{DeltaMptKeyPadding, EpochId, MerkleHash};
+use primitives::{EpochId, MerkleHash};
 use std::sync::Arc;

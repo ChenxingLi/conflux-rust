@@ -191,7 +191,7 @@ fn generate_random_state(
 
     keys.shuffle(rng);
 
-    let intermediate_padding = StorageKeyWithSpace::delta_mpt_padding(
+    let intermediate_padding = delta_mpt_padding(
         &root_2.state_root.snapshot_root,
         &root_2.state_root.intermediate_delta_root,
     );
@@ -680,6 +680,7 @@ fn test_recording_storage() {
 }
 
 use crate::{
+    delta_mpt_key::{delta_mpt_padding, DeltaMptKeyPadding},
     state::*,
     state_manager::*,
     tests::{
@@ -690,9 +691,6 @@ use crate::{
     RecordingStorage,
 };
 use cfx_types::H256;
-use primitives::{
-    DeltaMptKeyPadding, MptValue, NodeMerkleTriplet, StateRoot, StorageKey,
-    StorageKeyWithSpace,
-};
+use primitives::{MptValue, NodeMerkleTriplet, StateRoot, StorageKey};
 use rand::{seq::SliceRandom, Rng};
 use rand_chacha::ChaChaRng;

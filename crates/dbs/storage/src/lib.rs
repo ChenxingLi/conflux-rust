@@ -15,6 +15,7 @@ extern crate log;
 #[macro_use]
 pub mod utils;
 
+pub mod delta_mpt_key;
 pub(self) mod snapshot_manager;
 pub mod state;
 pub mod state_manager;
@@ -198,6 +199,11 @@ impl StorageConfiguration {
 }
 
 pub use self::{
+    delta_mpt_key::{
+        delta_mpt_padding, storage_key_from_delta_mpt_key,
+        to_delta_mpt_key_bytes, DeltaMptKeyPadding,
+        GENESIS_DELTA_MPT_KEY_PADDING,
+    },
     impls::{
         defaults,
         delta_mpt::*,
