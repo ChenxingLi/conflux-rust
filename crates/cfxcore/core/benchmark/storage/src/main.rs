@@ -1834,14 +1834,10 @@ impl TxReplayer {
             )?;
             *latest_state = StateDb::new(
                 self.storage_manager
-                    .get_state_for_next_epoch(StateIndex::new_for_next_epoch(
+                    .open_state(
                         &last_state_root.state_root.delta_root,
-                        &last_state_root,
-                        self.block_height.get() as u64,
-                        self.storage_manager
-                            .get_storage_manager()
-                            .get_snapshot_epoch_count(),
-                    ))
+                        OpenOptions::next_epoch_base(false),
+                    )
                     .unwrap()
                     .unwrap(),
             );
@@ -1897,16 +1893,9 @@ fn tx_replay(matches: ArgMatches) -> errors::Result<()> {
                 latest_state = StateDb::new(
                     tx_replayer
                         .storage_manager
-                        .get_state_for_next_epoch(
-                            StateIndex::new_for_next_epoch(
-                                &last_state_root.state_root.delta_root,
-                                &last_state_root,
-                                block_height as u64,
-                                tx_replayer
-                                    .storage_manager
-                                    .get_storage_manager()
-                                    .get_snapshot_epoch_count(),
-                            ),
+                        .open_state(
+                            &last_state_root.state_root.delta_root,
+                            OpenOptions::next_epoch_base(false),
                         )
                         .unwrap()
                         .unwrap(),
@@ -2166,7 +2155,7 @@ use cfx_statedb::{StateDb, StateDbExt};
 use cfx_storage::{
     storage_db::key_value_db::{KeyValueDbTrait, KeyValueDbTraitRead},
     utils::StateRootWithAuxInfoToFromRlpBytes,
-    KvdbSqlite, KvdbSqliteStatements, StateIndex, StorageConfiguration,
+    KvdbSqlite, KvdbSqliteStatements, OpenOptions, StorageConfiguration,
     StorageManager,
 };
 use cfx_types::hexstr_to_h256;

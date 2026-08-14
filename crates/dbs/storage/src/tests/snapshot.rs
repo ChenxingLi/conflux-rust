@@ -245,13 +245,13 @@ fn test_mpt_node_path_to_from_db_key() {
     let mut epoch_id = EpochId::default();
     epoch_id.as_bytes_mut()[0] = 1;
     state.compute_state_root().unwrap();
-    let state_root_with_aux_info = state.commit(epoch_id).unwrap();
+    state.commit(epoch_id).unwrap();
 
     let state = state_manager
-        .get_state_no_commit_inner(
-            StateIndex::new_for_readonly(&epoch_id, &state_root_with_aux_info),
-            /* try_open = */ false,
-            true,
+        .open_layered_state(
+            &epoch_id,
+            OpenOptions::read_only(),
+            /* open_mpt_snapshot = */ true,
         )
         .unwrap()
         .unwrap();
@@ -651,7 +651,7 @@ use crate::{
         snapshot::verifier::FakeSnapshotDb, DumpedMptKvIterator,
         TEST_NUMBER_OF_KEYS,
     },
-    StateIndex,
+    OpenOptions,
 };
 #[cfg(test)]
 use parking_lot::Mutex;

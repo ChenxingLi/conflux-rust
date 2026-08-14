@@ -10,7 +10,7 @@ use crate::{
 };
 use cfx_executor::internal_contract::make_staking_events;
 use cfx_storage::{
-    state_manager::StateIndex, utils::guarded_value::*, StorageManager,
+    state_manager::OpenOptions, utils::guarded_value::*, StorageManager,
 };
 use cfx_types::{Bloom, Space, H256};
 pub use cfxcore_types::block_data_manager::block_data_types;
@@ -362,14 +362,7 @@ impl BlockDataManager {
     pub fn true_genesis_state_root(&self) -> StateRootWithAuxInfo {
         let true_genesis_hash = self.true_genesis.hash();
         self.storage_manager
-            .get_state_no_commit(
-                StateIndex::new_for_readonly(
-                    &true_genesis_hash,
-                    &StateRootWithAuxInfo::genesis(&true_genesis_hash),
-                ),
-                /* try_open = */ false,
-                None,
-            )
+            .open_state(&true_genesis_hash, OpenOptions::read_only())
             .unwrap()
             .unwrap()
             .get_state_root()
@@ -1589,22 +1582,6 @@ impl BlockDataManager {
     ) -> Vec<usize> {
         self.tx_data_manager
             .find_missing_tx_indices_encoded(compact_block)
-    }
-
-    /// Caller should make sure the state exists.
-    pub fn get_state_readonly_index(
-        &self, block_hash: &EpochId,
-    ) -> Option<StateIndex> {
-        let maybe_commitment =
-            self.get_epoch_execution_commitment_with_db(block_hash);
-        let maybe_state_index = match maybe_commitment {
-            None => None,
-            Some(execution_commitment) => Some(StateIndex::new_for_readonly(
-                block_hash,
-                &execution_commitment.state_root_with_aux_info,
-            )),
-        };
-        maybe_state_index
     }
 
     // TODO: There could be io error when getting block by hash.

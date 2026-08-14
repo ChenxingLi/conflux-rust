@@ -9,7 +9,7 @@ use cfx_statedb::{StateDb, StateDbExt};
 use cfx_storage::{
     state_manager::StateManager,
     storage_db::{KeyValueDbTraitRead, SnapshotDbManagerTrait, SnapshotInfo},
-    DeltaMptIterator, Error as StorageError, StateIndex, StorageConfiguration,
+    DeltaMptIterator, Error as StorageError, OpenOptions, StorageConfiguration,
 };
 use cfx_types::{Address, AddressSpaceUtil, AddressWithSpace, H256};
 use cfxcore::sync::Error;
@@ -355,7 +355,7 @@ fn add_accounts(
     manager: &Arc<StateManager>, parent: H256, height: &mut u64,
     accounts_per_epoch: usize,
     new_account_map: &HashMap<AddressWithSpace, Account>,
-    old_state_root: &StateRootWithAuxInfo, state_root: &StateRootWithAuxInfo,
+    _old_state_root: &StateRootWithAuxInfo, _state_root: &StateRootWithAuxInfo,
 ) -> Result<(H256, MerkleHash), StorageError> {
     let accounts = new_account_map.len();
     println!("begin to add {} accounts for snapshot...", accounts);
@@ -366,24 +366,8 @@ fn add_accounts(
     while pending > 0 {
         let n = min(accounts_per_epoch, pending);
         let start2 = Instant::now();
-        let state_root =
-            if StateIndex::height_to_delta_height(
-                *height,
-                manager.get_storage_manager().get_snapshot_epoch_count(),
-            ) == manager.get_storage_manager().get_snapshot_epoch_count()
-            {
-                old_state_root
-            } else {
-                state_root
-            };
-        let state_index = StateIndex::new_for_next_epoch(
-            &epoch_id,
-            state_root,
-            *height,
-            manager.get_storage_manager().get_snapshot_epoch_count(),
-        );
         epoch_id =
-            add_accounts_and_commit(manager, n, &mut account_iter, state_index);
+            add_accounts_and_commit(manager, n, &mut account_iter, epoch_id);
         *height += 1;
         pending -= n;
         let progress = (accounts - pending) * 100 / accounts;
@@ -399,11 +383,7 @@ fn add_accounts(
 
     let root = manager
         // TODO consider snapshot.
-        .get_state_no_commit(
-            StateIndex::new_for_readonly(&epoch_id, state_root),
-            /* try_open = */ false,
-            None,
-        )?
+        .open_state(&epoch_id, OpenOptions::read_only())?
         .unwrap()
         .get_state_root()?
         .state_root
@@ -414,13 +394,13 @@ fn add_accounts(
 
 fn add_accounts_and_commit<'a, Iter>(
     manager: &Arc<StateManager>, accounts: usize, account_map: &mut Iter,
-    state_index: StateIndex,
+    parent_epoch_id: H256,
 ) -> H256
 where
     Iter: Iterator<Item = (&'a AddressWithSpace, &'a Account)>,
 {
     let state = manager
-        .get_state_for_next_epoch(state_index, false)
+        .open_state(&parent_epoch_id, OpenOptions::next_epoch_base(false))
         .unwrap()
         .unwrap();
     let mut state = StateDb::new(state);

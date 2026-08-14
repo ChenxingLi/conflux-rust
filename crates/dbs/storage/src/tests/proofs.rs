@@ -84,20 +84,15 @@ fn generate_random_state(
 
     let mut epoch_id_0 = H256::default();
     epoch_id_0.as_bytes_mut()[0] = 1;
-    let root_0 = state_0.compute_state_root().unwrap();
+    state_0.compute_state_root().unwrap();
     state_0.commit(epoch_id_0).unwrap();
 
     // insert 1st, 3rd, 4th, 5th 1/7 portions into state-1
     let mut state_1 = state_manager
-        .get_state_for_next_epoch_inner(
-            StateIndex::new_for_next_epoch(
-                &epoch_id_0,
-                &root_0,
-                1,
-                snapshot_epoch_count,
-            ),
-            true,
-            false,
+        .open_layered_state(
+            &epoch_id_0,
+            OpenOptions::next_epoch_base(false),
+            /* open_mpt_snapshot = */ true,
         )
         .unwrap()
         .unwrap();
@@ -140,20 +135,15 @@ fn generate_random_state(
 
     let mut epoch_id_1 = H256::default();
     epoch_id_1.as_bytes_mut()[0] = 2;
-    let root_1 = state_1.compute_state_root().unwrap();
+    state_1.compute_state_root().unwrap();
     state_1.commit(epoch_id_1).unwrap();
 
     // insert 2nd, 3rd, 5th, 6th 1/7 portions into state-2
     let mut state_2 = state_manager
-        .get_state_for_next_epoch_inner(
-            StateIndex::new_for_next_epoch(
-                &epoch_id_1,
-                &root_1,
-                2,
-                snapshot_epoch_count,
-            ),
-            true,
-            false,
+        .open_layered_state(
+            &epoch_id_1,
+            OpenOptions::next_epoch_base(false),
+            /* open_mpt_snapshot = */ true,
         )
         .unwrap()
         .unwrap();
@@ -207,15 +197,10 @@ fn generate_random_state(
     );
 
     let new_state = state_manager
-        .get_state_for_next_epoch_inner(
-            StateIndex::new_for_next_epoch(
-                &epoch_id_2,
-                &root_2,
-                3,
-                snapshot_epoch_count,
-            ),
-            true,
-            false,
+        .open_layered_state(
+            &epoch_id_2,
+            OpenOptions::next_epoch_base(false),
+            /* open_mpt_snapshot = */ true,
         )
         .unwrap()
         .unwrap();

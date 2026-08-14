@@ -1090,17 +1090,6 @@ impl StateManager {
         )
     }
 
-    pub fn get_state_no_commit_inner(
-        self: &Arc<Self>, state_index: StateIndex, try_open: bool,
-        open_mpt_snapshot: bool,
-    ) -> Result<Option<State>> {
-        self.open_layered_state(
-            &state_index.epoch_id,
-            OpenOptions::read_only().with_try_open(try_open),
-            open_mpt_snapshot,
-        )
-    }
-
     /// Open one version of the layered state: `open_state` without the single
     /// MPT half. The proof paths and the engine specific queries need the
     /// concrete `State`, which a `SingleMptState` cannot stand in for.
@@ -1191,33 +1180,6 @@ impl StateManager {
         )
     }
 
-    // Currently we use epoch number to decide whether or not to
-    // start a new delta trie. The value of parent_epoch_id is only
-    // known after the computation is done.
-    //
-    // If we use delta trie size upper bound to decide whether or not
-    // to start a new delta trie, then the computation about whether
-    // or not start a new delta trie, can only be done at the time
-    // of committing. In this scenario, the execution engine should
-    // first get the state assuming that the delta trie won't change,
-    // then check if committing fails due to over size, and if so,
-    // start a new delta trie and re-apply the change.
-    //
-    // Due to the complexity of the latter approach, we stay with the
-    // simple approach.
-    pub fn get_state_for_next_epoch_inner(
-        self: &Arc<Self>, parent_epoch_id: StateIndex, open_mpt_snapshot: bool,
-        recover_mpt_during_construct_pivot_state: bool,
-    ) -> Result<Option<State>> {
-        self.open_layered_state(
-            &parent_epoch_id.epoch_id,
-            OpenOptions::next_epoch_base(
-                recover_mpt_during_construct_pivot_state,
-            ),
-            open_mpt_snapshot,
-        )
-    }
-
     pub fn notify_genesis_hash(&self, genesis_hash: EpochId) {
         if let Some(single_mpt_manager) = &self.single_mpt_storage_manager {
             *single_mpt_manager.genesis_hash.lock() = genesis_hash;
@@ -1277,8 +1239,7 @@ impl StateManager {
     /// about the layout of the state comes from the caller.
     ///
     /// `opts.mode` picks between reading that epoch and using it as the
-    /// execution base of its child epoch, which are the two things
-    /// `get_state_no_commit` and `get_state_for_next_epoch` do.
+    /// execution base of its child epoch.
     ///
     /// `Ok(None)` means the version is not available. A matchable "version not
     /// found" error variant arrives with the `StorageEngine` trait; until then
@@ -1341,8 +1302,8 @@ impl StateManager {
         }
     }
 
-    /// The `NextEpochBase` half of `open_state`, the shape
-    /// `get_state_for_next_epoch` has today. The one field it used to read off
+    /// The `NextEpochBase` half of `open_state`, the shape the deleted
+    /// `get_state_for_next_epoch` had. The one field it used to read off
     /// the caller's `StateIndex` besides the epoch id is the parent height,
     /// which decides whether the single MPT covers the parent epoch; it now
     /// comes from the parent's index entry, which holds the engine's own copy
@@ -1398,21 +1359,6 @@ impl StateManager {
         ))))
     }
 
-    /// Kept for the call sites which have not switched to `open_state` yet.
-    /// Behaviour is unchanged: the caller's `StateIndex` carries no field the
-    /// open path still reads except the epoch id.
-    pub fn get_state_no_commit(
-        self: &Arc<Self>, state_index: StateIndex, try_open: bool,
-        space: Option<Space>,
-    ) -> Result<Option<Box<dyn StateTrait>>> {
-        self.open_state(
-            &state_index.epoch_id,
-            OpenOptions::read_only()
-                .with_try_open(try_open)
-                .with_space(space),
-        )
-    }
-
     pub fn get_state_for_genesis_write(
         self: &Arc<Self>,
     ) -> Box<dyn StateTrait> {
@@ -1430,70 +1376,6 @@ impl StateManager {
             single_mpt_state,
             single_mpt_storage_manager.get_state_filter(),
         ))
-    }
-
-    // Currently we use epoch number to decide whether or not to
-    // start a new delta trie. The value of parent_epoch_id is only
-    // known after the computation is done.
-    //
-    // If we use delta trie size upper bound to decide whether or not
-    // to start a new delta trie, then the computation about whether
-    // or not start a new delta trie, can only be done at the time
-    // of committing. In this scenario, the execution engine should
-    // first get the state assuming that the delta trie won't change,
-    // then check if committing fails due to over size, and if so,
-    // start a new delta trie and re-apply the change.
-    //
-    // Due to the complexity of the latter approach, we stay with the
-    // simple approach.
-    pub fn get_state_for_next_epoch(
-        self: &Arc<Self>, parent_epoch_id: StateIndex,
-        recover_mpt_during_construct_pivot_state: bool,
-    ) -> Result<Option<Box<dyn StateTrait>>> {
-        let mut parent_epoch = parent_epoch_id.epoch_id;
-        let parent_height = parent_epoch_id.maybe_height;
-        let state = self.get_state_for_next_epoch_inner(
-            parent_epoch_id,
-            false,
-            recover_mpt_during_construct_pivot_state,
-        )?;
-        if state.is_none() {
-            return Ok(None);
-        }
-        if self.single_mpt_storage_manager.is_none() {
-            return Ok(Some(Box::new(state.unwrap())));
-        }
-        let single_mpt_storage_manager =
-            self.single_mpt_storage_manager.as_ref().unwrap();
-        if let Some(parent_height) = parent_height {
-            trace!(
-                "get_state_for_next_epoch: parent={}, available={}",
-                parent_height,
-                single_mpt_storage_manager.available_height
-            );
-            if single_mpt_storage_manager.available_height > parent_height {
-                return Ok(Some(Box::new(state.unwrap())));
-            } else if single_mpt_storage_manager.available_height
-                == parent_height
-            {
-                // For the first available single_mpt state, we read the genesis
-                // block state as the parent state to continue execution.
-                // This is only needed for tests because there is no eSpace
-                // state entries for Conflux Mainnet.
-                parent_epoch = *single_mpt_storage_manager.genesis_hash.lock();
-            }
-        }
-        let single_mpt_state =
-            single_mpt_storage_manager.get_state_by_epoch(parent_epoch)?;
-        if single_mpt_state.is_none() {
-            error!("get_state_for_next_epoch: single_mpt_state is required but is not found!");
-            return Ok(None);
-        }
-        Ok(Some(Box::new(ReplicatedState::new(
-            state.unwrap(),
-            single_mpt_state.unwrap(),
-            single_mpt_storage_manager.get_state_filter(),
-        ))))
     }
 }
 
@@ -1518,7 +1400,6 @@ use crate::{
     utils::guarded_value::GuardedValue,
     StorageConfiguration,
 };
-use cfx_types::Space;
 use malloc_size_of_derive::MallocSizeOf as MallocSizeOfDerive;
 use primitives::{
     DeltaMptKeyPadding, EpochId, MerkleHash, StateRoot, StorageKeyWithSpace,

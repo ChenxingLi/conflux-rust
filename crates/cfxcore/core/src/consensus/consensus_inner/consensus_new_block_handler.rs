@@ -21,7 +21,7 @@ use crate::{
     NodeType, Notifications, SharedTransactionPool,
 };
 use cfx_parameters::{consensus::*, consensus_internal::*};
-use cfx_storage::{storage_db::SnapshotDbManagerTrait, StateIndex};
+use cfx_storage::{storage_db::SnapshotDbManagerTrait, OpenOptions};
 use cfx_types::H256;
 use hibitset::{BitSet, BitSetLike, DrainableBitSet};
 use parking_lot::Mutex;
@@ -2138,17 +2138,14 @@ impl ConsensusNewBlockHandler {
 
             let maybe_epoch_execution_commitment =
                 self.data_man.get_epoch_execution_commitment(&pivot_hash);
-            if let Some(commitment) = *maybe_epoch_execution_commitment {
+            if let Some(_commitment) = *maybe_epoch_execution_commitment {
                 if self
                     .data_man
                     .storage_manager
-                    .get_state_no_commit_inner(
-                        StateIndex::new_for_readonly(
-                            &pivot_hash,
-                            &commitment.state_root_with_aux_info,
-                        ),
-                        /* try_open = */ false,
-                        false,
+                    .open_layered_state(
+                        &pivot_hash,
+                        OpenOptions::read_only(),
+                        /* open_mpt_snapshot = */ false,
                     )
                     .expect("DB Error")
                     .is_some()
