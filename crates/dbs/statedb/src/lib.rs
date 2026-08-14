@@ -377,29 +377,60 @@ mod impls {
         }
 
         /// storage_layout is special, because it must always present if there
-        /// is any storage value changed.
-        fn commit_storage_layout(
+        /// is any storage value changed. The entry goes into
+        /// `accessed_entries` at the end of the cache building, so that it
+        /// reaches the engine in the same changeset as everything else.
+        ///
+        /// The entry is marked `force_write` because the layout key must reach
+        /// the underlying storage even when its value is unchanged, which is
+        /// the common case: the layout is rewritten for every account whose
+        /// storage changed, and most of them never touch the layout itself.
+        fn insert_storage_layout_entry(
             &mut self, address: &[u8], space: Space, layout: &StorageLayout,
             debug_record: Option<&mut ComputeEpochDebugRecord>,
-        ) -> Result<()> {
+        ) {
             let key = StorageKey::StorageRootKey(address).with_space(space);
+            let key_bytes = key.to_key_bytes();
             let value = layout.to_bytes().into_boxed_slice();
             if let Some(record) = debug_record {
                 record.state_ops.push(StateOp::StorageLevelOp {
                     op_name: "commit_storage_layout".into(),
-                    key: key.to_key_bytes(),
+                    key: key_bytes.clone(),
                     maybe_value: Some(value.clone().into()),
                 })
             };
-            Ok(self.storage.set(key, value)?)
+
+            let value: Value = Some(value.into());
+            match self.accessed_entries.get_mut().entry(key_bytes) {
+                Occupied(mut o) => {
+                    // The later write overrides the earlier one: whatever the
+                    // execution left under this key, the layout value is the
+                    // one replayed.
+                    let entry = o.get_mut();
+                    entry.current_value = value;
+                    entry.force_write = true;
+                }
+                Vacant(v) => {
+                    // The layout was loaded from the underlying storage, so
+                    // the original value is the value inserted here.
+                    let mut entry = EntryValue::new(value);
+                    entry.force_write = true;
+                    v.insert(entry);
+                }
+            }
         }
 
-        fn apply_changes_to_storage(
-            &mut self, mut debug_record: Option<&mut ComputeEpochDebugRecord>,
-        ) -> Result<()> {
-            let mut storage_layouts_to_rewrite = Default::default();
-            let accessed_entries = &*self.accessed_entries.get_mut();
-            // First of all, apply all changes to the underlying storage.
+        /// Collect the storage layouts which have to be rewritten because of
+        /// the modifications recorded in `accessed_entries`. This pass only
+        /// reads: the layouts it loads from the underlying storage are under
+        /// keys absent from `accessed_entries`, hence keys which the replay
+        /// never writes.
+        fn collect_storage_layouts_to_rewrite(
+            &self,
+        ) -> Result<HashMap<(Vec<u8>, Space), StorageLayout>> {
+            let mut storage_layouts_to_rewrite = HashMap::new();
+            let accessed_entries_guard = self.accessed_entries.read();
+            let accessed_entries = &*accessed_entries_guard;
             for (k, v) in accessed_entries {
                 if !v.is_modified() {
                     continue;
@@ -407,14 +438,6 @@ mod impls {
 
                 let storage_key =
                     StorageKeyWithSpace::from_key_bytes::<SkipInputCheck>(k);
-                match &v.current_value {
-                    Some(v) => {
-                        self.storage.set(storage_key, (&**v).into())?;
-                    }
-                    None => {
-                        self.storage.delete(storage_key)?;
-                    }
-                }
 
                 match &storage_key.key {
                     StorageKey::StorageKey { address_bytes, .. } => {
@@ -465,15 +488,45 @@ mod impls {
                     _ => {}
                 }
             }
+
+            Ok(storage_layouts_to_rewrite)
+        }
+
+        fn apply_changes_to_storage(
+            &mut self, mut debug_record: Option<&mut ComputeEpochDebugRecord>,
+        ) -> Result<()> {
+            let storage_layouts_to_rewrite =
+                self.collect_storage_layouts_to_rewrite()?;
             // Set storage layout for contracts with storage modification or
             // contracts with storage_layout initialization or modification.
-            for ((k, space), v) in &storage_layouts_to_rewrite {
-                self.commit_storage_layout(
-                    k,
+            // The entries go into the cache, they are not written to the
+            // underlying storage here.
+            for ((address, space), layout) in &storage_layouts_to_rewrite {
+                self.insert_storage_layout_entry(
+                    address,
                     *space,
-                    v,
+                    layout,
                     debug_record.as_deref_mut(),
-                )?;
+                );
+            }
+
+            // Then replay the whole cache into the underlying storage.
+            let accessed_entries = &*self.accessed_entries.get_mut();
+            for (k, v) in accessed_entries {
+                if !v.should_write() {
+                    continue;
+                }
+
+                let storage_key =
+                    StorageKeyWithSpace::from_key_bytes::<SkipInputCheck>(k);
+                match &v.current_value {
+                    Some(v) => {
+                        self.storage.set(storage_key, (&**v).into())?;
+                    }
+                    None => {
+                        self.storage.delete(storage_key)?;
+                    }
+                }
             }
             // Mark all modification applied.
             self.accessed_entries = Default::default();
@@ -511,6 +564,11 @@ mod impls {
     struct EntryValue {
         original_value: Value,
         current_value: Value,
+        /// Write this entry to the underlying storage even when the current
+        /// value equals the original one. Only set for the storage layout
+        /// entries, which the MPT structure requires to be written whenever
+        /// any storage under the same account changes.
+        force_write: bool,
     }
 
     impl EntryValue {
@@ -519,6 +577,7 @@ mod impls {
             Self {
                 original_value: value,
                 current_value: value_clone,
+                force_write: false,
             }
         }
 
@@ -526,11 +585,16 @@ mod impls {
             Self {
                 original_value,
                 current_value,
+                force_write: false,
             }
         }
 
         fn is_modified(&self) -> bool {
             self.original_value.ne(&self.current_value)
+        }
+
+        fn should_write(&self) -> bool {
+            self.force_write || self.is_modified()
         }
     }
 
