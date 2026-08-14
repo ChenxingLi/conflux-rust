@@ -492,13 +492,12 @@ impl StateManager {
     /// index write leaves the same kind of hole. Both heal by re-executing
     /// that segment.
     fn resolve_coordinates(
-        &self, state_index: &StateIndex,
+        &self, epoch_id: &EpochId,
     ) -> Result<Option<StateIndex>> {
-        let Some(entry) = self.state_index_db.get(&state_index.epoch_id)?
-        else {
+        let Some(entry) = self.state_index_db.get(epoch_id)? else {
             warn!(
                 "resolve_coordinates, no index entry for epoch {:?}.",
-                state_index.epoch_id,
+                epoch_id,
             );
             return Ok(None);
         };
@@ -510,11 +509,28 @@ impl StateManager {
             intermediate_trie_root_merkle: entry.intermediate_delta_root,
             maybe_intermediate_mpt_key_padding: entry
                 .maybe_intermediate_mpt_key_padding,
-            epoch_id: state_index.epoch_id,
+            epoch_id: *epoch_id,
             delta_mpt_key_padding: entry.delta_mpt_key_padding,
             maybe_delta_trie_height: entry.maybe_delta_trie_height,
             maybe_height: entry.maybe_height,
         }))
+    }
+
+    /// Snapshot H is normally produced here, by merging snapshot H-1, the
+    /// previous one a period below, with the intermediate MPT of the epochs
+    /// between them. An entry saying otherwise says snapshot H arrived whole
+    /// instead, so epoch H has no layers of its own: one image holds the
+    /// state, there is no intermediate layer, and the delta layer is empty.
+    /// The values read back the same; the three layers do not, so the layered
+    /// open refuses the epoch.
+    ///
+    /// An epoch with no entry answers false, and the open itself reports the
+    /// version as unavailable.
+    fn is_unlayered(&self, epoch_id: &EpochId) -> Result<bool> {
+        Ok(match self.state_index_db.get(epoch_id)? {
+            Some(entry) => entry.snapshot_epoch_id == *epoch_id,
+            None => false,
+        })
     }
 
     /// delta_mpt_key_padding is required. When None is passed,
@@ -580,10 +596,9 @@ impl StateManager {
     }
 
     pub fn get_state_trees(
-        &self, state_index: &StateIndex, try_open: bool,
-        open_mpt_snapshot: bool,
+        &self, epoch_id: &EpochId, try_open: bool, open_mpt_snapshot: bool,
     ) -> Result<Option<StateTrees>> {
-        let Some(resolved) = self.resolve_coordinates(state_index)? else {
+        let Some(resolved) = self.resolve_coordinates(epoch_id)? else {
             return Ok(None);
         };
         let state_index = &resolved;
@@ -698,11 +713,10 @@ impl StateManager {
     }
 
     pub fn get_state_trees_for_next_epoch(
-        &self, parent_state_index: &StateIndex, try_open: bool,
+        &self, parent_epoch_id: &EpochId, try_open: bool,
         open_mpt_snapshot: bool,
     ) -> Result<Option<StateTrees>> {
-        let Some(resolved) = self.resolve_coordinates(parent_state_index)?
-        else {
+        let Some(resolved) = self.resolve_coordinates(parent_epoch_id)? else {
             return Ok(None);
         };
         let parent_state_index = &resolved;
@@ -1080,28 +1094,64 @@ impl StateManager {
         self: &Arc<Self>, state_index: StateIndex, try_open: bool,
         open_mpt_snapshot: bool,
     ) -> Result<Option<State>> {
-        // This entry point hands out the concrete state object, which is the
-        // one that answers per layer: the state proof, the node merkle of all
-        // three layers behind `cfx_getStorageRoot`, and the state root
-        // triplet. An epoch which is its own snapshot layer arrived by
-        // snapshot sync as one merged image, so its layering here does not
-        // agree with the triplet its block header commits to, and none of the
-        // three can be answered for it. Answering "no such version" for it is
-        // what the two callers of the concrete state object already handle.
-        //
-        // Point reads and prefix lookups are not affected: they go through
-        // `get_state_no_commit`, and the merged image holds the whole state at
-        // that epoch, so they answer correctly.
-        if state_index.epoch_id == state_index.snapshot_epoch_id {
+        self.open_layered_state(
+            &state_index.epoch_id,
+            OpenOptions::read_only().with_try_open(try_open),
+            open_mpt_snapshot,
+        )
+    }
+
+    /// Open one version of the layered state: `open_state` without the single
+    /// MPT half. The proof paths and the engine specific queries need the
+    /// concrete `State`, which a `SingleMptState` cannot stand in for.
+    ///
+    /// `open_mpt_snapshot` opens the snapshot's MPT table alongside its key
+    /// value table. Only the callers of this entry point ever ask for it,
+    /// because only proofs and per layer node merkle values read that table,
+    /// so it is a parameter here instead of a field of `OpenOptions`.
+    pub fn open_layered_state(
+        self: &Arc<Self>, epoch_id: &EpochId, opts: OpenOptions,
+        open_mpt_snapshot: bool,
+    ) -> Result<Option<State>> {
+        // The read only half of this entry point refuses an unlayered epoch.
+        // The concrete state object answers per layer, and an epoch which
+        // arrived as one merged snapshot image does not decompose the way its
+        // block header commits to. Opening it as the execution base of its
+        // child epoch is a different question and is not refused: the child
+        // reads values, which the merged image answers correctly.
+        if matches!(opts.mode, OpenMode::ReadOnly)
+            && self.is_unlayered(epoch_id)?
+        {
             return Ok(None);
         }
-        let maybe_state_trees =
-            self.get_state_trees(&state_index, try_open, open_mpt_snapshot)?;
+        let (maybe_state_trees, recover_mpt_during_construct_pivot_state) =
+            match opts.mode {
+                OpenMode::ReadOnly => (
+                    self.get_state_trees(
+                        epoch_id,
+                        opts.try_open,
+                        open_mpt_snapshot,
+                    )?,
+                    false,
+                ),
+                OpenMode::NextEpochBase {
+                    recover_mpt_during_construct_pivot_state,
+                } => (
+                    self.get_state_trees_for_next_epoch(
+                        epoch_id,
+                        opts.try_open,
+                        open_mpt_snapshot,
+                    )?,
+                    recover_mpt_during_construct_pivot_state,
+                ),
+            };
         match maybe_state_trees {
             None => Ok(None),
-            Some(state_trees) => {
-                Ok(Some(State::new(self.clone(), state_trees, false)))
-            }
+            Some(state_trees) => Ok(Some(State::new(
+                self.clone(),
+                state_trees,
+                recover_mpt_during_construct_pivot_state,
+            ))),
         }
     }
 
@@ -1159,19 +1209,13 @@ impl StateManager {
         self: &Arc<Self>, parent_epoch_id: StateIndex, open_mpt_snapshot: bool,
         recover_mpt_during_construct_pivot_state: bool,
     ) -> Result<Option<State>> {
-        let maybe_state_trees = self.get_state_trees_for_next_epoch(
-            &parent_epoch_id,
-            /* try_open = */ false,
-            open_mpt_snapshot,
-        )?;
-        match maybe_state_trees {
-            None => Ok(None),
-            Some(state_trees) => Ok(Some(State::new(
-                self.clone(),
-                state_trees,
+        self.open_layered_state(
+            &parent_epoch_id.epoch_id,
+            OpenOptions::next_epoch_base(
                 recover_mpt_during_construct_pivot_state,
-            ))),
-        }
+            ),
+            open_mpt_snapshot,
+        )
     }
 
     pub fn notify_genesis_hash(&self, genesis_hash: EpochId) {
@@ -1228,6 +1272,28 @@ fn physical_openable_lower_bound_of(
 }
 
 impl StateManager {
+    /// Open one version of the state, keyed by its epoch hash alone. The
+    /// coordinates of that version come from the engine's own index; nothing
+    /// about the layout of the state comes from the caller.
+    ///
+    /// `opts.mode` picks between reading that epoch and using it as the
+    /// execution base of its child epoch, which are the two things
+    /// `get_state_no_commit` and `get_state_for_next_epoch` do.
+    ///
+    /// `Ok(None)` means the version is not available. A matchable "version not
+    /// found" error variant arrives with the `StorageEngine` trait; until then
+    /// this method keeps the `Option` shape its callers already branch on.
+    pub fn open_state(
+        self: &Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
+    ) -> Result<Option<Box<dyn StateTrait>>> {
+        match opts.mode {
+            OpenMode::ReadOnly => self.open_read_only(epoch_hash, opts),
+            OpenMode::NextEpochBase { .. } => {
+                self.open_next_epoch_base(epoch_hash, opts)
+            }
+        }
+    }
+
     /// At the boundary of snapshot, getting a state for new epoch will switch
     /// to new Delta MPT, but it's unnecessary getting a no-commit state.
     ///
@@ -1235,12 +1301,14 @@ impl StateManager {
     /// snapshot open is reached.
     ///
     /// If `space` is `None`, we need data from all spaces.
-    pub fn get_state_no_commit(
-        self: &Arc<Self>, state_index: StateIndex, try_open: bool,
-        space: Option<Space>,
+    fn open_read_only(
+        self: &Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
     ) -> Result<Option<Box<dyn StateTrait>>> {
+        let try_open = opts.try_open;
+        let space = opts.space;
+        let epoch_id = *epoch_hash;
         let maybe_state_trees =
-            self.get_state_trees(&state_index, try_open, false);
+            self.get_state_trees(&epoch_id, try_open, false);
         // If there is an error, we will continue to search for an available
         // single_mpt.
         let maybe_state_err = match maybe_state_trees {
@@ -1262,18 +1330,87 @@ impl StateManager {
         if !single_mpt_storage_manager.contains_space(&space) {
             return maybe_state_err;
         }
-        debug!(
-            "read state from single mpt state: epoch={}",
-            state_index.epoch_id
-        );
-        let single_mpt_state = single_mpt_storage_manager
-            .get_state_by_epoch(state_index.epoch_id)?;
+        debug!("read state from single mpt state: epoch={}", epoch_id);
+        let single_mpt_state =
+            single_mpt_storage_manager.get_state_by_epoch(epoch_id)?;
         if single_mpt_state.is_none() {
-            warn!("single mpt state missing: epoch={:?}", state_index.epoch_id);
+            warn!("single mpt state missing: epoch={:?}", epoch_id);
             return maybe_state_err;
         } else {
             Ok(Some(Box::new(single_mpt_state.unwrap())))
         }
+    }
+
+    /// The `NextEpochBase` half of `open_state`, the shape
+    /// `get_state_for_next_epoch` has today. The one field it used to read off
+    /// the caller's `StateIndex` besides the epoch id is the parent height,
+    /// which decides whether the single MPT covers the parent epoch; it now
+    /// comes from the parent's index entry, which holds the engine's own copy
+    /// of the very number the caller passed, see `resolve_coordinates`.
+    fn open_next_epoch_base(
+        self: &Arc<Self>, parent_epoch_hash: &EpochId, opts: OpenOptions,
+    ) -> Result<Option<Box<dyn StateTrait>>> {
+        let mut parent_epoch = *parent_epoch_hash;
+        let state = self.open_layered_state(parent_epoch_hash, opts, false)?;
+        if state.is_none() {
+            return Ok(None);
+        }
+        if self.single_mpt_storage_manager.is_none() {
+            return Ok(Some(Box::new(state.unwrap())));
+        }
+        let single_mpt_storage_manager =
+            self.single_mpt_storage_manager.as_ref().unwrap();
+        // TODO: the entry was already read once by `resolve_coordinates` on
+        // the way in. Reading it twice is a wasted point lookup, not a
+        // correctness problem.
+        let parent_height = self
+            .state_index_db
+            .get(parent_epoch_hash)?
+            .and_then(|entry| entry.maybe_height);
+        if let Some(parent_height) = parent_height {
+            trace!(
+                "open_next_epoch_base: parent={}, available={}",
+                parent_height,
+                single_mpt_storage_manager.available_height
+            );
+            if single_mpt_storage_manager.available_height > parent_height {
+                return Ok(Some(Box::new(state.unwrap())));
+            } else if single_mpt_storage_manager.available_height
+                == parent_height
+            {
+                // For the first available single_mpt state, we read the genesis
+                // block state as the parent state to continue execution.
+                // This is only needed for tests because there is no eSpace
+                // state entries for Conflux Mainnet.
+                parent_epoch = *single_mpt_storage_manager.genesis_hash.lock();
+            }
+        }
+        let single_mpt_state =
+            single_mpt_storage_manager.get_state_by_epoch(parent_epoch)?;
+        if single_mpt_state.is_none() {
+            error!("open_next_epoch_base: single_mpt_state is required but is not found!");
+            return Ok(None);
+        }
+        Ok(Some(Box::new(ReplicatedState::new(
+            state.unwrap(),
+            single_mpt_state.unwrap(),
+            single_mpt_storage_manager.get_state_filter(),
+        ))))
+    }
+
+    /// Kept for the call sites which have not switched to `open_state` yet.
+    /// Behaviour is unchanged: the caller's `StateIndex` carries no field the
+    /// open path still reads except the epoch id.
+    pub fn get_state_no_commit(
+        self: &Arc<Self>, state_index: StateIndex, try_open: bool,
+        space: Option<Space>,
+    ) -> Result<Option<Box<dyn StateTrait>>> {
+        self.open_state(
+            &state_index.epoch_id,
+            OpenOptions::read_only()
+                .with_try_open(try_open)
+                .with_space(space),
+        )
     }
 
     pub fn get_state_for_genesis_write(

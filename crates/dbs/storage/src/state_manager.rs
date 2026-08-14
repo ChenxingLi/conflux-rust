@@ -8,6 +8,69 @@ pub use super::impls::state_manager::StateManager;
 
 pub type SharedStateManager = Arc<StateManager>;
 
+/// What the caller intends to do with the version it opens: read that
+/// epoch, or use it as the execution base of its child epoch. One entry point
+/// serves both.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OpenMode {
+    /// Read the state of that epoch itself.
+    ReadOnly,
+    /// Open the state of that epoch as the execution base of its child
+    /// epoch. The engine shifts to a new delta MPT here when that epoch sits
+    /// on a snapshot boundary.
+    NextEpochBase {
+        /// Whether the snapshot generated while this epoch is committed has
+        /// to rebuild its MPT from scratch, which is the case during the
+        /// restart replay window. The flag moves into the engine later; until
+        /// then it stays an input.
+        recover_mpt_during_construct_pivot_state: bool,
+    },
+}
+
+/// Everything `StateManager::open_state` needs besides the epoch hash.
+#[derive(Clone, Copy, Debug)]
+pub struct OpenOptions {
+    pub mode: OpenMode,
+    /// `None` means data from all address spaces are required. Only consulted
+    /// in `ReadOnly` mode, which is the only mode with a single MPT fallback.
+    pub space: Option<Space>,
+    /// Fail immediately instead of waiting when the engine has reached its
+    /// limit of concurrently opened snapshots.
+    pub try_open: bool,
+}
+
+impl OpenOptions {
+    pub fn read_only() -> Self {
+        Self {
+            mode: OpenMode::ReadOnly,
+            space: None,
+            try_open: false,
+        }
+    }
+
+    pub fn next_epoch_base(
+        recover_mpt_during_construct_pivot_state: bool,
+    ) -> Self {
+        Self {
+            mode: OpenMode::NextEpochBase {
+                recover_mpt_during_construct_pivot_state,
+            },
+            space: None,
+            try_open: false,
+        }
+    }
+
+    pub fn with_space(mut self, space: Option<Space>) -> Self {
+        self.space = space;
+        self
+    }
+
+    pub fn with_try_open(mut self, try_open: bool) -> Self {
+        self.try_open = try_open;
+        self
+    }
+}
+
 #[derive(Debug)]
 pub struct StateIndex {
     pub snapshot_epoch_id: EpochId,
@@ -102,6 +165,7 @@ impl StateIndex {
 }
 
 use crate::StateRootWithAuxInfo;
+use cfx_types::Space;
 use primitives::{
     DeltaMptKeyPadding, EpochId, MerkleHash, GENESIS_DELTA_MPT_KEY_PADDING,
     MERKLE_NULL_NODE, NULL_EPOCH,

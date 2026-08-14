@@ -224,7 +224,9 @@ pub use self::{
     state::{
         State as StorageState, StateTrait as StorageStateTrait, StorageView,
     },
-    state_manager::{StateIndex, StateManager as StorageManager},
+    state_manager::{
+        OpenMode, OpenOptions, StateIndex, StateManager as StorageManager,
+    },
     storage_db::{KeyValueDbIterableTrait, KeyValueDbTrait},
 };
 
