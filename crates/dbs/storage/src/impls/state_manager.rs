@@ -1211,6 +1211,22 @@ impl StateManager {
         }
     }
 
+    /// Get the snapshot pipeline ready for a restart replay and say where the
+    /// replay should start.
+    ///
+    /// `view` is read only and is not kept past this call. No transaction is
+    /// executed here; the replay itself is a run of ordinary commits driven by
+    /// consensus.
+    ///
+    /// The suggested restart height is never above the one consensus proposed,
+    /// so consensus can keep applying its own force recompute rules by taking
+    /// the lower of the two.
+    pub fn plan_recovery(
+        &self, view: &dyn ConsensusRecoveryView,
+    ) -> RecoveryPlan {
+        self.storage_manager.plan_recovery(view)
+    }
+
     pub fn notify_genesis_hash(&self, genesis_hash: EpochId) {
         if let Some(single_mpt_manager) = &self.single_mpt_storage_manager {
             *single_mpt_manager.genesis_hash.lock() = genesis_hash;

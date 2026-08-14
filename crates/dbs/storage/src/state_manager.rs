@@ -57,6 +57,73 @@ pub trait StateConfirmedView {
     ) -> std::result::Result<EpochId, String>;
 }
 
+/// The chain level facts the engine pulls while it plans a restart recovery.
+/// Every method answers a question in consensus vocabulary; what to rebuild,
+/// and from which epoch execution should restart, is the engine's own answer,
+/// given as a `RecoveryPlan`.
+///
+/// The handle is read only and lives only for the duration of `plan_recovery`.
+///
+/// Not interchangeable with `StateConfirmedView`, although three of its
+/// methods have a counterpart of the same name there. That handle must answer
+/// without the consensus graph, because the maintenance trigger points hold it
+/// exclusively; this one is asked about heights up to the replay window end,
+/// which is close to the pivot tip, and about era boundaries which can sit
+/// below the current era genesis, so it needs the consensus graph plus its own
+/// database fallback.
+pub trait ConsensusRecoveryView {
+    /// The stable checkpoint height of the current era. The engine treats it
+    /// as the floor of everything it may rebuild from: the snapshot at this
+    /// height is the one snapshot recovery may assume exists.
+    fn stable_checkpoint_height(&self) -> u64;
+
+    /// The number of epochs in an era. The engine rounds down to an era
+    /// aligned height to pick the anchor it rebuilds the snapshot pipeline
+    /// from.
+    fn era_epoch_count(&self) -> u64;
+
+    /// Which epoch sits at `height` on the pivot chain. The engine names
+    /// snapshots by epoch id, so it needs this to turn the heights it computes
+    /// into the era anchor snapshot, the snapshot one period before it, and
+    /// the snapshot candidates it scans for.
+    fn pivot_hash_at_height(&self, height: u64) -> Option<EpochId>;
+
+    /// The first height consensus is prepared to replay from, i.e. the bottom
+    /// of the replay window. The engine scans the snapshot period boundaries
+    /// inside this window looking for snapshots it removed at startup.
+    fn replay_window_start_height(&self) -> u64;
+
+    /// One past the last height consensus will replay in this window. The
+    /// engine reports "no epoch in this window needs its MPT rebuilt" by
+    /// answering with this height, and it is also the point at which the
+    /// recovery mode is cleared once the engine owns that flag.
+    fn replay_window_end_height(&self) -> u64;
+
+    /// The height consensus would restart execution from if the engine had no
+    /// say: the outcome of its own existence probe and its force recompute
+    /// rules. The engine may only move it down, never up.
+    fn proposed_recompute_start_height(&self) -> u64;
+}
+
+/// The engine's answer to `plan_recovery`. The snapshot work itself is already
+/// done when this is returned; what is left is what consensus needs in order to
+/// drive the replay.
+pub struct RecoveryPlan {
+    /// The height execution should restart from. It is at most the height
+    /// consensus proposed. The engine does not support resuming from an
+    /// arbitrary height: when the latest MPT snapshot has to be rebuilt, this
+    /// is re-anchored to an era aligned height plus two snapshot periods,
+    /// which is usually far below the chain tip.
+    pub recompute_start_height: u64,
+
+    /// The highest height whose snapshot still has a usable MPT, or `None`
+    /// when no such height is known. Consensus uses it to work out, per epoch,
+    /// whether the snapshot generated during the replay has to rebuild its MPT
+    /// from scratch. The field disappears once the engine works that out
+    /// itself.
+    pub max_height_has_mpt: Option<u64>,
+}
+
 /// What the caller intends to do with the version it opens: read that
 /// epoch, or use it as the execution base of its child epoch. One entry point
 /// serves both.

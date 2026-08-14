@@ -1035,6 +1035,306 @@ impl StorageManager {
         Ok(self.physical_openable_lower_bound())
     }
 
+    /// Put the snapshot pipeline back into a state execution can restart
+    /// from, and say where it should restart. Reached through
+    /// `StateManager::plan_recovery`.
+    ///
+    /// Consensus supplies chain facts through `view` and takes back a restart
+    /// height. No transaction is executed here; the replay is driven by the
+    /// consensus loop, and the engine only sees the commits it produces.
+    pub fn plan_recovery(
+        &self, view: &dyn ConsensusRecoveryView,
+    ) -> RecoveryPlan {
+        let mut start_compute_epoch_height =
+            view.proposed_recompute_start_height();
+        let mut need_set_intermediate_trie_root_merkle = false;
+        let max_height_has_mpt = self.recover_latest_mpt_snapshot_if_needed(
+            view,
+            &mut start_compute_epoch_height,
+            &mut need_set_intermediate_trie_root_merkle,
+        );
+        self.set_intermediate_trie_root_merkle(
+            view,
+            start_compute_epoch_height,
+            need_set_intermediate_trie_root_merkle,
+        );
+        RecoveryPlan {
+            recompute_start_height: start_compute_epoch_height,
+            max_height_has_mpt,
+        }
+    }
+
+    /// The snapshot half of `plan_recovery`, moved here from consensus
+    /// unchanged except that pivot chain indices became heights: consensus
+    /// worked in indices into its pivot chain array, which the engine has no
+    /// business knowing about, and the two are the same quantity shifted by the
+    /// era genesis height.
+    ///
+    /// `start_compute_epoch_height` comes in as the height consensus proposed
+    /// and is only ever moved down. The returned height is the highest one
+    /// whose snapshot has a usable MPT; the replay window end stands for "none
+    /// of the epochs in this window needs a rebuild".
+    fn recover_latest_mpt_snapshot_if_needed(
+        &self, view: &dyn ConsensusRecoveryView,
+        start_compute_epoch_height: &mut u64,
+        need_set_intermediate_trie_root_merkle: &mut bool,
+    ) -> Option<u64> {
+        let end_height = view.replay_window_end_height();
+        let stable_height = view.stable_checkpoint_height();
+        let snapshot_epoch_count = self.get_snapshot_epoch_count() as u64;
+
+        if !self.storage_conf.use_isolated_db_for_mpt_table {
+            return Some(end_height);
+        }
+
+        // The startup self check leaves its findings in this field, and the
+        // read of them is the engine's own.
+        let (
+            temp_snapshot_db_existing,
+            removed_snapshots,
+            latest_snapshot_epoch_height,
+            max_snapshot_epoch_height_has_mpt,
+        ) = if let Some((
+            temp_snapshot_db_existing,
+            removed_snapshots,
+            latest_snapshot_epoch_height,
+            max_snapshot_epoch_height_has_mpt,
+        )) = self.persist_state_from_initialization.write().take()
+        {
+            (
+                temp_snapshot_db_existing,
+                removed_snapshots,
+                max(latest_snapshot_epoch_height, stable_height),
+                max_snapshot_epoch_height_has_mpt,
+            )
+        } else {
+            (None, HashSet::new(), stable_height, None)
+        };
+
+        debug!("latest snapshot epoch height: {}, temp snapshot status: {:?}, max snapshot epoch height has mpt: {:?}, removed snapshots {:?}",
+            latest_snapshot_epoch_height, temp_snapshot_db_existing, max_snapshot_epoch_height_has_mpt, removed_snapshots);
+
+        if removed_snapshots.len() == 1
+            && removed_snapshots.contains(&NULL_EPOCH)
+        {
+            debug!("special case for synced snapshot");
+            return Some(end_height);
+        }
+
+        if max_snapshot_epoch_height_has_mpt
+            .is_some_and(|h| h == latest_snapshot_epoch_height)
+        {
+            self.get_snapshot_manager()
+                .get_snapshot_db_manager()
+                .recreate_latest_mpt_snapshot()
+                .unwrap();
+
+            info!(
+                "snapshot for epoch height {} is still not use mpt database",
+                start_compute_epoch_height
+            );
+            return Some(end_height);
+        }
+
+        // maximum epoch need to compute
+        let maximum_height_to_create_next_snapshot =
+            latest_snapshot_epoch_height + snapshot_epoch_count * 2;
+        if *start_compute_epoch_height > maximum_height_to_create_next_snapshot
+        {
+            warn!("start_compute_epoch_height is greater than maximum epoch need to compute {}", maximum_height_to_create_next_snapshot);
+            *start_compute_epoch_height =
+                maximum_height_to_create_next_snapshot;
+        }
+
+        info!(
+            "current start compute epoch height {}",
+            start_compute_epoch_height
+        );
+
+        let recovery_latest_mpt_snapshot = if self
+            .storage_conf
+            .recovery_latest_mpt_snapshot
+            || *start_compute_epoch_height <= latest_snapshot_epoch_height
+            || (temp_snapshot_db_existing.is_some()
+                && latest_snapshot_epoch_height < *start_compute_epoch_height
+                && *start_compute_epoch_height
+                    <= latest_snapshot_epoch_height + snapshot_epoch_count)
+        {
+            true
+        } else {
+            let mut max_epoch_height = 0;
+            let mut height = view.replay_window_start_height();
+            while height < end_height {
+                debug!("snapshot height {}", height);
+
+                if let Some(pivot_hash) = view.pivot_hash_at_height(height) {
+                    if removed_snapshots.contains(&pivot_hash) {
+                        max_epoch_height = max(max_epoch_height, height);
+                    }
+                }
+
+                height += snapshot_epoch_count;
+            }
+
+            // snapshots after latest_snapshot_epoch_height is removed
+            latest_snapshot_epoch_height < max_epoch_height
+        };
+
+        // if the latest_snapshot_epoch_height is greater than
+        // start_compute_epoch_height, the latest MPT snapshot is dirty
+        if recovery_latest_mpt_snapshot {
+            let era_epoch_count = view.era_epoch_count();
+            let era_pivot_epoch_height = if *start_compute_epoch_height
+                <= stable_height + snapshot_epoch_count
+            {
+                debug!("snapshot for stable checkpoint height must be exist");
+                stable_height
+            } else {
+                (*start_compute_epoch_height - snapshot_epoch_count - 1)
+                    / era_epoch_count
+                    * era_epoch_count
+            };
+
+            if era_pivot_epoch_height > latest_snapshot_epoch_height {
+                panic!("era_pivot_epoch_height is greater than latest_snapshot_epoch_height, this should not happen");
+            }
+
+            debug!(
+                "need recovery latest mpt snapshot, start compute epoch height {}, era pivot epoch height {}",
+                start_compute_epoch_height, era_pivot_epoch_height
+            );
+
+            if *start_compute_epoch_height <= era_pivot_epoch_height {
+                unreachable!("start_compute_epoch_height {} is smaller than era_pivot_epoch_height {}", start_compute_epoch_height, era_pivot_epoch_height);
+            } else if *start_compute_epoch_height
+                <= era_pivot_epoch_height + snapshot_epoch_count
+            {
+                if *start_compute_epoch_height % snapshot_epoch_count == 1 {
+                    *need_set_intermediate_trie_root_merkle = true;
+                }
+            } else if *start_compute_epoch_height
+                <= era_pivot_epoch_height + snapshot_epoch_count * 2
+            {
+                // nothing need to do
+            } else {
+                let new_height =
+                    era_pivot_epoch_height + snapshot_epoch_count * 2;
+
+                info!("reset start_compute_epoch_height to {}", new_height);
+                *start_compute_epoch_height = new_height;
+            }
+
+            let era_pivot_hash = if era_pivot_epoch_height == 0 {
+                NULL_EPOCH
+            } else {
+                view.pivot_hash_at_height(era_pivot_epoch_height)
+                    .expect("pivot hash should be exist")
+            };
+
+            let snapshot_db_manager =
+                self.get_snapshot_manager().get_snapshot_db_manager();
+
+            snapshot_db_manager.update_latest_snapshot_id(
+                era_pivot_hash.clone(),
+                era_pivot_epoch_height,
+            );
+
+            if max_snapshot_epoch_height_has_mpt
+                .is_some_and(|height| height >= era_pivot_epoch_height)
+            {
+                // mpt snapshot will be created from empty
+                snapshot_db_manager.recreate_latest_mpt_snapshot().unwrap();
+            } else {
+                let pivot_hash_before_era = if era_pivot_epoch_height == 0 {
+                    None
+                } else {
+                    Some(
+                        view.pivot_hash_at_height(
+                            era_pivot_epoch_height - snapshot_epoch_count,
+                        )
+                        .expect("pivot hash should be exist"),
+                    )
+                };
+
+                // use ear snapshot replace latest
+                snapshot_db_manager
+                    .recovery_latest_mpt_snapshot_from_checkpoint(
+                        &era_pivot_hash,
+                        pivot_hash_before_era,
+                    )
+                    .unwrap();
+            }
+
+            max_snapshot_epoch_height_has_mpt.and_then(|v| {
+                if v >= stable_height {
+                    Some(v)
+                } else {
+                    None
+                }
+            })
+        } else {
+            if temp_snapshot_db_existing.is_some()
+                && latest_snapshot_epoch_height + snapshot_epoch_count
+                    < *start_compute_epoch_height
+                && *start_compute_epoch_height
+                    <= latest_snapshot_epoch_height + 2 * snapshot_epoch_count
+            {
+                self.get_snapshot_manager()
+                    .get_snapshot_db_manager()
+                    .set_reconstruct_snapshot_id(temp_snapshot_db_existing);
+            }
+
+            debug!("the latest MPT snapshot is valid");
+            Some(end_height)
+        }
+    }
+
+    /// Stage the intermediate root the first commit of the replay will need.
+    /// The two roots it derives from sit in the engine's own index, so the
+    /// engine reads them itself; the public field is where the staged value
+    /// waits for that commit.
+    fn set_intermediate_trie_root_merkle(
+        &self, view: &dyn ConsensusRecoveryView,
+        start_compute_epoch_height: u64,
+        need_set_intermediate_trie_root_merkle: bool,
+    ) {
+        if !self.storage_conf.keep_snapshot_before_stable_checkpoint
+            || need_set_intermediate_trie_root_merkle
+        {
+            let snapshot_epoch_count = self.get_snapshot_epoch_count() as u64;
+            let parent_epoch_id = view
+                .pivot_hash_at_height(start_compute_epoch_height - 1)
+                .expect("pivot hash should be exist");
+
+            let intermediate_trie_root_merkle = match self
+                .state_index_db
+                .get(&parent_epoch_id)
+            {
+                Ok(Some(entry)) => {
+                    if start_compute_epoch_height % snapshot_epoch_count == 1 {
+                        entry.delta_root
+                    } else {
+                        entry.intermediate_delta_root
+                    }
+                }
+                // An empty root is what the parent having no entry means, and
+                // it is not what an unreadable index means. Staging it after a
+                // failed read anchors the first commit of the replay on a root
+                // which is not the parent's, and nothing catches that until a
+                // state root mismatch much further up.
+                Ok(None) => MERKLE_NULL_NODE,
+                Err(e) => panic!(
+                    "index lookup for epoch {:?} failed: {:?}",
+                    parent_epoch_id, e
+                ),
+            };
+
+            debug!("previous pivot hash {:?} intermediate trie root merkle for next pivot {:?}", parent_epoch_id, intermediate_trie_root_merkle);
+            *self.intermediate_trie_root_merkle.write() =
+                Some(intermediate_trie_root_merkle);
+        }
+    }
+
     /// The algorithm figure out which snapshot to remove by simply going
     /// through all SnapshotInfo in one pass in the reverse order such that
     /// the parent snapshot is processed after the children snapshot.
@@ -1765,7 +2065,7 @@ use crate::{
         storage_manager::snapshot_manager::SnapshotManager,
     },
     snapshot_manager::SnapshotManagerTrait,
-    state_manager::StateConfirmedView,
+    state_manager::{ConsensusRecoveryView, RecoveryPlan, StateConfirmedView},
     storage_db::{
         DeltaDbManagerTrait, KeyValueDbIterableTrait, SnapshotDbManagerTrait,
         SnapshotInfo, SnapshotKeptToProvideSyncStatus,
@@ -1786,6 +2086,7 @@ use rlp::{Decodable, DecoderError, Encodable, Rlp};
 use sqlite::Statement;
 use std::{
     cell::Cell,
+    cmp::max,
     collections::{HashMap, HashSet},
     fs,
     sync::{

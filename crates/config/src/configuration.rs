@@ -694,8 +694,6 @@ impl Configuration {
                     .raw_conf
                     .debug_invalid_state_root_epoch.as_ref().map(|epoch_hex| H256::from_str(epoch_hex).expect("debug_invalid_state_root_epoch byte length is incorrect.")),
                 force_recompute_height_during_construct_pivot: self.raw_conf.force_recompute_height_during_construct_pivot,
-                recovery_latest_mpt_snapshot: self.raw_conf.recovery_latest_mpt_snapshot,
-                use_isolated_db_for_mpt_table: self.raw_conf.use_isolated_db_for_mpt_table,
             },
             bench_mode: false,
             transaction_epoch_bound: self.raw_conf.transaction_epoch_bound,
@@ -856,6 +854,9 @@ impl Configuration {
             use_isolated_db_for_mpt_table_height: self
                 .raw_conf
                 .use_isolated_db_for_mpt_table_height,
+            recovery_latest_mpt_snapshot: self
+                .raw_conf
+                .recovery_latest_mpt_snapshot,
             keep_era_genesis_snapshot: self.raw_conf.keep_era_genesis_snapshot,
             backup_mpt_snapshot: self.raw_conf.backup_mpt_snapshot,
         }

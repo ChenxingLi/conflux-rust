@@ -128,6 +128,10 @@ pub struct StorageConfiguration {
     pub keep_snapshot_before_stable_checkpoint: bool,
     pub use_isolated_db_for_mpt_table: bool,
     pub use_isolated_db_for_mpt_table_height: Option<u64>,
+    /// Force the restart recovery to rebuild the latest MPT snapshot even when
+    /// the engine's own self check finds it intact. An operator override of an
+    /// engine decision, hence part of the engine's own configuration.
+    pub recovery_latest_mpt_snapshot: bool,
     pub keep_era_genesis_snapshot: bool,
     pub backup_mpt_snapshot: bool,
 }
@@ -177,6 +181,7 @@ impl StorageConfiguration {
             keep_snapshot_before_stable_checkpoint: true,
             use_isolated_db_for_mpt_table: false,
             use_isolated_db_for_mpt_table_height: None,
+            recovery_latest_mpt_snapshot: false,
             keep_era_genesis_snapshot: false,
             backup_mpt_snapshot: true,
         }
@@ -233,8 +238,9 @@ pub use self::{
         StateTrait as StorageStateTrait, StorageView,
     },
     state_manager::{
-        OpenMode, OpenOptions, StateConfirmedView, StateIndex,
-        StateManager as StorageManager, StorageVersion,
+        ConsensusRecoveryView, OpenMode, OpenOptions, RecoveryPlan,
+        StateConfirmedView, StateIndex, StateManager as StorageManager,
+        StorageVersion,
     },
     storage_db::{KeyValueDbIterableTrait, KeyValueDbTrait},
 };
