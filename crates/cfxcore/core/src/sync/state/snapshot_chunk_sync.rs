@@ -232,14 +232,16 @@ impl SnapshotChunkSync {
                     manifest_manager.chunk_boundary_proofs.clone(),
                     manifest_manager.active_peers.clone(),
                     self.config.chunk_config(),
-                    // This delta_root is the intermediate_delta_root of
-                    // the new snapshot, and this field will be used to
-                    // fill new state_root in
-                    // get_state_trees_for_next_epoch
+                    // The delta root of this triplet is the
+                    // intermediate_delta_root of the new snapshot, and it
+                    // will be used to fill new state_root in
+                    // get_state_trees_for_next_epoch. The whole triplet is
+                    // what the engine's state index records for the synced
+                    // epoch.
                     related_data
                         .true_state_root_by_blame_info
                         .state_root
-                        .delta_root,
+                        .clone(),
                 )?;
                 inner.status = Status::DownloadingChunks(Instant::now());
                 inner.chunk_manager = Some(chunk_manager);

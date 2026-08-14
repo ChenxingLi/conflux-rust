@@ -614,18 +614,30 @@ impl StateManager {
             }
         }
 
-        let delta_root = match delta_mpt
-            .get_root_node_ref_by_epoch(&state_index.epoch_id)?
+        // An epoch which is its own snapshot layer is the base of that
+        // snapshot's delta MPT, so its delta layer is empty by construction
+        // and there is no root to look up. A snapshot boundary epoch has two
+        // equally valid decompositions of the same state, and this is the one
+        // where the snapshot layer has already been promoted and the delta
+        // layer is still empty; `get_state_trees_for_next_epoch` builds the
+        // very same shape for the child of a boundary epoch, where it sets
+        // `new_delta_root` and skips the lookup for the same reason.
+        let delta_root = if state_index.epoch_id
+            == state_index.snapshot_epoch_id
         {
-            None => {
-                debug!(
-                    "get_state_trees, \
-                    delta_root not found for epoch {:?}. mpt_id {}, StateIndex: {:?}.",
-                    state_index.epoch_id, delta_mpt.get_mpt_id(), state_index,
-                );
-                return Ok(None);
+            None
+        } else {
+            match delta_mpt.get_root_node_ref_by_epoch(&state_index.epoch_id)? {
+                None => {
+                    debug!(
+                        "get_state_trees, \
+                        delta_root not found for epoch {:?}. mpt_id {}, StateIndex: {:?}.",
+                        state_index.epoch_id, delta_mpt.get_mpt_id(), state_index,
+                    );
+                    return Ok(None);
+                }
+                Some(root) => root,
             }
-            Some(root) => root,
         };
 
         Self::get_state_trees_internal(
@@ -1022,6 +1034,21 @@ impl StateManager {
         self: &Arc<Self>, state_index: StateIndex, try_open: bool,
         open_mpt_snapshot: bool,
     ) -> Result<Option<State>> {
+        // This entry point hands out the concrete state object, which is the
+        // one that answers per layer: the state proof, the node merkle of all
+        // three layers behind `cfx_getStorageRoot`, and the state root
+        // triplet. An epoch which is its own snapshot layer arrived by
+        // snapshot sync as one merged image, so its layering here does not
+        // agree with the triplet its block header commits to, and none of the
+        // three can be answered for it. Answering "no such version" for it is
+        // what the two callers of the concrete state object already handle.
+        //
+        // Point reads and prefix lookups are not affected: they go through
+        // `get_state_no_commit`, and the merged image holds the whole state at
+        // that epoch, so they answer correctly.
+        if state_index.epoch_id == state_index.snapshot_epoch_id {
+            return Ok(None);
+        }
         let maybe_state_trees =
             self.get_state_trees(&state_index, try_open, open_mpt_snapshot)?;
         match maybe_state_trees {

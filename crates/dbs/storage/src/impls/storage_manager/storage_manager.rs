@@ -462,6 +462,62 @@ impl StorageManager {
         self.state_index_db.store_lower_bound(height)
     }
 
+    /// The sync write port of the private index. The sync adaptation module
+    /// calls it once, after the snapshot itself and its parent have been
+    /// registered, for the one epoch whose state the snapshot holds.
+    ///
+    /// A synced state never goes through `State::commit`, and the first boot
+    /// migration cannot reach it either, since that migration derives a
+    /// period's coordinates from the two snapshots below it and a freshly
+    /// synced node has neither. Without this port the epoch has no entry.
+    ///
+    /// `intermediate_epoch_id` must be the parent snapshot's epoch id, not the
+    /// null epoch. The next epoch necessarily shifts and takes its new
+    /// snapshot layer from this field; left empty it resolves to the empty
+    /// snapshot registered at genesis, the shift succeeds without an error and
+    /// the next epoch executes on an empty state. Filled with the parent
+    /// snapshot's id it lands in the "parent snapshot missing locally, fall
+    /// back to the snapshot of the synced epoch" branch instead.
+    ///
+    /// `maybe_intermediate_mpt_key_padding` is `None`: there is no
+    /// intermediate MPT locally, and `None` is what makes the open path read
+    /// through to the merged snapshot instead of looking a key up.
+    ///
+    /// The entry is the whole registration. Nothing is written into the delta
+    /// MPT of the synced snapshot, because an epoch which is its own snapshot
+    /// layer has an empty delta layer by construction.
+    ///
+    /// This is a write port only. Nothing here is read back yet: the open path
+    /// still resolves coordinates from the commitment row, and the public
+    /// fields the sync path writes are still written by its caller.
+    pub fn register_synced_snapshot_state(
+        self: &Arc<Self>, snapshot_epoch_id: &EpochId,
+        snapshot_info: &SnapshotInfo, synced_state_root: &StateRoot,
+    ) -> Result<()> {
+        let entry = StateIndexEntry {
+            snapshot_epoch_id: *snapshot_epoch_id,
+            snapshot_merkle_root: synced_state_root.snapshot_root,
+            intermediate_epoch_id: snapshot_info.parent_snapshot_epoch_id,
+            intermediate_delta_root: synced_state_root.intermediate_delta_root,
+            maybe_intermediate_mpt_key_padding: None,
+            delta_mpt_key_padding: StorageKeyWithSpace::delta_mpt_padding(
+                &synced_state_root.snapshot_root,
+                &synced_state_root.intermediate_delta_root,
+            ),
+            delta_root: synced_state_root.delta_root,
+            maybe_height: Some(snapshot_info.height),
+            maybe_delta_trie_height: Some(StateIndex::height_to_delta_height(
+                snapshot_info.height,
+                self.get_snapshot_epoch_count(),
+            )),
+        };
+        debug!(
+            "register_synced_snapshot_state: epoch={:?} entry={:?}",
+            snapshot_epoch_id, entry
+        );
+        self.state_index_db.put(snapshot_epoch_id, &entry)
+    }
+
     /// A snapshot of the whole snapshot registry, keyed by snapshot epoch id.
     /// The first boot index migration walks it for the heights it has to cover
     /// and for the layer coordinates of each period; the three merkle roots of
@@ -1672,7 +1728,7 @@ use crate::{
             node_ref_map::DeltaMptId,
         },
         errors::*,
-        state_index_db::StateIndexDb,
+        state_index_db::{StateIndexDb, StateIndexEntry},
         state_manager::{DeltaDbManager, SnapshotDb, SnapshotDbManager},
         storage_db::{
             kvdb_sqlite::{
@@ -1700,7 +1756,10 @@ use cfx_internal_common::{
 use fallible_iterator::FallibleIterator;
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use parking_lot::{Mutex, RwLock, RwLockReadGuard};
-use primitives::{EpochId, MerkleHash, MERKLE_NULL_NODE, NULL_EPOCH};
+use primitives::{
+    EpochId, MerkleHash, StateRoot, StorageKeyWithSpace, MERKLE_NULL_NODE,
+    NULL_EPOCH,
+};
 use rlp::{Decodable, DecoderError, Encodable, Rlp};
 use sqlite::Statement;
 use std::{

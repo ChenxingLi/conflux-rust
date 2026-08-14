@@ -87,9 +87,13 @@ impl State {
     }
 
     /// Build the private index entry for the epoch being committed and store
-    /// it. This is the index's write port for a locally executed epoch. Two
-    /// more follow: the first boot rebuild in C2.2 and the sync registration
-    /// in C3, which is where all three are named together.
+    /// it. One of the index's three write ports, next to
+    /// [`StateManager::migrate_state_index`], which fills it on the first
+    /// boot after the upgrade, and
+    /// [`StorageManager::register_synced_snapshot_state`], which writes the
+    /// one entry a snapshot sync lands.
+    ///
+    /// [`StorageManager::register_synced_snapshot_state`]: crate::impls::storage_manager::StorageManager::register_synced_snapshot_state
     fn write_state_index_entry(
         &self, epoch_id: &EpochId, delta_root: &MerkleHash,
     ) -> Result<()> {

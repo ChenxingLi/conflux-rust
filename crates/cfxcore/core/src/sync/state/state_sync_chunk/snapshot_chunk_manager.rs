@@ -12,7 +12,7 @@ use cfx_storage::{
 };
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use network::node_table::NodeId;
-use primitives::MerkleHash;
+use primitives::StateRoot;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt::{Debug, Formatter},
@@ -31,7 +31,11 @@ pub struct SnapshotChunkManager {
     config: SnapshotChunkConfig,
 
     restorer: Restorer,
-    intermediate_trie_root_merkle: MerkleHash,
+    /// The state root triplet the manifest carried and the blame
+    /// verification accepted for the synced epoch. Its delta root is what the
+    /// next epoch's shift needs; the whole triplet is what the storage
+    /// engine's state index records for the synced epoch.
+    synced_state_root: StateRoot,
 }
 
 impl SnapshotChunkManager {
@@ -41,7 +45,7 @@ impl SnapshotChunkManager {
         parent_snapshot_info: Option<SnapshotInfo>,
         chunk_boundaries: Vec<Vec<u8>>, chunk_boundary_proofs: Vec<TrieProof>,
         active_peers: HashSet<NodeId>, config: SnapshotChunkConfig,
-        intermediate_trie_root_merkle: MerkleHash,
+        synced_state_root: StateRoot,
     ) -> StorageResult<Self> {
         let mut restorer = Restorer::new(
             *snapshot_candidate.get_snapshot_epoch_id(),
@@ -78,7 +82,7 @@ impl SnapshotChunkManager {
             num_downloaded: 0,
             config,
             restorer,
-            intermediate_trie_root_merkle,
+            synced_state_root,
         };
         chunk_manager.request_chunks(ctx);
         Ok(chunk_manager)
@@ -121,7 +125,7 @@ impl SnapshotChunkManager {
                 ctx.manager.graph.data_man.storage_manager.clone(),
                 self.snapshot_info.clone(),
                 self.parent_snapshot_info.clone(),
-                self.intermediate_trie_root_merkle.clone(),
+                self.synced_state_root.clone(),
             )?;
             return Ok(true);
         }

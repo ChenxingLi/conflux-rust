@@ -8,7 +8,7 @@ use cfx_storage::{
     storage_db::{SnapshotDbManagerTrait, SnapshotInfo},
     FullSyncVerifier, Result as StorageResult, SnapshotDbManagerSqlite,
 };
-use primitives::{EpochId, MerkleHash, NULL_EPOCH};
+use primitives::{EpochId, MerkleHash, StateRoot, NULL_EPOCH};
 use std::sync::Arc;
 
 pub struct Restorer {
@@ -64,7 +64,7 @@ impl Restorer {
         &mut self, state_manager: Arc<StateManager>,
         snapshot_info: SnapshotInfo,
         parent_snapshot_info: Option<SnapshotInfo>,
-        intermediate_trie_root_merkle: MerkleHash,
+        synced_state_root: StateRoot,
     ) -> StorageResult<()> {
         // Release temp snapshot db so it can be renamed on Windows.
         // `self.verifier()` is never unwrapped, so it's safe to set it to None,
@@ -117,16 +117,37 @@ impl Restorer {
 
         let snapshot_height = snapshot_info.height;
         storage_manager.register_new_snapshot(
-            snapshot_info,
+            snapshot_info.clone(),
             &mut snapshot_info_map_locked,
+        )?;
+
+        // Register the synced state in the engine's own state index. It has
+        // to come after the two `register_new_snapshot` calls above: the entry
+        // describes a version whose snapshot layer is the snapshot just
+        // registered, and the empty delta root written along with it goes into
+        // that snapshot's delta MPT, which only exists once the snapshot is in
+        // the registry.
+        //
+        // The open path still resolves this epoch's coordinates from its
+        // commitment row, and the two public fields below are still the
+        // channel which carries the sync result into the engine. This call
+        // only makes the disk carry the engine's own copy as well, for a state
+        // no other write port of the index can reach: `State::commit` never
+        // runs for a synced snapshot, and the first boot migration derives a
+        // period from the two snapshots below it, which a freshly synced node
+        // does not have.
+        storage_manager.register_synced_snapshot_state(
+            &self.snapshot_epoch_id,
+            &snapshot_info,
+            &synced_state_root,
         )?;
 
         debug!(
             "intermediate_trie_root_merkle for next epoch in finalize_restoration {:?}",
-            intermediate_trie_root_merkle
+            synced_state_root.delta_root
         );
         *storage_manager.intermediate_trie_root_merkle.write() =
-            Some(intermediate_trie_root_merkle);
+            Some(synced_state_root.delta_root);
 
         // rewrite for special case
         *storage_manager.persist_state_from_initialization.write() = Some((
