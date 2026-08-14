@@ -40,6 +40,30 @@ pub trait StorageView: Sync + Send {
     ) -> Result<Box<dyn Iterator<Item = MptKeyValue>>>;
 }
 
+/// The whole write set of one epoch, in key order. `Some(value)` writes the
+/// value under the key, `None` deletes it. There is no range write: the range
+/// delete of `StateDb` is materialized into point deletes before it ever
+/// reaches here, which it already was under the old replay path.
+///
+/// The key is the raw storage key bytes, i.e. `StorageKeyWithSpace::
+/// to_key_bytes`, which is exactly the key type `StateDb` caches under. Using
+/// a `BTreeMap` keeps the iteration order of the old replay loop, which walked
+/// `accessed_entries` — a `BTreeMap` over the same bytes — in ascending key
+/// order.
+pub type Changeset = BTreeMap<Vec<u8>, Option<Box<[u8]>>>;
+
+/// What the engine has to know about the epoch a changeset commits, besides
+/// the changeset itself. `epoch_id` is the pivot block hash of that epoch, the
+/// same identifier the open path is keyed by.
+///
+/// There is no `height` here yet. It reaches `StateDb` through its
+/// construction, and until then the engine reads the height off the state
+/// object, where the open path put it.
+#[derive(Clone, Copy, Debug)]
+pub struct CommitMeta {
+    pub epoch_id: EpochId,
+}
+
 // The trait is created to separate the implementation to another file, and the
 // concrete struct is put into inner mod, because the implementation is
 // anticipated to be too complex to present in the same file of the API.
@@ -63,6 +87,49 @@ pub trait StateTrait: StorageView {
     fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo>;
     fn get_state_root(&self) -> Result<StateRootWithAuxInfo>;
     fn commit(&mut self, epoch: EpochId) -> Result<StateRootWithAuxInfo>;
+
+    /// Apply a whole changeset, in key order. This is the old `StateDb` replay
+    /// loop, moved behind the interface: the same `set` and `delete` calls in
+    /// the same order, so it writes the same bytes.
+    fn apply_changeset(&mut self, changeset: &Changeset) -> Result<()> {
+        for (key_bytes, value) in changeset {
+            let access_key = StorageKeyWithSpace::from_key_bytes::<
+                SkipInputCheck,
+            >(key_bytes);
+            match value {
+                Some(value) => self.set(access_key, value.clone())?,
+                None => self.delete(access_key)?,
+            }
+        }
+        Ok(())
+    }
+
+    /// The commit entry point: one changeset plus the meta of the epoch it
+    /// belongs to, in a single call. Apply, compute the root, persist.
+    ///
+    /// The root is read back rather than recomputed when it is already there,
+    /// which is the genesis path: `compute_state_root` ran on this very state
+    /// object before the epoch id existed. Every other epoch leaves the delta
+    /// nodes dirty, `get_state_root` fails on them, and the root is computed
+    /// here.
+    ///
+    /// This lives on the state object because `StateDb` holds one. It belongs
+    /// on the engine, and moves there once `StateDb` holds a read only view
+    /// plus the parent version and the height.
+    fn commit_changeset(
+        &mut self, changeset: Changeset, meta: CommitMeta,
+    ) -> Result<StateRootWithAuxInfo> {
+        self.apply_changeset(&changeset)?;
+
+        let state_root = match self.get_state_root() {
+            Ok(root) => root,
+            Err(_) => self.compute_state_root()?,
+        };
+
+        self.commit(meta.epoch_id)?;
+
+        Ok(state_root)
+    }
 }
 
 // We skip the accessed_entries for getting original value.
@@ -85,4 +152,5 @@ use super::{
     MptKeyValue, StateRootWithAuxInfo,
 };
 use crate::StorageRootProof;
-use primitives::{EpochId, StorageKeyWithSpace, StorageRoot};
+use primitives::{EpochId, SkipInputCheck, StorageKeyWithSpace, StorageRoot};
+use std::collections::BTreeMap;

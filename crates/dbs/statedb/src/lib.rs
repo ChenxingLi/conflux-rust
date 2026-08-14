@@ -492,9 +492,15 @@ mod impls {
             Ok(storage_layouts_to_rewrite)
         }
 
-        fn apply_changes_to_storage(
+        /// Turn the whole cache into the changeset handed to the engine.
+        ///
+        /// This method does NOT clear the cache: `preview_genesis_root`
+        /// computes a root without persisting anything, so the commit which
+        /// follows it has to be able to build the changeset again. Clearing is
+        /// the job of whoever actually persisted the changeset.
+        fn build_changeset(
             &mut self, mut debug_record: Option<&mut ComputeEpochDebugRecord>,
-        ) -> Result<()> {
+        ) -> Result<Changeset> {
             let storage_layouts_to_rewrite =
                 self.collect_storage_layouts_to_rewrite()?;
             // Set storage layout for contracts with storage modification or
@@ -510,54 +516,51 @@ mod impls {
                 );
             }
 
-            // Then replay the whole cache into the underlying storage.
+            let mut changeset = Changeset::new();
             let accessed_entries = &*self.accessed_entries.get_mut();
             for (k, v) in accessed_entries {
                 if !v.should_write() {
                     continue;
                 }
 
-                let storage_key =
-                    StorageKeyWithSpace::from_key_bytes::<SkipInputCheck>(k);
-                match &v.current_value {
-                    Some(v) => {
-                        self.storage.set(storage_key, (&**v).into())?;
-                    }
-                    None => {
-                        self.storage.delete(storage_key)?;
-                    }
-                }
+                changeset.insert(
+                    k.clone(),
+                    v.current_value.as_ref().map(|value| (&**value).into()),
+                );
             }
-            // Mark all modification applied.
-            self.accessed_entries = Default::default();
-            Ok(())
+            Ok(changeset)
         }
 
         /// This method is only used for genesis block because state root is
         /// required to compute genesis epoch_id. For other blocks there are
         /// deferred execution so the state root computation is merged inside
         /// commit method.
+        ///
+        /// TODO: this becomes a preview which computes a root without
+        /// persisting anything. Until then it still writes the changeset into
+        /// the MPT, and therefore still has to clear the cache: the `commit`
+        /// which follows on the genesis path must not apply the same changeset
+        /// a second time.
         pub fn compute_state_root(
             &mut self, debug_record: Option<&mut ComputeEpochDebugRecord>,
         ) -> Result<StateRootWithAuxInfo> {
-            self.apply_changes_to_storage(debug_record)?;
+            let changeset = self.build_changeset(debug_record)?;
+            self.storage.apply_changeset(&changeset)?;
+            self.accessed_entries = Default::default();
             Ok(self.storage.compute_state_root()?)
         }
 
         pub fn commit(
             &mut self, epoch_id: EpochId,
-            mut debug_record: Option<&mut ComputeEpochDebugRecord>,
+            debug_record: Option<&mut ComputeEpochDebugRecord>,
         ) -> Result<StateRootWithAuxInfo> {
-            self.apply_changes_to_storage(debug_record.as_deref_mut())?;
-
-            let result = match self.storage.get_state_root() {
-                Ok(r) => r,
-                Err(_) => self.compute_state_root(debug_record)?,
-            };
-
-            self.storage.commit(epoch_id)?;
-
-            Ok(result)
+            let changeset = self.build_changeset(debug_record)?;
+            let state_root = self
+                .storage
+                .commit_changeset(changeset, CommitMeta { epoch_id })?;
+            // Mark all modification applied.
+            self.accessed_entries = Default::default();
+            Ok(state_root)
         }
     }
 
@@ -605,7 +608,7 @@ mod impls {
     };
     use cfx_storage::{
         utils::{access_mode, to_key_prefix_iter_upper_bound},
-        MptKeyValue, StorageStateTrait,
+        Changeset, CommitMeta, MptKeyValue, StorageStateTrait,
     };
     use cfx_types::{
         address_util::AddressUtil, Address, AddressWithSpace, Space,

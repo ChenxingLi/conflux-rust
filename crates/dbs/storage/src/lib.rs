@@ -222,7 +222,8 @@ pub use self::{
     },
     replicated_state::ReplicatedState,
     state::{
-        State as StorageState, StateTrait as StorageStateTrait, StorageView,
+        Changeset, CommitMeta, State as StorageState,
+        StateTrait as StorageStateTrait, StorageView,
     },
     state_manager::{
         OpenMode, OpenOptions, StateIndex, StateManager as StorageManager,
