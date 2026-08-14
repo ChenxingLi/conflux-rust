@@ -2168,7 +2168,7 @@ use cfx_storage::{
     storage_db::key_value_db::{KeyValueDbTrait, KeyValueDbTraitRead},
     utils::StateRootWithAuxInfoToFromRlpBytes,
     KvdbSqlite, KvdbSqliteStatements, StateIndex, StorageConfiguration,
-    StorageManager, StorageManagerTrait,
+    StorageManager,
 };
 use cfx_types::hexstr_to_h256;
 use clap::{App, Arg, ArgMatches};

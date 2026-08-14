@@ -31,7 +31,7 @@ use cfx_parameters::{
 };
 use cfx_rpc_cfx_types::{PendingReason, TransactionStatus};
 use cfx_statedb::{Result as StateDbResult, StateDb};
-use cfx_storage::{StateIndex, StorageManagerTrait};
+use cfx_storage::StateIndex;
 use cfx_types::{
     AddressWithSpace as Address, AllChainID, Space, SpaceMap, H256, U256,
 };

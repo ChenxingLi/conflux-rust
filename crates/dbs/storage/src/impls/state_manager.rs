@@ -718,8 +718,15 @@ impl StateManager {
     }
 }
 
-impl StateManagerTrait for StateManager {
-    fn get_state_no_commit(
+impl StateManager {
+    /// At the boundary of snapshot, getting a state for new epoch will switch
+    /// to new Delta MPT, but it's unnecessary getting a no-commit state.
+    ///
+    /// With try_open == true, the call fails immediately when the max number of
+    /// snapshot open is reached.
+    ///
+    /// If `space` is `None`, we need data from all spaces.
+    pub fn get_state_no_commit(
         self: &Arc<Self>, state_index: StateIndex, try_open: bool,
         space: Option<Space>,
     ) -> Result<Option<Box<dyn StateTrait>>> {
@@ -760,7 +767,9 @@ impl StateManagerTrait for StateManager {
         }
     }
 
-    fn get_state_for_genesis_write(self: &Arc<Self>) -> Box<dyn StateTrait> {
+    pub fn get_state_for_genesis_write(
+        self: &Arc<Self>,
+    ) -> Box<dyn StateTrait> {
         let state = self.get_state_for_genesis_write_inner();
         if self.single_mpt_storage_manager.is_none() {
             return Box::new(state);
@@ -791,7 +800,7 @@ impl StateManagerTrait for StateManager {
     //
     // Due to the complexity of the latter approach, we stay with the
     // simple approach.
-    fn get_state_for_next_epoch(
+    pub fn get_state_for_next_epoch(
         self: &Arc<Self>, parent_epoch_id: StateIndex,
         recover_mpt_during_construct_pivot_state: bool,
     ) -> Result<Option<Box<dyn StateTrait>>> {

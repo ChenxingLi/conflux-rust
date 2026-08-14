@@ -25,7 +25,7 @@ use cfx_parameters::{
     staking::POS_VOTE_PRICE,
 };
 use cfx_statedb::StateDb;
-use cfx_storage::{StorageManager, StorageManagerTrait};
+use cfx_storage::StorageManager;
 use cfx_types::{
     address_util::AddressUtil, cal_contract_address_with_space, Address,
     AddressSpaceUtil, AddressWithSpace, CreateContractAddressType, Space, H256,

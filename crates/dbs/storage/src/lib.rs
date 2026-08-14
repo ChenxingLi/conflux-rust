@@ -222,10 +222,7 @@ pub use self::{
         State as StorageState, StateTrait as StorageStateTrait,
         StateTraitExt as StorageStateTraitExt,
     },
-    state_manager::{
-        StateIndex, StateManager as StorageManager,
-        StateManagerTrait as StorageManagerTrait,
-    },
+    state_manager::{StateIndex, StateManager as StorageManager},
     storage_db::{KeyValueDbIterableTrait, KeyValueDbTrait},
 };
 

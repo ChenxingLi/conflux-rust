@@ -21,37 +21,6 @@ pub struct StateIndex {
     pub maybe_height: Option<u64>,
 }
 
-// The trait is created to separate the implementation to another file, and the
-// concrete struct is put into inner mod, because the implementation is
-// anticipated to be too complex to present in the same file of the API.
-pub trait StateManagerTrait {
-    /// At the boundary of snapshot, getting a state for new epoch will switch
-    /// to new Delta MPT, but it's unnecessary getting a no-commit state.
-    ///
-    /// With try_open == true, the call fails immediately when the max number of
-    /// snapshot open is reached.
-    ///
-    /// If `space` is `None`, we need data from all spaces.
-    fn get_state_no_commit(
-        self: &Arc<Self>, epoch_id: StateIndex, try_open: bool,
-        space: Option<Space>,
-    ) -> Result<Option<Box<dyn StateTrait>>>;
-    fn get_state_for_next_epoch(
-        self: &Arc<Self>, parent_epoch_id: StateIndex,
-        recover_mpt_during_construct_pivot_state: bool,
-    ) -> Result<Option<Box<dyn StateTrait>>>;
-    fn get_state_for_genesis_write(self: &Arc<Self>) -> Box<dyn StateTrait>;
-}
-
-pub trait ReplicatedStateManagerTrait {
-    fn get_replicated_state_for_next_epoch(
-        self: &Arc<Self>, parent_epoch_id: StateIndex,
-    ) -> Result<Option<Box<dyn StateTrait>>>;
-    fn get_replicated_state_for_genesis_write(
-        self: &Arc<Self>,
-    ) -> Box<dyn StateTrait>;
-}
-
 impl StateIndex {
     pub fn height_to_delta_height(
         height: u64, snapshot_epoch_count: u32,
@@ -132,8 +101,7 @@ impl StateIndex {
     }
 }
 
-use crate::{impls::errors::*, state::StateTrait, StateRootWithAuxInfo};
-use cfx_types::Space;
+use crate::StateRootWithAuxInfo;
 use primitives::{
     DeltaMptKeyPadding, EpochId, MerkleHash, GENESIS_DELTA_MPT_KEY_PADDING,
     MERKLE_NULL_NODE, NULL_EPOCH,

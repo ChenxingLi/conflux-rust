@@ -11,7 +11,6 @@ use crate::{
 use cfx_executor::internal_contract::make_staking_events;
 use cfx_storage::{
     state_manager::StateIndex, utils::guarded_value::*, StorageManager,
-    StorageManagerTrait,
 };
 use cfx_types::{Bloom, Space, H256};
 pub use cfxcore_types::block_data_manager::block_data_types;

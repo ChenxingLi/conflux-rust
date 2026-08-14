@@ -3,7 +3,6 @@ use cfx_config::Configuration;
 use cfx_rpc_eth_types::{AccountState, StateDump, EOA_STORAGE_ROOT_H256};
 use cfx_rpc_primitives::Bytes;
 use cfx_statedb::{StateDbExt, StateDbGeneric};
-use cfx_storage::state_manager::StateManagerTrait;
 use cfx_types::{Address, Space, H256, U256};
 use cfxcore::NodeType;
 use chrono::Utc;

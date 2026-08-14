@@ -27,10 +27,7 @@ use cfx_internal_common::{
 };
 use cfx_parameters::consensus::*;
 use cfx_statedb::{Result as DbResult, StateDb};
-use cfx_storage::{
-    defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, StateIndex,
-    StorageManagerTrait,
-};
+use cfx_storage::{defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, StateIndex};
 use cfx_types::{
     AddressSpaceUtil, AllChainID, BigEndianHash, Space, H160, H256,
     KECCAK_EMPTY_BLOOM, U256, U512,

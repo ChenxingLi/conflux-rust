@@ -646,7 +646,6 @@ use std::{
 use crate::{
     impls::merkle_patricia_trie::{MptMerger, TrieNodeTrait},
     impls::storage_db::snapshot_mpt::tests::verify_snapshot_db,
-    state_manager::StateManagerTrait,
     tests::{
         generate_keys, get_rng_for_test, new_state_manager_for_unit_test,
         snapshot::verifier::FakeSnapshotDb, DumpedMptKvIterator,

@@ -10,7 +10,7 @@ use cfx_executor::{
 };
 use cfx_parameters::consensus::TRANSACTION_DEFAULT_EPOCH_BOUND;
 use cfx_statedb::StateDb;
-use cfx_storage::{state_manager::StateIndex, StorageManagerTrait};
+use cfx_storage::state_manager::StateIndex;
 use cfx_types::{H256, U256};
 use cfx_vm_types::Env;
 use cfxkey::{Generator, KeyPair, Random};

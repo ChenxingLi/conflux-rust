@@ -5,9 +5,7 @@
 use super::OverlayAccount;
 use cfx_parameters::staking::*;
 use cfx_statedb::StateDb;
-use cfx_storage::{
-    tests::new_state_manager_for_unit_test, StorageManagerTrait,
-};
+use cfx_storage::tests::new_state_manager_for_unit_test;
 use cfx_types::{address_util::AddressUtil, Address, AddressSpaceUtil, U256};
 use keccak_hash::KECCAK_EMPTY;
 use primitives::{

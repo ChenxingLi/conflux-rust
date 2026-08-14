@@ -1,9 +1,7 @@
 use crate::errors::{invalid_params_check, Result as CoreResult};
 
 use cfx_statedb::StateDb;
-use cfx_storage::{
-    state::StateTrait, state_manager::StateManagerTrait, StorageState,
-};
+use cfx_storage::{state::StateTrait, StorageState};
 use cfx_types::{Space, H256};
 
 use primitives::EpochNumber;
