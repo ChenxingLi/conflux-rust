@@ -48,7 +48,6 @@ impl StateTrait for RecordingStorage<State> {
         to self.storage {
             fn set(&mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>) -> Result<()>;
             fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()>;
-            fn delete_test_only(&mut self, access_key: StorageKeyWithSpace) -> Result<Option<Box<[u8]>>>;
             fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo>;
             fn get_state_root(&self) -> Result<StateRootWithAuxInfo>;
             fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo>;

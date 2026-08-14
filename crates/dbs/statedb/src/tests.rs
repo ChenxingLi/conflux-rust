@@ -62,12 +62,6 @@ impl StorageStateTrait for MockStorage {
         Ok(())
     }
 
-    fn delete_test_only(
-        &mut self, access_key: StorageKeyWithSpace,
-    ) -> Result<Option<Box<[u8]>>> {
-        unimplemented!()
-    }
-
     fn get(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<Option<Box<[u8]>>> {

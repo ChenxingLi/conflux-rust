@@ -49,12 +49,6 @@ impl StorageTrait for InmemoryStorage {
         Ok(())
     }
 
-    fn delete_test_only(
-        &mut self, access_key: StorageKeyWithSpace,
-    ) -> Result<Option<Box<[u8]>>> {
-        Ok(self.inner.remove(&access_key.to_key_bytes()))
-    }
-
     fn read_all(
         &mut self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<cfx_storage::MptKeyValue>>> {

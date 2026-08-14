@@ -391,12 +391,6 @@ impl StateTrait for SingleMptState {
         Ok(())
     }
 
-    fn delete_test_only(
-        &mut self, _access_key: StorageKeyWithSpace,
-    ) -> Result<Option<Box<[u8]>>> {
-        todo!()
-    }
-
     fn read_all(
         &mut self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Option<Vec<MptKeyValue>>> {

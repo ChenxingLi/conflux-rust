@@ -462,12 +462,15 @@ fn test_set_delete() {
 
     println!("Testing with {} delete operations.", keys.len());
     for key in &keys {
+        // Inlined `delete_test_only`: read the old value back, then delete.
+        let access_key = StorageKey::AccountKey(key).with_native_space();
         let value = state
-            .delete_test_only(StorageKey::AccountKey(key).with_native_space())
-            .expect("Failed to delete key.")
+            .get(access_key)
+            .expect("Failed to get key.")
             .expect("Failed to get key");
         let equal = (&**key).eq(value.as_ref());
         assert_eq!(equal, true);
+        state.delete(access_key).expect("Failed to delete key.");
     }
 
     let mut epoch_id = H256::default();
