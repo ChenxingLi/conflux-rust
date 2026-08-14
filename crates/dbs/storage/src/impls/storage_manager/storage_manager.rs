@@ -982,11 +982,20 @@ impl StorageManager {
         Ok(())
     }
 
+    /// Reclaim what the confirmation at `confirmed_height` has made
+    /// unnecessary, and report the physical openable lower bound as it stands
+    /// once the round is over.
+    ///
+    /// The reported bound is the engine's own record as it stands when the
+    /// round ends, never a value computed for the caller. Garbage collection
+    /// inside the round raises the record when it removes snapshots; a round
+    /// which removes nothing, and a round which returns early, report the
+    /// value the record already held.
     pub fn maintain_state_confirmed<ConsensusInner: StateMaintenanceTrait>(
         &self, consensus_inner: &ConsensusInner, stable_checkpoint_height: u64,
         era_epoch_count: u64, confirmed_height: u64,
         state_availability_boundary: &RwLock<StateAvailabilityBoundary>,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         let additional_state_height_gap =
             (self.storage_conf.additional_maintained_snapshot_count
                 * self.get_snapshot_epoch_count()) as u64;
@@ -1002,7 +1011,7 @@ impl StorageManager {
         if maintained_state_height_lower_bound
             <= self.physical_openable_lower_bound()
         {
-            return Ok(());
+            return Ok(self.physical_openable_lower_bound());
         }
         let maintained_epoch_id = consensus_inner
             .get_pivot_hash_from_epoch_number(
@@ -1016,7 +1025,7 @@ impl StorageManager {
             .get_epoch_execution_commitment_with_db(&maintained_epoch_id)
             .is_none()
         {
-            return Ok(());
+            return Ok(self.physical_openable_lower_bound());
         }
 
         self.maintain_snapshots_pivot_chain_confirmed(
@@ -1033,7 +1042,8 @@ impl StorageManager {
                 )
             },
             stable_checkpoint_height,
-        )
+        )?;
+        Ok(self.physical_openable_lower_bound())
     }
 
     /// The algorithm figure out which snapshot to remove by simply going
