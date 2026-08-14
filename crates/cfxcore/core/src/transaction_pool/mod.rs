@@ -31,7 +31,7 @@ use cfx_parameters::{
 };
 use cfx_rpc_cfx_types::{PendingReason, TransactionStatus};
 use cfx_statedb::{Result as StateDbResult, StateDb};
-use cfx_storage::StateIndex;
+use cfx_storage::OpenOptions;
 use cfx_types::{
     AddressWithSpace as Address, AllChainID, Space, SpaceMap, H256, U256,
 };
@@ -43,7 +43,7 @@ use parking_lot::{Mutex, RwLock};
 use primitives::{
     block::BlockHeight,
     block_header::{compute_next_price, compute_next_price_tuple},
-    Account, SignedTransaction, Transaction, TransactionWithSignature,
+    Account, EpochId, SignedTransaction, Transaction, TransactionWithSignature,
 };
 use state_provider::StateProvider;
 use std::{
@@ -221,14 +221,8 @@ impl TransactionPool {
             config.packing_pool_degree,
         );
         let best_executed_state = Mutex::new(
-            Self::get_best_executed_state_by_epoch(
-                &data_man,
-                StateIndex::new_for_readonly(
-                    &genesis_hash,
-                    &data_man.true_genesis_state_root(),
-                ),
-            )
-            .expect("The genesis state is guaranteed to exist."),
+            Self::get_best_executed_state_by_epoch(&data_man, genesis_hash)
+                .expect("The genesis state is guaranteed to exist."),
         );
         TransactionPool {
             config,
@@ -1177,15 +1171,11 @@ impl TransactionPool {
     }
 
     fn get_best_executed_state_by_epoch(
-        data_man: &BlockDataManager, best_executed_epoch: StateIndex,
+        data_man: &BlockDataManager, best_executed_epoch: EpochId,
     ) -> StateDbResult<Arc<State>> {
         let storage = data_man
             .storage_manager
-            .get_state_no_commit(
-                best_executed_epoch,
-                /* try_open = */ false,
-                None,
-            )?
+            .open_state(&best_executed_epoch, OpenOptions::read_only())?
             // Safe because the state is guaranteed to be available
             .unwrap();
         let state_db = StateDb::new(storage);
@@ -1194,7 +1184,7 @@ impl TransactionPool {
     }
 
     pub fn set_best_executed_state_by_epoch(
-        &self, best_executed_epoch: StateIndex,
+        &self, best_executed_epoch: EpochId,
     ) -> StateDbResult<()> {
         *self.best_executed_state.lock() =
             Self::get_best_executed_state_by_epoch(

@@ -27,7 +27,7 @@ use cfx_internal_common::{
 };
 use cfx_parameters::consensus::*;
 use cfx_statedb::{Result as DbResult, StateDb};
-use cfx_storage::{defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, StateIndex};
+use cfx_storage::{defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, OpenOptions};
 use cfx_types::{
     AddressSpaceUtil, AllChainID, BigEndianHash, Space, H160, H256,
     KECCAK_EMPTY_BLOOM, U256, U512,
@@ -729,18 +729,21 @@ impl ConsensusExecutor {
         // do it again
         debug!("compute_state_for_block {:?}", block_hash);
         {
-            let maybe_state_index =
-                self.handler.data_man.get_state_readonly_index(&block_hash);
+            // The commitment row no longer gives the coordinates, only the
+            // answer to "was this epoch executed at all", which is the gate
+            // this branch has always been.
+            let executed = self
+                .handler
+                .data_man
+                .get_epoch_execution_commitment_with_db(&block_hash)
+                .is_some();
             // The state is computed and is retrievable from storage.
-            if let Some(maybe_cached_state_result) =
-                maybe_state_index.map(|state_readonly_index| {
-                    self.handler.data_man.storage_manager.get_state_no_commit(
-                        state_readonly_index,
-                        /* try_open = */ false,
-                        None,
-                    )
-                })
-            {
+            if let Some(maybe_cached_state_result) = executed.then(|| {
+                self.handler
+                    .data_man
+                    .storage_manager
+                    .open_state(&block_hash, OpenOptions::read_only())
+            }) {
                 if let Ok(Some(_)) = maybe_cached_state_result {
                     return Ok(());
                 } else {
@@ -921,28 +924,18 @@ impl ConsensusExecutionHandler {
         &self, pivot_block: &Block,
         recover_mpt_during_construct_pivot_state: bool,
     ) -> DbResult<State> {
-        let state_root_with_aux_info = &self
-            .data_man
-            .get_epoch_execution_commitment(
-                pivot_block.block_header.parent_hash(),
-            )
-            // Unwrapping is safe because the state exists.
-            .unwrap()
-            .state_root_with_aux_info;
-
-        let state_index = StateIndex::new_for_next_epoch(
-            pivot_block.block_header.parent_hash(),
-            &state_root_with_aux_info,
-            pivot_block.block_header.height() - 1,
-            self.data_man.get_snapshot_epoch_count(),
-        );
-
+        // The parent's state root, its height and the snapshot period used to
+        // travel with this call as a `StateIndex`. All three are the engine's
+        // own bookkeeping and it reads them back from its index; only the
+        // parent epoch hash is still ours to give.
         let storage = self
             .data_man
             .storage_manager
-            .get_state_for_next_epoch(
-                state_index,
-                recover_mpt_during_construct_pivot_state,
+            .open_state(
+                pivot_block.block_header.parent_hash(),
+                OpenOptions::next_epoch_base(
+                    recover_mpt_during_construct_pivot_state,
+                ),
             )
             .expect("No db error")
             // Unwrapping is safe because the state exists.
@@ -1127,12 +1120,6 @@ impl ConsensusExecutionHandler {
         on_local_pivot: bool,
     ) {
         if on_local_pivot {
-            // Unwrap is safe here because it's guaranteed by outer if.
-            let state_root = &self
-                .data_man
-                .get_epoch_execution_commitment(epoch_hash)
-                .unwrap()
-                .state_root_with_aux_info;
             // When the state have expired, don't inform TransactionPool.
             // TransactionPool doesn't require a precise best_executed_state
             // when pivot chain oscillates.
@@ -1143,9 +1130,7 @@ impl ConsensusExecutionHandler {
                 .check_availability(pivot_block_header.height(), epoch_hash)
             {
                 self.tx_pool
-                    .set_best_executed_state_by_epoch(
-                        StateIndex::new_for_readonly(epoch_hash, &state_root),
-                    )
+                    .set_best_executed_state_by_epoch(*epoch_hash)
                     // FIXME: propogate error.
                     .expect(&concat!(file!(), ":", line!(), ":", column!()));
             }
@@ -1230,10 +1215,7 @@ impl ConsensusExecutionHandler {
         }
 
         self.tx_pool
-            .set_best_executed_state_by_epoch(StateIndex::new_for_readonly(
-                epoch_hash,
-                &commit_result.state_root,
-            ))
+            .set_best_executed_state_by_epoch(*epoch_hash)
             .expect(&concat!(file!(), ":", line!(), ":", column!()));
     }
 
@@ -1744,18 +1726,20 @@ impl ConsensusExecutionHandler {
             bail!("state is not ready");
         }
 
-        let state_index = self
-            .data_man
-            .get_state_readonly_index(epoch_id)
+        // The commitment row is only the gate here, as it was before; the
+        // coordinates come from the engine's own index.
+        self.data_man
+            .get_epoch_execution_commitment_with_db(epoch_id)
             .expect("state index should exist");
 
         let state_db = StateDb::new(
             self.data_man
                 .storage_manager
-                .get_state_no_commit(
-                    state_index,
-                    /* try_open = */ true,
-                    state_space,
+                .open_state(
+                    epoch_id,
+                    OpenOptions::read_only()
+                        .with_try_open(true)
+                        .with_space(state_space),
                 )?
                 .ok_or("state deleted")?,
         );
