@@ -26,6 +26,9 @@ pub enum Error {
     #[error("PoS database error, err={0:?}")]
     PosDatabaseError(String),
 
+    #[error("committing on a read only StateDb")]
+    ReadOnlyStateDb,
+
     #[error("{0}")]
     Msg(String),
 }

@@ -123,9 +123,10 @@ pub fn genesis_block(
     need_to_execute: bool, genesis_chain_id: Option<u32>,
     initial_nodes: &Option<GenesisPosState>,
 ) -> Block {
-    let mut state =
-        State::new(StateDb::new(storage_manager.get_state_for_genesis_write()))
-            .expect("Failed to initialize state");
+    let mut state = State::new(StateDb::new_on_owned_state(
+        storage_manager.get_state_for_genesis_write(),
+    ))
+    .expect("Failed to initialize state");
 
     let mut genesis_block_author = test_net_version;
     genesis_block_author.set_user_account_type_bits();

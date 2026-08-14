@@ -132,7 +132,7 @@ fn init_state_db() -> StateDbTest {
     contents.insert(key(b"22"), value(b"v0"));
 
     let storage = MockStorage::with_contents(contents);
-    StateDbTest::new(Box::new(storage))
+    StateDbTest::new_on_owned_state(Box::new(storage))
 }
 
 #[allow(unused)]

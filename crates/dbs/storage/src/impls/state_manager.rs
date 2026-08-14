@@ -1359,6 +1359,36 @@ impl StateManager {
         ))))
     }
 
+    /// Commit a whole changeset on top of `parent`. The caller names the
+    /// parent version; opening the three layers of the next epoch happens
+    /// here, inside the engine.
+    ///
+    /// `meta.height` is not read. The height the engine acts on comes off the
+    /// state object, where the open path put it, and holds the same value.
+    ///
+    /// TODO: `recover_mpt_during_construct_pivot_state` is worked out by the
+    /// engine itself once the recovery handshake lands.
+    pub fn commit_changeset(
+        self: &Arc<Self>, parent: &EpochId,
+        recover_mpt_during_construct_pivot_state: bool, changeset: Changeset,
+        meta: CommitMeta,
+    ) -> Result<StateRootWithAuxInfo> {
+        let mut state = self
+            .open_state(
+                parent,
+                OpenOptions::next_epoch_base(
+                    recover_mpt_during_construct_pivot_state,
+                ),
+            )?
+            .ok_or_else(|| {
+                Error::Msg(format!(
+                    "commit: the parent version {:?} is not available",
+                    parent
+                ))
+            })?;
+        state.commit_changeset(changeset, meta)
+    }
+
     pub fn get_state_for_genesis_write(
         self: &Arc<Self>,
     ) -> Box<dyn StateTrait> {
@@ -1400,6 +1430,7 @@ use crate::{
     utils::guarded_value::GuardedValue,
     StorageConfiguration,
 };
+use cfx_internal_common::StateRootWithAuxInfo;
 use malloc_size_of_derive::MallocSizeOf as MallocSizeOfDerive;
 use primitives::{
     DeltaMptKeyPadding, EpochId, MerkleHash, StateRoot, StorageKeyWithSpace,

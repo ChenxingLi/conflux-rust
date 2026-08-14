@@ -924,24 +924,14 @@ impl ConsensusExecutionHandler {
         &self, pivot_block: &Block,
         recover_mpt_during_construct_pivot_state: bool,
     ) -> DbResult<State> {
-        // The parent's state root, its height and the snapshot period used to
-        // travel with this call as a `StateIndex`. All three are the engine's
-        // own bookkeeping and it reads them back from its index; only the
-        // parent epoch hash is still ours to give.
-        let storage = self
-            .data_man
-            .storage_manager
-            .open_state(
-                pivot_block.block_header.parent_hash(),
-                OpenOptions::next_epoch_base(
-                    recover_mpt_during_construct_pivot_state,
-                ),
-            )
-            .expect("No db error")
-            // Unwrapping is safe because the state exists.
-            .expect("State exists");
-
-        let state_db = StateDb::new(storage);
+        let state_db = StateDb::new_for_commit(
+            self.data_man.storage_manager.clone(),
+            *pivot_block.block_header.parent_hash(),
+            pivot_block.block_header.height(),
+            recover_mpt_during_construct_pivot_state,
+        )
+        // Unwrapping is safe because the state exists.
+        .expect("State exists");
         State::new(state_db)
     }
 
@@ -1732,7 +1722,7 @@ impl ConsensusExecutionHandler {
             .get_epoch_execution_commitment_with_db(epoch_id)
             .expect("state index should exist");
 
-        let state_db = StateDb::new(
+        let state_db = StateDb::new_readonly(
             self.data_man
                 .storage_manager
                 .open_state(

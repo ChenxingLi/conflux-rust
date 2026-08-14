@@ -1178,7 +1178,7 @@ impl TransactionPool {
             .open_state(&best_executed_epoch, OpenOptions::read_only())?
             // Safe because the state is guaranteed to be available
             .unwrap();
-        let state_db = StateDb::new(storage);
+        let state_db = StateDb::new_readonly(storage);
         let state = State::new(state_db)?;
         Ok(Arc::new(state))
     }

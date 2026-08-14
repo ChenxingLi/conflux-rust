@@ -1832,7 +1832,7 @@ impl TxReplayer {
                 self.tx_counts.get(),
                 self.ops_counts.get(),
             )?;
-            *latest_state = StateDb::new(
+            *latest_state = StateDb::new_on_owned_state(
                 self.storage_manager
                     .open_state(
                         &last_state_root.state_root.delta_root,
@@ -1869,7 +1869,7 @@ fn tx_replay(matches: ArgMatches) -> errors::Result<()> {
 
     if matches.occurrences_of("reset_db") > 0 {
         last_state_root = StateRootWithAuxInfo::genesis(&MERKLE_NULL_NODE);
-        latest_state = StateDb::new(
+        latest_state = StateDb::new_on_owned_state(
             tx_replayer.storage_manager.get_state_for_genesis_write(),
         );
     } else {
@@ -1877,7 +1877,7 @@ fn tx_replay(matches: ArgMatches) -> errors::Result<()> {
             None => {
                 last_state_root =
                     StateRootWithAuxInfo::genesis(&MERKLE_NULL_NODE);
-                latest_state = StateDb::new(
+                latest_state = StateDb::new_on_owned_state(
                     tx_replayer.storage_manager.get_state_for_genesis_write(),
                 );
             }
@@ -1890,7 +1890,7 @@ fn tx_replay(matches: ArgMatches) -> errors::Result<()> {
                         .get_with_number_key(block_height)?
                         .unwrap(),
                 )?;
-                latest_state = StateDb::new(
+                latest_state = StateDb::new_on_owned_state(
                     tx_replayer
                         .storage_manager
                         .open_state(

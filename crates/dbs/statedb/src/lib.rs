@@ -37,22 +37,122 @@ mod impls {
     // see `delete_all`
     type AccessedEntries = BTreeMap<Key, EntryValue>;
 
+    /// What a commit capable `StateDb` needs to hand its changeset to the
+    /// engine. The parent version and the height come in through the
+    /// construction; the engine opens the writable state of the next epoch
+    /// itself when the changeset arrives.
+    struct CommitContext {
+        manager: Arc<StorageManager>,
+        parent: EpochId,
+        /// Height of the epoch this instance commits, i.e. the parent's height
+        /// plus one.
+        height: u64,
+        /// TODO: the engine works this flag out itself once the recovery
+        /// handshake lands; until then it is an input of the open.
+        recover_mpt_during_construct_pivot_state: bool,
+    }
+
+    /// How one `StateDb` reads, and whether it can commit.
+    enum Storage {
+        /// Read only instance. Committing on it is an error.
+        ReadOnly(Box<dyn StorageView>),
+
+        /// Commit capable instance: a read only view of the parent version to
+        /// read through, plus what the engine needs to commit on top of it.
+        Commit {
+            view: Box<dyn StorageView>,
+            ctx: CommitContext,
+        },
+
+        /// A writable state object handed in from outside, which serves both
+        /// the reads and the commit. It is kept for the callers which cannot
+        /// name a parent version yet:
+        ///
+        /// - unit tests and benchmarks, which commit into a mock state, until
+        ///   an in memory engine replaces the mocks;
+        /// - the genesis construction, whose parent version is the empty base,
+        ///   until genesis becomes a preview followed by a commit;
+        /// - `state_dump`, which needs the callback traversal, a method
+        ///   `StorageView` does not have, until the engine grows its own
+        ///   export entry point.
+        OwnedState(Box<dyn StorageStateTrait>),
+    }
+
+    impl Storage {
+        fn view(&self) -> &dyn StorageView {
+            match self {
+                Storage::ReadOnly(view) => &**view,
+                Storage::Commit { view, .. } => &**view,
+                Storage::OwnedState(state) => &**state,
+            }
+        }
+    }
+
     // Use generic type for better test-ability.
     pub struct StateDb {
         /// Contains the original storage key values for all loaded and
         /// modified key values.
         accessed_entries: RwLock<AccessedEntries>,
 
-        /// The underlying storage, The storage is updated only upon fn
-        /// commit().
-        storage: Box<dyn StorageStateTrait>,
+        /// Where the reads go and where the changeset goes. The underlying
+        /// storage is updated only upon fn commit().
+        storage: Storage,
     }
 
     impl StateDb {
-        pub fn new(storage: Box<dyn StorageStateTrait>) -> Self {
+        /// A read only instance. `commit` on it returns an error.
+        pub fn new_readonly(view: Box<dyn StorageView>) -> Self {
             StateDb {
                 accessed_entries: Default::default(),
-                storage,
+                storage: Storage::ReadOnly(view),
+            }
+        }
+
+        /// A commit capable instance on top of the epoch `parent` identifies.
+        /// The read handle of that version is opened here and held until the
+        /// commit; the writable state of the epoch being executed is opened by
+        /// the engine when the changeset arrives.
+        ///
+        /// The read handle is the layered state of the parent, which is what
+        /// the execution used to read through: the state the old
+        /// `get_state_for_next_epoch` returned answered reads out of the same
+        /// three layers, and the single MPT replica it may be paired with is
+        /// written to but never read from.
+        pub fn new_for_commit(
+            manager: Arc<StorageManager>, parent: EpochId, height: u64,
+            recover_mpt_during_construct_pivot_state: bool,
+        ) -> Result<Self> {
+            let view = manager
+                .open_layered_state(
+                    &parent,
+                    OpenOptions::read_only(),
+                    /* open_mpt_snapshot = */ false,
+                )?
+                .ok_or_else(|| {
+                    Error::Msg(format!(
+                        "the parent version {:?} is not available",
+                        parent
+                    ))
+                })?;
+            Ok(StateDb {
+                accessed_entries: Default::default(),
+                storage: Storage::Commit {
+                    view: Box::new(view),
+                    ctx: CommitContext {
+                        manager,
+                        parent,
+                        height,
+                        recover_mpt_during_construct_pivot_state,
+                    },
+                },
+            })
+        }
+
+        /// The transitional constructor, see `Storage::OwnedState`.
+        pub fn new_on_owned_state(state: Box<dyn StorageStateTrait>) -> Self {
+            StateDb {
+                accessed_entries: Default::default(),
+                storage: Storage::OwnedState(state),
             }
         }
 
@@ -60,14 +160,14 @@ mod impls {
         pub fn new_for_unit_test() -> Self {
             use self::in_memory_storage::InmemoryStorage;
 
-            Self::new(Box::new(InmemoryStorage::default()))
+            Self::new_on_owned_state(Box::new(InmemoryStorage::default()))
         }
 
         #[cfg(feature = "testonly_code")]
         pub fn new_for_unit_test_with_epoch(epoch_id: &EpochId) -> Self {
             use self::in_memory_storage::InmemoryStorage;
 
-            Self::new(Box::new(
+            Self::new_on_owned_state(Box::new(
                 InmemoryStorage::from_epoch_id(epoch_id).unwrap(),
             ))
         }
@@ -96,7 +196,7 @@ mod impls {
                 if let Occupied(o) = &entry {
                     r = o.get().current_value.clone();
                 } else {
-                    r = self.storage.get(key)?.map(Into::into);
+                    r = self.storage.view().get(key)?.map(Into::into);
                     entry.or_insert(EntryValue::new(r.clone()));
                 };
             };
@@ -133,7 +233,8 @@ mod impls {
 
                 // Vacant
                 &mut Vacant(_) => {
-                    let original_value = self.storage.get(key)?.map(Into::into);
+                    let original_value =
+                        self.storage.view().get(key)?.map(Into::into);
 
                     entry.or_insert(EntryValue::new_modified(
                         original_value,
@@ -184,17 +285,27 @@ mod impls {
             self.delete_all::<access_mode::Read>(key_prefix, debug_record)
         }
 
+        /// The callback traversal is not one of the two methods `StorageView`
+        /// has, so it is only available on an instance which owns a
+        /// state object. `state_dump` is the only caller. TODO: this
+        /// method goes away once the engine has its own export entry
+        /// point.
         pub fn read_all_with_callback(
             &mut self, access_key_prefix: StorageKeyWithSpace,
             callback: &mut dyn FnMut(MptKeyValue), only_account_key: bool,
         ) -> Result<()> {
-            self.storage
-                .read_all_with_callback(
-                    access_key_prefix,
-                    callback,
-                    only_account_key,
-                )
-                .map_err(|err| err.into())
+            match &mut self.storage {
+                Storage::OwnedState(state) => state
+                    .read_all_with_callback(
+                        access_key_prefix,
+                        callback,
+                        only_account_key,
+                    )
+                    .map_err(|err| err.into()),
+                _ => Err(Error::Msg(
+                    "read_all_with_callback needs a state object".into(),
+                )),
+            }
         }
 
         pub fn delete_all<AM: access_mode::AccessMode>(
@@ -245,7 +356,7 @@ mod impls {
             }
             // Then, remove all un-modified existing keys.
             // We must update the accessed_entries.
-            for (k, v) in self.storage.iter_prefix(key_prefix)? {
+            for (k, v) in self.storage.view().iter_prefix(key_prefix)? {
                 let entry = accessed_entries.entry(k.clone());
                 let was_vacant = if let Occupied(_) = &entry {
                     // Nothing to do for existing entry, because we have
@@ -317,8 +428,7 @@ mod impls {
                 StorageLayout,
             >,
             accept_account_deletion: bool, address: &[u8], space: Space,
-            storage: &dyn StorageStateTrait,
-            accessed_entries: &AccessedEntries,
+            storage: &dyn StorageView, accessed_entries: &AccessedEntries,
         ) -> Result<()> {
             if storage_layouts_to_rewrite
                 .contains_key(&(address.to_vec(), space))
@@ -447,7 +557,7 @@ mod impls {
                             v.current_value.is_none(),
                             address_bytes,
                             storage_key.space,
-                            self.storage.as_ref(),
+                            self.storage.view(),
                             &accessed_entries,
                         )?;
                     }
@@ -462,7 +572,7 @@ mod impls {
                             /* accept_account_deletion = */ false,
                             address_bytes,
                             storage_key.space,
-                            self.storage.as_ref(),
+                            self.storage.view(),
                             &accessed_entries,
                         );
                         if result.is_err() {
@@ -481,7 +591,7 @@ mod impls {
                             /* accept_account_deletion = */ false,
                             address_bytes,
                             storage_key.space,
-                            self.storage.as_ref(),
+                            self.storage.view(),
                             &accessed_entries,
                         )?;
                     }
@@ -540,14 +650,25 @@ mod impls {
         /// persisting anything. Until then it still writes the changeset into
         /// the MPT, and therefore still has to clear the cache: the `commit`
         /// which follows on the genesis path must not apply the same changeset
-        /// a second time.
+        /// a second time. Being the genesis path, it is only
+        /// available on an instance which owns a state object.
         pub fn compute_state_root(
             &mut self, debug_record: Option<&mut ComputeEpochDebugRecord>,
         ) -> Result<StateRootWithAuxInfo> {
             let changeset = self.build_changeset(debug_record)?;
-            self.storage.apply_changeset(&changeset)?;
+            let state_root = match &mut self.storage {
+                Storage::OwnedState(state) => {
+                    state.apply_changeset(&changeset)?;
+                    state.compute_state_root()?
+                }
+                _ => {
+                    return Err(Error::Msg(
+                        "compute_state_root needs a state object".into(),
+                    ))
+                }
+            };
             self.accessed_entries = Default::default();
-            Ok(self.storage.compute_state_root()?)
+            Ok(state_root)
         }
 
         pub fn commit(
@@ -555,9 +676,27 @@ mod impls {
             debug_record: Option<&mut ComputeEpochDebugRecord>,
         ) -> Result<StateRootWithAuxInfo> {
             let changeset = self.build_changeset(debug_record)?;
-            let state_root = self
-                .storage
-                .commit_changeset(changeset, CommitMeta { epoch_id })?;
+            let state_root = match &mut self.storage {
+                Storage::ReadOnly(_) => return Err(Error::ReadOnlyStateDb),
+                Storage::Commit { ctx, .. } => {
+                    ctx.manager.clone().commit_changeset(
+                        &ctx.parent,
+                        ctx.recover_mpt_during_construct_pivot_state,
+                        changeset,
+                        CommitMeta {
+                            epoch_id,
+                            height: Some(ctx.height),
+                        },
+                    )?
+                }
+                Storage::OwnedState(state) => state.commit_changeset(
+                    changeset,
+                    CommitMeta {
+                        epoch_id,
+                        height: None,
+                    },
+                )?,
+            };
             // Mark all modification applied.
             self.accessed_entries = Default::default();
             Ok(state_root)
@@ -608,7 +747,8 @@ mod impls {
     };
     use cfx_storage::{
         utils::{access_mode, to_key_prefix_iter_upper_bound},
-        Changeset, CommitMeta, MptKeyValue, StorageStateTrait,
+        Changeset, CommitMeta, MptKeyValue, OpenOptions, StorageManager,
+        StorageStateTrait, StorageView,
     };
     use cfx_types::{
         address_util::AddressUtil, Address, AddressWithSpace, Space,

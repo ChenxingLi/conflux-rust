@@ -72,7 +72,9 @@ fn txexe_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("Execute 1 transaction");
     group
         .bench_function("Execute 1 transaction", move |b| {
-            let mut state = State::new(StateDb::new(
+            // The benchmark executes transactions and never commits, so a read
+            // only handle on the best block's state is all it needs.
+            let mut state = State::new(StateDb::new_readonly(
                 handler
                     .other_components
                     .consensus
@@ -80,7 +82,7 @@ fn txexe_benchmark(c: &mut Criterion) {
                     .storage_manager
                     .open_state(
                         &handler.other_components.consensus.best_block_hash(),
-                        OpenOptions::next_epoch_base(false),
+                        OpenOptions::read_only(),
                     )
                     .unwrap()
                     .unwrap(),

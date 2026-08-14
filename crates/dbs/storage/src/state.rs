@@ -56,12 +56,16 @@ pub type Changeset = BTreeMap<Vec<u8>, Option<Box<[u8]>>>;
 /// the changeset itself. `epoch_id` is the pivot block hash of that epoch, the
 /// same identifier the open path is keyed by.
 ///
-/// There is no `height` here yet. It reaches `StateDb` through its
-/// construction, and until then the engine reads the height off the state
-/// object, where the open path put it.
+/// `height` is the height of that same epoch. The engine does not read it: the
+/// height it acts on comes off the state object, where the open path put it,
+/// and holds the same value. `None` only on the transitional path where the
+/// caller hands in a writable state object instead of giving a parent version,
+/// i.e. unit tests, the genesis construction and `state_dump` -- see
+/// `StateDb::new_on_owned_state`.
 #[derive(Clone, Copy, Debug)]
 pub struct CommitMeta {
     pub epoch_id: EpochId,
+    pub height: Option<u64>,
 }
 
 // The trait is created to separate the implementation to another file, and the

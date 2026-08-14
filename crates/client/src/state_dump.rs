@@ -132,7 +132,10 @@ fn prepare_state_db(
         .map_err(|e| e.to_string())?
         .ok_or("Failed to get state")?;
 
-    let state_db = StateDbGeneric::new(state);
+    // Not `new_readonly`: the export walks the state with a callback, which is
+    // not one of the two methods `StorageView` has. TODO: this becomes a read
+    // only instance once the engine has its own export entry point.
+    let state_db = StateDbGeneric::new_on_owned_state(state);
 
     Ok((state_db, *state_root))
 }

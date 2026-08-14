@@ -59,7 +59,7 @@ impl ConsensusGraph {
         )?;
         let hash =
             self.inner.read().get_pivot_hash_from_epoch_number(height)?;
-        Ok(StateDb::new(
+        Ok(StateDb::new_readonly(
             self.get_state_by_height_and_hash(height, &hash, space)?,
         ))
     }

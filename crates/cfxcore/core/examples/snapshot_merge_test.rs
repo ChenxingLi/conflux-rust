@@ -403,7 +403,7 @@ where
         .open_state(&parent_epoch_id, OpenOptions::next_epoch_base(false))
         .unwrap()
         .unwrap();
-    let mut state = StateDb::new(state);
+    let mut state = StateDb::new_on_owned_state(state);
     for _ in 0..accounts {
         let (addr, account) =
             account_map.next().expect("Caller has checked the size");
