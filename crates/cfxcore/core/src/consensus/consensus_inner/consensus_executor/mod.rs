@@ -1084,9 +1084,28 @@ impl ConsensusExecutionHandler {
             self.notify_txpool(&commit_result, epoch_hash);
         };
 
+        // The commit answers with the consensus commitment alone. The
+        // commitment row still carries the coordinates in its `aux_info`, and
+        // that field is still read — the snapshot maintenance logic takes the
+        // snapshot and intermediate epoch ids off it — so the row is filled
+        // from the engine's own index, which `commit` wrote before it
+        // returned. The row comes out byte for byte the same, because the
+        // entry and the aux info are built out of the same fields of the same
+        // state object. TODO: this read back goes away once the coordinate
+        // fields of the row become placeholder bytes.
+        let state_root_with_aux_info = self
+            .data_man
+            .storage_manager
+            .epoch_state_root_with_aux_info(epoch_hash)
+            .expect(&concat!(file!(), ":", line!(), ":", column!()))
+            .expect("commit registered the index entry of this epoch");
+        debug_assert_eq!(
+            state_root_with_aux_info.state_root,
+            commit_result.state_root
+        );
         self.data_man.insert_epoch_execution_commitment(
             pivot_block.hash(),
-            commit_result.state_root.clone(),
+            state_root_with_aux_info,
             compute_receipts_root(&epoch_receipts),
             BlockHeaderBuilder::compute_block_logs_bloom_hash(&epoch_receipts),
         );

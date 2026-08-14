@@ -438,15 +438,13 @@ impl State {
     /// this pass allocated to the delta MPT's allocator and clears the dirty
     /// flag, so a later pass over the same base rebuilds the same trie and
     /// computes the same root.
-    pub fn preview_root(
-        mut self, changeset: &Changeset,
-    ) -> Result<StateRootWithAuxInfo> {
+    pub fn preview_root(mut self, changeset: &Changeset) -> Result<StateRoot> {
         let result = self
             .apply_changeset(changeset)
             .and_then(|()| self.compute_state_root());
         self.children_merkle_map.clear();
         self.revert();
-        result
+        Ok(result?.state_root)
     }
 
     pub fn get_with_proof(

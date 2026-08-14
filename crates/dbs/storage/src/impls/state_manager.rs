@@ -1372,7 +1372,7 @@ impl StateManager {
         self: &Arc<Self>, parent: StorageVersion,
         recover_mpt_during_construct_pivot_state: bool, changeset: Changeset,
         meta: CommitMeta,
-    ) -> Result<StateRootWithAuxInfo> {
+    ) -> Result<StateRoot> {
         let mut state = match parent {
             StorageVersion::Empty => self.get_state_for_genesis_write(),
             StorageVersion::Epoch(parent) => self
@@ -1405,13 +1405,12 @@ impl StateManager {
     /// is committed under.
     ///
     /// The `commit_changeset` that follows applies the same changeset a second
-    /// time, on a state object opened afresh; only the genesis path pays for
-    /// that. The preview runs on the plain delta MPT state, never on the
-    /// replicated wrapper, so the single MPT replica sees each write exactly
-    /// once, in the commit.
+    /// time, on a state object opened afresh. The preview runs on the plain
+    /// delta MPT state, never on the replicated wrapper, so the single MPT
+    /// replica sees each write exactly once, in the commit.
     pub fn preview_genesis_root(
         self: &Arc<Self>, changeset: &Changeset,
-    ) -> Result<StateRootWithAuxInfo> {
+    ) -> Result<StateRoot> {
         self.get_state_for_genesis_write_inner()
             .preview_root(changeset)
     }
@@ -1420,9 +1419,54 @@ impl StateManager {
     /// of. It is spelled as the null epoch, which the genesis state object
     /// already carries as its parent epoch id and which no real epoch can
     /// collide with.
-    /// A read only handle on the empty base, which the genesis execution reads
-    /// through. Every key is answered out of the null snapshot and an empty
-    /// delta trie.
+    /// The state root triplet of an epoch this engine has committed, together
+    /// with the coordinates of that epoch, read back out of the private index.
+    ///
+    /// `commit` does not answer with the coordinates, but the commitment row
+    /// still carries them in its `aux_info` field, and that field is still
+    /// read: the snapshot maintenance logic takes the snapshot and
+    /// intermediate epoch ids off it. So the writer of that row reads them
+    /// back here. The method goes away with its last caller, once the field
+    /// becomes placeholder bytes.
+    ///
+    /// The row comes out byte for byte the same, because `State::state_root`
+    /// and `State::write_state_index_entry` build the aux info and the entry
+    /// out of the same fields of the same state object, and the merged hash is
+    /// recomputed here from the triplet exactly as `State::state_root`
+    /// computes it.
+    ///
+    /// `Ok(None)` means the epoch has no entry, which for an epoch this engine
+    /// has just committed cannot happen: `commit` writes the entry before it
+    /// returns.
+    pub fn epoch_state_root_with_aux_info(
+        &self, epoch_id: &EpochId,
+    ) -> Result<Option<StateRootWithAuxInfo>> {
+        let Some(entry) = self.state_index_db.get(epoch_id)? else {
+            return Ok(None);
+        };
+        let state_root = StateRoot {
+            snapshot_root: entry.snapshot_merkle_root,
+            intermediate_delta_root: entry.intermediate_delta_root,
+            delta_root: entry.delta_root,
+        };
+        let state_root_hash = state_root.compute_state_root_hash();
+        Ok(Some(StateRootWithAuxInfo {
+            state_root,
+            aux_info: StateRootAuxInfo {
+                snapshot_epoch_id: entry.snapshot_epoch_id,
+                intermediate_epoch_id: entry.intermediate_epoch_id,
+                maybe_intermediate_mpt_key_padding: entry
+                    .maybe_intermediate_mpt_key_padding,
+                delta_mpt_key_padding: entry.delta_mpt_key_padding,
+                state_root_hash,
+            },
+        }))
+    }
+
+    /// A read only handle on the empty base. This is what the genesis
+    /// execution reads through: it answers every key out of the null snapshot
+    /// and an empty delta trie, which is what the writable genesis state
+    /// answered before anything was written into it.
     pub fn open_empty_base(self: &Arc<Self>) -> Box<dyn StorageView> {
         Box::new(self.get_state_for_genesis_write_inner())
     }
@@ -1468,7 +1512,7 @@ use crate::{
     utils::guarded_value::GuardedValue,
     StorageConfiguration,
 };
-use cfx_internal_common::StateRootWithAuxInfo;
+use cfx_internal_common::{StateRootAuxInfo, StateRootWithAuxInfo};
 use malloc_size_of_derive::MallocSizeOf as MallocSizeOfDerive;
 use primitives::{
     DeltaMptKeyPadding, EpochId, MerkleHash, StateRoot, StorageKeyWithSpace,

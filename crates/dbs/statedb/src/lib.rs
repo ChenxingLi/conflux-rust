@@ -670,13 +670,10 @@ mod impls {
         /// This deliberately leaves `accessed_entries` alone. Nothing was
         /// persisted, so the `commit` which follows has to be able to build
         /// the very same changeset a second time — clearing here would leave
-        /// it with an empty one. Building it twice is idempotent: the layout
-        /// entries `build_changeset` inserts carry the value they already
-        /// hold, and the reads that back them come from the same unchanged
-        /// base view.
+        /// it with an empty one.
         pub fn preview_genesis_root(
             &mut self, debug_record: Option<&mut ComputeEpochDebugRecord>,
-        ) -> Result<StateRootWithAuxInfo> {
+        ) -> Result<StateRoot> {
             let changeset = self.build_changeset(debug_record)?;
             match &self.storage {
                 Storage::Commit { ctx, .. } => {
@@ -735,10 +732,13 @@ mod impls {
             Ok(state_root)
         }
 
+        /// Hand the whole changeset to the engine and let it apply, hash and
+        /// persist it under `epoch_id`. The answer is the consensus
+        /// commitment, the state root triplet alone.
         pub fn commit(
             &mut self, epoch_id: EpochId,
             debug_record: Option<&mut ComputeEpochDebugRecord>,
-        ) -> Result<StateRootWithAuxInfo> {
+        ) -> Result<StateRoot> {
             let changeset = self.build_changeset(debug_record)?;
             let state_root = match &mut self.storage {
                 Storage::ReadOnly(_) => return Err(Error::ReadOnlyStateDb),
@@ -820,7 +820,8 @@ mod impls {
     use hashbrown::HashMap;
     use parking_lot::RwLock;
     use primitives::{
-        EpochId, SkipInputCheck, StorageKey, StorageKeyWithSpace, StorageLayout,
+        EpochId, SkipInputCheck, StateRoot, StorageKey, StorageKeyWithSpace,
+        StorageLayout,
     };
     use std::{
         collections::{

@@ -1,15 +1,14 @@
 use crate::state::overlay_account::AccountEntry;
 
 use super::State;
-use cfx_internal_common::{
-    debug::ComputeEpochDebugRecord, StateRootWithAuxInfo,
-};
+use cfx_internal_common::debug::ComputeEpochDebugRecord;
 use cfx_statedb::{access_mode, Result as DbResult};
 use cfx_types::AddressWithSpace;
-use primitives::{Account, EpochId, StorageKey};
+use primitives::{Account, EpochId, StateRoot, StorageKey};
 
 pub struct StateCommitResult {
-    pub state_root: StateRootWithAuxInfo,
+    /// The consensus commitment of the epoch just committed.
+    pub state_root: StateRoot,
     pub accounts_for_txpool: Vec<Account>,
 }
 
@@ -39,7 +38,7 @@ impl State {
     /// The changeset stays in the statedb, so `commit` sees the whole of it.
     pub fn preview_state_root_for_genesis(
         &mut self, mut debug_record: Option<&mut ComputeEpochDebugRecord>,
-    ) -> DbResult<StateRootWithAuxInfo> {
+    ) -> DbResult<StateRoot> {
         self.apply_changes_to_statedb(debug_record.as_deref_mut())?;
         self.db.preview_genesis_root(debug_record)
     }

@@ -111,18 +111,15 @@ pub trait StateTrait: StorageView {
     /// The commit entry point: one changeset plus the meta of the epoch it
     /// belongs to, in a single call. Apply, compute the root, persist.
     ///
-    /// The root is read back rather than recomputed when it is already there,
-    /// which is the genesis path: `compute_state_root` ran on this very state
-    /// object before the epoch id existed. Every other epoch leaves the delta
-    /// nodes dirty, `get_state_root` fails on them, and the root is computed
-    /// here.
+    /// The root is read back rather than recomputed when it is already there.
+    /// Normally the delta nodes are still dirty, `get_state_root` fails on
+    /// them, and the root is computed here.
     ///
-    /// This lives on the state object because `StateDb` holds one. It belongs
-    /// on the engine, and moves there once `StateDb` holds a read only view
-    /// plus the parent version and the height.
+    /// The answer is the consensus commitment, the state root triplet alone.
+    /// The physical coordinates stay with the engine's own index.
     fn commit_changeset(
         &mut self, changeset: Changeset, meta: CommitMeta,
-    ) -> Result<StateRootWithAuxInfo> {
+    ) -> Result<StateRoot> {
         self.apply_changeset(&changeset)?;
 
         let state_root = match self.get_state_root() {
@@ -132,7 +129,7 @@ pub trait StateTrait: StorageView {
 
         self.commit(meta.epoch_id)?;
 
-        Ok(state_root)
+        Ok(state_root.state_root)
     }
 }
 
@@ -156,5 +153,7 @@ use super::{
     MptKeyValue, StateRootWithAuxInfo,
 };
 use crate::StorageRootProof;
-use primitives::{EpochId, SkipInputCheck, StorageKeyWithSpace, StorageRoot};
+use primitives::{
+    EpochId, SkipInputCheck, StateRoot, StorageKeyWithSpace, StorageRoot,
+};
 use std::collections::BTreeMap;
