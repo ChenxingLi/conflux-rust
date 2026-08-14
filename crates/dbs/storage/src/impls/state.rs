@@ -425,6 +425,30 @@ impl StateTrait for State {
 }
 
 impl State {
+    /// Apply a changeset, compute the state root it produces, then throw the
+    /// whole thing away: the root of an epoch computed before that epoch has
+    /// an id.
+    ///
+    /// Nothing reaches the db. The dirty nodes only ever live in the delta
+    /// MPT's in-memory node manager, and `commit` is never called, so no delta
+    /// MPT row, no index entry and no snapshot check is produced.
+    ///
+    /// The state object is consumed and has to be cleaned up before it drops,
+    /// because `Drop` panics on a dirty state. `revert` returns every node
+    /// this pass allocated to the delta MPT's allocator and clears the dirty
+    /// flag, so a later pass over the same base rebuilds the same trie and
+    /// computes the same root.
+    pub fn preview_root(
+        mut self, changeset: &Changeset,
+    ) -> Result<StateRootWithAuxInfo> {
+        let result = self
+            .apply_changeset(changeset)
+            .and_then(|()| self.compute_state_root());
+        self.children_merkle_map.clear();
+        self.revert();
+        result
+    }
+
     pub fn get_with_proof(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<(Option<Box<[u8]>>, StateProof)> {

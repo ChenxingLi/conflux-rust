@@ -43,7 +43,7 @@ mod impls {
     /// itself when the changeset arrives.
     struct CommitContext {
         manager: Arc<StorageManager>,
-        parent: EpochId,
+        parent: StorageVersion,
         /// Height of the epoch this instance commits, i.e. the parent's height
         /// plus one.
         height: u64,
@@ -70,8 +70,6 @@ mod impls {
         ///
         /// - unit tests and benchmarks, which commit into a mock state, until
         ///   an in memory engine replaces the mocks;
-        /// - the genesis construction, whose parent version is the empty base,
-        ///   until genesis becomes a preview followed by a commit;
         /// - `state_dump`, which needs the callback traversal, a method
         ///   `StorageView` does not have, until the engine grows its own
         ///   export entry point.
@@ -140,12 +138,34 @@ mod impls {
                     view: Box::new(view),
                     ctx: CommitContext {
                         manager,
-                        parent,
+                        parent: StorageVersion::Epoch(parent),
                         height,
                         recover_mpt_during_construct_pivot_state,
                     },
                 },
             })
+        }
+
+        /// The commit capable instance of the genesis epoch. Its parent is
+        /// the empty base, which has no epoch id of its own, so it cannot go
+        /// through `new_for_commit`; the engine opens the genesis coordinates
+        /// itself, both for `preview_genesis_root` and for the commit. The
+        /// height is 0, the genesis epoch's own height on the convention the
+        /// open path uses.
+        pub fn new_for_genesis(manager: Arc<StorageManager>) -> Self {
+            let view = manager.open_empty_base();
+            StateDb {
+                accessed_entries: Default::default(),
+                storage: Storage::Commit {
+                    view,
+                    ctx: CommitContext {
+                        manager,
+                        parent: StorageVersion::Empty,
+                        height: 0,
+                        recover_mpt_during_construct_pivot_state: false,
+                    },
+                },
+            }
         }
 
         /// The transitional constructor, see `Storage::OwnedState`.
@@ -641,17 +661,61 @@ mod impls {
             Ok(changeset)
         }
 
-        /// This method is only used for genesis block because state root is
-        /// required to compute genesis epoch_id. For other blocks there are
-        /// deferred execution so the state root computation is merged inside
-        /// commit method.
+        /// The first phase of the genesis commit: the state root this
+        /// instance's changeset would produce, computed before the epoch has
+        /// an id, without persisting anything. The genesis construction needs
+        /// the root to build the block header whose hash *is* the epoch id, so
+        /// it cannot call `commit` yet.
         ///
-        /// TODO: this becomes a preview which computes a root without
-        /// persisting anything. Until then it still writes the changeset into
-        /// the MPT, and therefore still has to clear the cache: the `commit`
-        /// which follows on the genesis path must not apply the same changeset
-        /// a second time. Being the genesis path, it is only
-        /// available on an instance which owns a state object.
+        /// This deliberately leaves `accessed_entries` alone. Nothing was
+        /// persisted, so the `commit` which follows has to be able to build
+        /// the very same changeset a second time — clearing here would leave
+        /// it with an empty one. Building it twice is idempotent: the layout
+        /// entries `build_changeset` inserts carry the value they already
+        /// hold, and the reads that back them come from the same unchanged
+        /// base view.
+        pub fn preview_genesis_root(
+            &mut self, debug_record: Option<&mut ComputeEpochDebugRecord>,
+        ) -> Result<StateRootWithAuxInfo> {
+            let changeset = self.build_changeset(debug_record)?;
+            match &self.storage {
+                Storage::Commit { ctx, .. } => {
+                    // The engine previews on the empty base without looking at
+                    // the parent, so any other parent would silently get back
+                    // a root computed on the wrong base.
+                    if ctx.parent != StorageVersion::Empty {
+                        return Err(Error::Msg(format!(
+                            "preview_genesis_root needs the empty base as the \
+                             parent, asked for {:?}",
+                            ctx.parent
+                        )));
+                    }
+                    ctx.manager
+                        .preview_genesis_root(&changeset)
+                        .map_err(Into::into)
+                }
+                Storage::ReadOnly(_) => Err(Error::ReadOnlyStateDb),
+                Storage::OwnedState(_) => Err(Error::Msg(
+                    "preview_genesis_root needs a parent version, not a state \
+                     object"
+                        .into(),
+                )),
+            }
+        }
+
+        /// Apply the changeset into the state object this instance owns and
+        /// compute the root, without committing. This is the shape the genesis
+        /// path had before it became `preview_genesis_root` plus `commit`, and
+        /// the only caller left is the storage benchmark's replay driver,
+        /// which derives a fake epoch id from the delta root and therefore has
+        /// the same chicken and egg problem genesis had — on a non-empty base,
+        /// which the genesis preview does not serve.
+        ///
+        /// It does persist, in the sense that the changeset is now in the MPT
+        /// of the state object which will be committed, so it has to clear the
+        /// cache: the `commit` that follows must not apply the same changeset
+        /// twice, which would run `compute_state_root` a second time on a
+        /// state whose `children_merkle_map` is no longer empty.
         pub fn compute_state_root(
             &mut self, debug_record: Option<&mut ComputeEpochDebugRecord>,
         ) -> Result<StateRootWithAuxInfo> {
@@ -680,7 +744,7 @@ mod impls {
                 Storage::ReadOnly(_) => return Err(Error::ReadOnlyStateDb),
                 Storage::Commit { ctx, .. } => {
                     ctx.manager.clone().commit_changeset(
-                        &ctx.parent,
+                        ctx.parent,
                         ctx.recover_mpt_during_construct_pivot_state,
                         changeset,
                         CommitMeta {
@@ -748,7 +812,7 @@ mod impls {
     use cfx_storage::{
         utils::{access_mode, to_key_prefix_iter_upper_bound},
         Changeset, CommitMeta, MptKeyValue, OpenOptions, StorageManager,
-        StorageStateTrait, StorageView,
+        StorageStateTrait, StorageVersion, StorageView,
     };
     use cfx_types::{
         address_util::AddressUtil, Address, AddressWithSpace, Space,

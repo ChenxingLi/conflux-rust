@@ -123,10 +123,9 @@ pub fn genesis_block(
     need_to_execute: bool, genesis_chain_id: Option<u32>,
     initial_nodes: &Option<GenesisPosState>,
 ) -> Block {
-    let mut state = State::new(StateDb::new_on_owned_state(
-        storage_manager.get_state_for_genesis_write(),
-    ))
-    .expect("Failed to initialize state");
+    let mut state =
+        State::new(StateDb::new_for_genesis(storage_manager.clone()))
+            .expect("Failed to initialize state");
 
     let mut genesis_block_author = test_net_version;
     genesis_block_author.set_user_account_type_bits();
@@ -373,8 +372,13 @@ pub fn genesis_block(
         .genesis_special_remove_account(&genesis_account_address.address)
         .expect("Clean account failed");
 
+    // Phase one of the genesis commit: the state root of the changeset built
+    // so far, computed without persisting it, because the epoch id this state
+    // is committed under is the hash of the block header built from this very
+    // root. Phase two is the `commit` below, which hands the storage engine
+    // the same changeset again.
     let state_root = state
-        .compute_state_root_for_genesis(
+        .preview_state_root_for_genesis(
             /* debug_record = */ debug_record.as_mut(),
         )
         .unwrap();

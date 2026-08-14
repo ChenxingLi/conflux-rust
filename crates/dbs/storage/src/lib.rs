@@ -227,6 +227,7 @@ pub use self::{
     },
     state_manager::{
         OpenMode, OpenOptions, StateIndex, StateManager as StorageManager,
+        StorageVersion,
     },
     storage_db::{KeyValueDbIterableTrait, KeyValueDbTrait},
 };

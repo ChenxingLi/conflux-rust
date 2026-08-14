@@ -1369,24 +1369,62 @@ impl StateManager {
     /// TODO: `recover_mpt_during_construct_pivot_state` is worked out by the
     /// engine itself once the recovery handshake lands.
     pub fn commit_changeset(
-        self: &Arc<Self>, parent: &EpochId,
+        self: &Arc<Self>, parent: StorageVersion,
         recover_mpt_during_construct_pivot_state: bool, changeset: Changeset,
         meta: CommitMeta,
     ) -> Result<StateRootWithAuxInfo> {
-        let mut state = self
-            .open_state(
-                parent,
-                OpenOptions::next_epoch_base(
-                    recover_mpt_during_construct_pivot_state,
-                ),
-            )?
-            .ok_or_else(|| {
-                Error::Msg(format!(
-                    "commit: the parent version {:?} is not available",
-                    parent
-                ))
-            })?;
+        let mut state = match parent {
+            StorageVersion::Empty => self.get_state_for_genesis_write(),
+            StorageVersion::Epoch(parent) => self
+                .open_state(
+                    &parent,
+                    OpenOptions::next_epoch_base(
+                        recover_mpt_during_construct_pivot_state,
+                    ),
+                )?
+                .ok_or_else(|| {
+                    Error::Msg(format!(
+                        "commit: the parent version {:?} is not available",
+                        parent
+                    ))
+                })?,
+        };
         state.commit_changeset(changeset, meta)
+    }
+
+    /// Compute the state root the genesis changeset would produce on the empty
+    /// base, without persisting any of it.
+    ///
+    /// Only genesis needs a root before its epoch has an id. Execution is
+    /// deferred: the state root a block header carries belongs to the epoch
+    /// `DEFERRED_STATE_EPOCH_COUNT` heights below it, an epoch which already
+    /// has a block hash of its own, so a commit always has an epoch id to
+    /// persist under. Nothing sits that far below the earliest headers, so
+    /// they carry the genesis root instead — the genesis header among them,
+    /// and the hash of that header is in turn the epoch id the genesis state
+    /// is committed under.
+    ///
+    /// The `commit_changeset` that follows applies the same changeset a second
+    /// time, on a state object opened afresh; only the genesis path pays for
+    /// that. The preview runs on the plain delta MPT state, never on the
+    /// replicated wrapper, so the single MPT replica sees each write exactly
+    /// once, in the commit.
+    pub fn preview_genesis_root(
+        self: &Arc<Self>, changeset: &Changeset,
+    ) -> Result<StateRootWithAuxInfo> {
+        self.get_state_for_genesis_write_inner()
+            .preview_root(changeset)
+    }
+
+    /// The empty base, i.e. the version the genesis epoch is committed on top
+    /// of. It is spelled as the null epoch, which the genesis state object
+    /// already carries as its parent epoch id and which no real epoch can
+    /// collide with.
+    /// A read only handle on the empty base, which the genesis execution reads
+    /// through. Every key is answered out of the null snapshot and an empty
+    /// delta trie.
+    pub fn open_empty_base(self: &Arc<Self>) -> Box<dyn StorageView> {
+        Box::new(self.get_state_for_genesis_write_inner())
     }
 
     pub fn get_state_for_genesis_write(

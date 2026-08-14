@@ -30,12 +30,18 @@ impl State {
         })
     }
 
-    /// Commit to the statedb and compute state root. Only called in the genesis
-    pub fn compute_state_root_for_genesis(
+    /// The first phase of the genesis commit: flush the execution into the
+    /// statedb and ask for the state root the resulting changeset would
+    /// produce, without persisting it. The caller needs the root to build the
+    /// genesis block header, whose hash is the epoch id `commit` is then
+    /// called with.
+    ///
+    /// The changeset stays in the statedb, so `commit` sees the whole of it.
+    pub fn preview_state_root_for_genesis(
         &mut self, mut debug_record: Option<&mut ComputeEpochDebugRecord>,
     ) -> DbResult<StateRootWithAuxInfo> {
         self.apply_changes_to_statedb(debug_record.as_deref_mut())?;
-        self.db.compute_state_root(debug_record)
+        self.db.preview_genesis_root(debug_record)
     }
 
     /// Apply changes for the accounts and global variables to the statedb.

@@ -8,6 +8,16 @@ pub use super::impls::state_manager::StateManager;
 
 pub type SharedStateManager = Arc<StateManager>;
 
+/// Which version of the state is opened, or committed against. `Empty` is
+/// the empty base: the state before any epoch exists. It is a concept of its
+/// own, not an epoch id that happens to be absent, and how an engine stands
+/// for the empty base on disk is that engine's own business.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StorageVersion {
+    Empty,
+    Epoch(EpochId),
+}
+
 /// What the caller intends to do with the version it opens: read that
 /// epoch, or use it as the execution base of its child epoch. One entry point
 /// serves both.
