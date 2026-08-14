@@ -7,7 +7,6 @@ pub struct StateAvailabilityBoundary {
     #[debug(ignore)]
     pub pivot_chain: Vec<H256>,
 
-    pub synced_state_height: u64,
     /// All states of `full_state_space` are available for reading after this
     /// height. `None` means no full state are kept.
     pub full_state_start_height: Option<u64>,
@@ -16,9 +15,7 @@ pub struct StateAvailabilityBoundary {
     pub full_state_space: Option<Space>,
 
     /// This is the lower boundary height of available state where we can
-    /// execute new epochs based on it. Note that `synced_state_height` is
-    /// within this bound for execution, but its state cannot be accessed
-    /// through `get_state_no_commit`.
+    /// execute new epochs based on it.
     pub lower_bound: u64,
     /// This is the upper boundary height of available state.
     pub upper_bound: u64,
@@ -36,7 +33,6 @@ impl StateAvailabilityBoundary {
     ) -> Self {
         Self {
             pivot_chain: vec![epoch_hash],
-            synced_state_height: 0,
             full_state_start_height,
             full_state_space,
             lower_bound: epoch_height,
@@ -47,22 +43,19 @@ impl StateAvailabilityBoundary {
 
     /// Check if the state can be accessed for reading.
     pub fn check_availability(&self, height: u64, block_hash: &H256) -> bool {
-        (height == 0 || height != self.synced_state_height)
-            && self.lower_bound <= height
-            && height <= self.upper_bound
-            && {
-                let r = self.pivot_chain[(height - self.lower_bound) as usize]
-                    == *block_hash;
-                if !r {
-                    debug!(
-                        "pivot_chain={:?} should be {:?} asked is {:?}",
-                        self.pivot_chain,
-                        self.pivot_chain[(height - self.lower_bound) as usize],
-                        block_hash
-                    );
-                }
-                r
+        self.lower_bound <= height && height <= self.upper_bound && {
+            let r = self.pivot_chain[(height - self.lower_bound) as usize]
+                == *block_hash;
+            if !r {
+                debug!(
+                    "pivot_chain={:?} should be {:?} asked is {:?}",
+                    self.pivot_chain,
+                    self.pivot_chain[(height - self.lower_bound) as usize],
+                    block_hash
+                );
             }
+            r
+        }
     }
 
     pub fn check_read_availability(
@@ -109,12 +102,6 @@ impl StateAvailabilityBoundary {
         }
     }
 
-    /// This function will record the most recent synced_state_height for
-    /// special case handling.
-    pub fn set_synced_state_height(&mut self, synced_state_height: u64) {
-        self.synced_state_height = synced_state_height;
-    }
-
     /// This function will set a new lower boundary height of available state.
     /// Caller should make sure the new lower boundary height should be greater
     /// than or equal to current lower boundary height.
@@ -135,11 +122,6 @@ impl StateAvailabilityBoundary {
             self.upper_bound,
             self,
         );
-        if self.synced_state_height != 0
-            && new_lower_bound > self.synced_state_height + REWARD_EPOCH_COUNT
-        {
-            self.synced_state_height = 0;
-        }
         self.pivot_chain = self
             .pivot_chain
             .split_off((new_lower_bound - self.lower_bound) as usize);
@@ -147,7 +129,6 @@ impl StateAvailabilityBoundary {
     }
 }
 
-use cfx_parameters::consensus_internal::REWARD_EPOCH_COUNT;
 use cfx_types::{Space, H256};
 use derive_more::Debug;
 use malloc_size_of_derive::MallocSizeOf;

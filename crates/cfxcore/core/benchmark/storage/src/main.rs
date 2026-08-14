@@ -1648,7 +1648,6 @@ impl TxReplayer {
             state_availability_boundary: RwLock::new(
                 StateAvailabilityBoundary {
                     pivot_chain: vec![],
-                    synced_state_height: 0,
                     lower_bound: 0,
                     upper_bound: 0,
                     optimistic_executed_height: None,

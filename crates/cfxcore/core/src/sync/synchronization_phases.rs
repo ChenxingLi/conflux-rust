@@ -452,11 +452,6 @@ impl SynchronizationPhaseTrait for CatchUpFillBlockBodyPhase {
                         full_state_start_height,
                         full_state_space,
                     );
-                self.graph
-                    .data_man
-                    .state_availability_boundary
-                    .write()
-                    .set_synced_state_height(epoch_synced_height);
             } else {
                 let cur_era_stable_hash =
                     self.graph.data_man.get_cur_consensus_era_stable_hash();

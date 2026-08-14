@@ -90,15 +90,32 @@ class SyncCheckpointTests(ConfluxTestFramework):
         assert full_node_client.epoch_number() >= snapshot_epoch
         wait_until(lambda: full_node_client.epoch_number() == archive_node_client.epoch_number() and
                    full_node_client.epoch_number("latest_state") == archive_node_client.epoch_number("latest_state"))
-        # We have snapshot_epoch for state execution but
-        # don't offer snapshot_epoch for Rpc clients.
-        for i in range(1, snapshot_epoch + 1):
+        # Nothing below the synced snapshot was ever executed here.
+        for i in range(1, snapshot_epoch):
             try:
                 full_node_client.get_balance(full_node_client.GENESIS_ADDR, full_node_client.EPOCH_NUM(i))
                 raise AssertionError("should not have state for epoch {}".format(i))
             except ReceivedErrorResponseError as e:
                 assert "State for epoch" in e.response.message
                 assert "does not exist" in e.response.message
+
+        # The synced snapshot is a merged image holding the whole state at that
+        # epoch, so values at that epoch are served and agree with the archive
+        # node.
+        assert_equal(
+            full_node_client.get_balance(full_node_client.GENESIS_ADDR, full_node_client.EPOCH_NUM(snapshot_epoch)),
+            archive_node_client.get_balance(archive_node_client.GENESIS_ADDR, archive_node_client.EPOCH_NUM(snapshot_epoch)),
+        )
+
+        # Answers which decompose the state into its three layers cannot be
+        # given at that epoch: the merged image does not have the layering the
+        # block header commits to.
+        try:
+            full_node_client.get_storage_root(full_node_client.GENESIS_ADDR, full_node_client.EPOCH_NUM(snapshot_epoch))
+            raise AssertionError("should not have storage root for epoch {}".format(snapshot_epoch))
+        except ReceivedErrorResponseError as e:
+            assert "State for epoch" in e.response.message
+            assert "does not exist" in e.response.message
 
         # Wait for execution to complete.
         time.sleep(1)
