@@ -60,7 +60,6 @@ impl SnapshotChunkManager {
             ctx.manager
                 .storage
                 .get_storage_manager()
-                .get_snapshot_manager()
                 .get_snapshot_db_manager(),
             snapshot_info.get_snapshot_epoch_id(),
             snapshot_info.height,

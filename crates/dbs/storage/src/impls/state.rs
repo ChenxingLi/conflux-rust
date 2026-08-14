@@ -35,7 +35,9 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(manager: Arc<StateManager>, state_trees: StateTrees) -> Self {
+    pub(crate) fn new(
+        manager: Arc<StateManager>, state_trees: StateTrees,
+    ) -> Self {
         Self {
             manager,
             snapshot_db: state_trees.snapshot_db,

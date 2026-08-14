@@ -2,6 +2,10 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
+/// The bound names an engine private trait, which only the engine's own
+/// snapshot db manager can satisfy. The sync adapter names that concrete type
+/// as the parameter, so it never has to name the bound.
+#[allow(private_bounds)]
 pub struct FullSyncVerifier<SnapshotDbManager: SnapshotDbManagerTrait> {
     number_chunks: usize,
     merkle_root: MerkleHash,
@@ -17,6 +21,7 @@ pub struct FullSyncVerifier<SnapshotDbManager: SnapshotDbManagerTrait> {
     temp_snapshot_db: SnapshotDbManager::SnapshotDbWrite,
 }
 
+#[allow(private_bounds)]
 impl<SnapshotDbManager: SnapshotDbManagerTrait>
     FullSyncVerifier<SnapshotDbManager>
 {

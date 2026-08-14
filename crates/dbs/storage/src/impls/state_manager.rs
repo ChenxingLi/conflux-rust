@@ -6,7 +6,7 @@ pub type DeltaDbManager = DeltaDbManagerRocksdb;
 pub type SnapshotDbManager = SnapshotDbManagerSqlite;
 pub type SnapshotDb = <SnapshotDbManager as SnapshotDbManagerTrait>::SnapshotDb;
 
-pub struct StateTrees {
+pub(crate) struct StateTrees {
     pub snapshot_db: SnapshotDb,
     pub snapshot_epoch_id: EpochId,
     pub snapshot_merkle_root: MerkleHash,
@@ -533,7 +533,7 @@ impl StateManager {
     /// delta_mpt_key_padding is required. When None is passed,
     /// it's calculated for the state_trees.
     #[inline]
-    pub fn get_state_trees_internal(
+    pub(crate) fn get_state_trees_internal(
         snapshot_db: SnapshotDb, snapshot_epoch_id: &EpochId,
         snapshot_merkle_root: MerkleHash,
         maybe_intermediate_trie: Option<Arc<DeltaMpt>>,
@@ -592,7 +592,7 @@ impl StateManager {
         }))
     }
 
-    pub fn get_state_trees(
+    pub(crate) fn get_state_trees(
         &self, epoch_id: &EpochId, try_open: bool, open_mpt_snapshot: bool,
     ) -> Result<Option<StateTrees>> {
         let Some(resolved) = self.resolve_coordinates(epoch_id)? else {
@@ -709,7 +709,7 @@ impl StateManager {
         )
     }
 
-    pub fn get_state_trees_for_next_epoch(
+    pub(crate) fn get_state_trees_for_next_epoch(
         &self, parent_epoch_id: &EpochId, try_open: bool,
         open_mpt_snapshot: bool,
     ) -> Result<Option<StateTrees>> {

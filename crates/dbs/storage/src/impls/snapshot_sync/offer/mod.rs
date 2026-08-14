@@ -4,4 +4,4 @@
 
 pub mod mpt_slicer;
 
-pub use self::mpt_slicer::MptSlicer;
+pub(crate) use self::mpt_slicer::MptSlicer;

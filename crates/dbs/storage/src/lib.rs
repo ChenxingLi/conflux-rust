@@ -221,7 +221,7 @@ pub use self::{
         node_merkle_proof::{NodeMerkleProof, StorageRootProof},
         proof_merger::StateProofMerger,
         recording_storage::RecordingStorage,
-        snapshot_sync::{FullSyncVerifier, MptSlicer},
+        snapshot_sync::FullSyncVerifier,
         state_export::StateExport,
         state_proof::StateProof,
         storage_db::{

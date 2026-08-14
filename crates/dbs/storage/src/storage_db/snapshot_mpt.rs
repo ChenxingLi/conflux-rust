@@ -32,14 +32,14 @@ pub struct SubtreeMerkleWithSize {
 // TODO: The key for SnapshotMpt should be changed to something else because
 // TODO: we'd like to use a multi-version snapshot db to manage multiple
 // TODO: snapshots.
-pub trait SnapshotMptTraitRead: AsSnapshotMptTraitRead {
+pub(crate) trait SnapshotMptTraitRead: AsSnapshotMptTraitRead {
     fn get_merkle_root(&self) -> MerkleHash;
     fn load_node(
         &mut self, path: &dyn CompressedPathTrait,
     ) -> Result<Option<SnapshotMptNode>>;
 }
 
-pub trait AsSnapshotMptTraitRead {
+pub(crate) trait AsSnapshotMptTraitRead {
     fn as_readonly(&mut self) -> &mut dyn SnapshotMptTraitRead;
 }
 
@@ -47,13 +47,17 @@ impl<T: SnapshotMptTraitRead> AsSnapshotMptTraitRead for T {
     fn as_readonly(&mut self) -> &mut dyn SnapshotMptTraitRead { self }
 }
 
-pub trait SnapshotMptTraitReadAndIterate: SnapshotMptTraitRead {
+pub(crate) trait SnapshotMptTraitReadAndIterate:
+    SnapshotMptTraitRead
+{
     fn iterate_subtree_trie_nodes_without_root(
         &mut self, path: &dyn CompressedPathTrait,
     ) -> Result<Box<dyn SnapshotMptIteraterTrait + '_>>;
 }
 
-pub trait SnapshotMptTraitRw: SnapshotMptTraitReadAndIterate {
+pub(crate) trait SnapshotMptTraitRw:
+    SnapshotMptTraitReadAndIterate
+{
     fn delete_node(&mut self, path: &dyn CompressedPathTrait) -> Result<()>;
     fn write_node(
         &mut self, path: &dyn CompressedPathTrait, trie_node: &SnapshotMptNode,
@@ -64,7 +68,7 @@ pub trait SnapshotMptTraitRw: SnapshotMptTraitReadAndIterate {
 // TODO: save-as mode, because MptMerger always access nodes in snapshot mpt in
 // TODO: increasing order. we need to make special generalization for MptMerger
 // TODO: to take SnapshotMptIteraterTrait as input.
-pub trait SnapshotMptIteraterTrait:
+pub(crate) trait SnapshotMptIteraterTrait:
     FallibleIterator<Item = (CompressedPathRaw, SnapshotMptNode), Error = Error>
 {
 }

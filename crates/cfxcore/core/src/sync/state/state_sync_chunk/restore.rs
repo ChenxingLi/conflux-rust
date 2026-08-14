@@ -4,9 +4,8 @@
 
 use crate::sync::state::storage::{Chunk, ChunkKey};
 use cfx_storage::{
-    state_manager::StateManager,
-    storage_db::{SnapshotDbManagerTrait, SnapshotInfo},
-    FullSyncVerifier, Result as StorageResult, SnapshotDbManagerSqlite,
+    state_manager::StateManager, storage_db::SnapshotInfo, FullSyncVerifier,
+    Result as StorageResult, SnapshotDbManagerSqlite,
 };
 use primitives::{EpochId, MerkleHash, StateRoot};
 use std::sync::Arc;
@@ -84,10 +83,7 @@ impl Restorer {
                         != snapshot_info_in_db.get_snapshot_epoch_id()
                 {
                     debug!("destroy snapshot {:?}", snapshot_epoch_id);
-                    storage_manager
-                        .get_snapshot_manager()
-                        .get_snapshot_db_manager()
-                        .destroy_snapshot(snapshot_epoch_id)?;
+                    storage_manager.destroy_snapshot(snapshot_epoch_id)?;
                     Some(snapshot_info)
                 } else {
                     None
@@ -100,12 +96,9 @@ impl Restorer {
         };
 
         let mut snapshot_info_map_locked = storage_manager
-            .get_snapshot_manager()
-            .get_snapshot_db_manager()
             .finalize_full_sync_snapshot(
                 &self.snapshot_epoch_id,
                 &self.snapshot_merkle_root,
-                &storage_manager.snapshot_info_map_by_epoch,
             )?;
 
         if let Some(parent_snapshot) = parent_snapshot {

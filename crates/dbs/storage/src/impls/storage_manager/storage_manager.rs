@@ -2,6 +2,26 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
+/// What `slice_snapshot_for_manifest` gives back to the snapshot sync
+/// adapter: the boundaries of the chunks the snapshot was cut into, one proof
+/// per boundary, the snapshot's merkle root, and whether the cut stopped at
+/// `max_chunks` with more of the snapshot left.
+pub struct SnapshotManifestSlice {
+    pub merkle_root: MerkleHash,
+    pub chunk_boundaries: Vec<Vec<u8>>,
+    pub chunk_boundary_proofs: Vec<TrieProof>,
+    pub has_next: bool,
+}
+
+/// What `load_snapshot_kv_range` gives back to the snapshot sync adapter: the
+/// key value entries of one chunk, plus whether the read stopped early
+/// because the range does not fit in the size limit the caller gave.
+pub struct SnapshotKvChunk {
+    pub keys: Vec<Vec<u8>>,
+    pub values: Vec<Box<[u8]>>,
+    pub exceeded_max_rlp_size: bool,
+}
+
 /// The in mem snapshot_info map and the on disk snapshot_info_db is always in
 /// sync.
 pub struct PersistedSnapshotInfoMap {
@@ -371,7 +391,7 @@ impl StorageManager {
             .map(|i| i.merkle_root.clone())
     }
 
-    pub fn wait_for_snapshot(
+    pub(crate) fn wait_for_snapshot(
         &self, snapshot_epoch_id: &EpochId, try_open: bool,
         open_mpt_snapshot: bool,
     ) -> Result<
@@ -443,7 +463,7 @@ impl StorageManager {
         }
     }
 
-    pub fn get_snapshot_manager(
+    pub(crate) fn get_snapshot_manager(
         &self,
     ) -> &(dyn SnapshotManagerTrait<
         SnapshotDb = SnapshotDb,
@@ -451,6 +471,178 @@ impl StorageManager {
     > + Send
              + Sync) {
         &*self.snapshot_manager
+    }
+
+    /// The concrete snapshot db manager, handed to the snapshot sync adapter
+    /// so that it can build a `FullSyncVerifier` on it. The snapshot db traits
+    /// are engine private, so a caller outside the engine can only pass this
+    /// handle along, not call through it.
+    pub fn get_snapshot_db_manager(&self) -> &SnapshotDbManager {
+        self.get_snapshot_manager().get_snapshot_db_manager()
+    }
+
+    /// Engine entry for the snapshot sync adapter: drop a snapshot whose
+    /// content disagrees with the one being restored.
+    pub fn destroy_snapshot(&self, snapshot_epoch_id: &EpochId) -> Result<()> {
+        self.get_snapshot_db_manager()
+            .destroy_snapshot(snapshot_epoch_id)
+    }
+
+    /// Engine entry for the snapshot sync adapter: turn the temporary snapshot
+    /// written by the restoration into the real one. The returned guard is the
+    /// one `register_new_snapshot` wants, so the caller has to keep holding
+    /// the snapshot info map across both calls.
+    pub fn finalize_full_sync_snapshot(
+        &self, snapshot_epoch_id: &EpochId, merkle_root: &MerkleHash,
+    ) -> Result<RwLockWriteGuard<'_, PersistedSnapshotInfoMap>> {
+        self.get_snapshot_db_manager().finalize_full_sync_snapshot(
+            snapshot_epoch_id,
+            merkle_root,
+            &self.snapshot_info_map_by_epoch,
+        )
+    }
+
+    /// Engine entry for the snapshot sync adapter: cut the snapshot MPT into
+    /// chunk boundaries for a manifest. The cursor that walks the MPT borrows
+    /// from the opened snapshot db, and both are engine private, so the whole
+    /// walk happens here and only its result leaves the engine.
+    pub fn slice_snapshot_for_manifest(
+        &self, snapshot_epoch_id: &EpochId, start_key: Option<&[u8]>,
+        chunk_size: u64, max_chunks: usize,
+    ) -> Result<Option<SnapshotManifestSlice>> {
+        let Some(snapshot_db) =
+            self.get_snapshot_manager().get_snapshot_by_epoch_id(
+                snapshot_epoch_id,
+                /* try_open = */ true,
+                true,
+            )?
+        else {
+            return Ok(None);
+        };
+        let mut snapshot_mpt = snapshot_db.open_snapshot_mpt_shared()?;
+        let merkle_root = snapshot_mpt.merkle_root;
+        let mut slicer = match start_key {
+            Some(key) => MptSlicer::new_from_key(&mut snapshot_mpt, key)?,
+            None => MptSlicer::new(&mut snapshot_mpt)?,
+        };
+
+        let mut chunk_boundaries = vec![];
+        let mut chunk_boundary_proofs = vec![];
+        let mut has_next = true;
+
+        // The slicer advances monotonically through the trie, so the
+        // boundaries come out strictly increasing -- the invariant the
+        // receiver enforces in `validate`.
+        for i in 0..max_chunks {
+            trace!("cut chunks for manifest, loop = {}", i);
+            slicer.advance(chunk_size)?;
+            match slicer.get_range_end_key() {
+                None => {
+                    has_next = false;
+                    break;
+                }
+                Some(key) => {
+                    chunk_boundaries.push(key.to_vec());
+                    chunk_boundary_proofs.push(slicer.to_proof());
+                }
+            }
+        }
+
+        Ok(Some(SnapshotManifestSlice {
+            merkle_root,
+            chunk_boundaries,
+            chunk_boundary_proofs,
+            has_next,
+        }))
+    }
+
+    /// Engine entry for the snapshot sync adapter: read one key range out of a
+    /// snapshot's key value table. The read stops as soon as the accumulated
+    /// RLP size exceeds `max_rlp_size`, and says so in
+    /// `exceeded_max_rlp_size`; the caller decides what an over-long range
+    /// means, because that decision is about the peer that asked for it.
+    pub fn load_snapshot_kv_range(
+        &self, snapshot_epoch_id: &EpochId, lower_bound_incl: &[u8],
+        upper_bound_excl: Option<&[u8]>, max_rlp_size: u64,
+    ) -> Result<Option<SnapshotKvChunk>> {
+        let Some(snapshot_db) =
+            self.get_snapshot_manager().get_snapshot_by_epoch_id(
+                snapshot_epoch_id,
+                /* try_open = */ true,
+                false,
+            )?
+        else {
+            return Ok(None);
+        };
+
+        let mut kv_iterator = snapshot_db.snapshot_kv_iterator()?.take();
+        let mut kvs = kv_iterator
+            .iter_range(lower_bound_incl, upper_bound_excl)?
+            .take();
+
+        let mut keys = Vec::new();
+        let mut values = Vec::new();
+        let mut rlp_size = 0;
+        let mut exceeded_max_rlp_size = false;
+        while let Some((key, value)) = kvs.next()? {
+            rlp_size += rlp_key_value_len(key.len() as u16, value.len());
+            if rlp_size > max_rlp_size {
+                exceeded_max_rlp_size = true;
+                break;
+            }
+
+            keys.push(key);
+            values.push(value);
+        }
+
+        Ok(Some(SnapshotKvChunk {
+            keys,
+            values,
+            exceeded_max_rlp_size,
+        }))
+    }
+
+    /// Engine entry for the snapshot merge test tool: read a list of keys out
+    /// of one snapshot's key value table. The snapshot db is opened once for
+    /// the whole list.
+    pub fn read_snapshot_values(
+        &self, snapshot_epoch_id: &EpochId, keys: &[Vec<u8>],
+    ) -> Result<Option<Vec<Option<Box<[u8]>>>>> {
+        let Some(snapshot_db) =
+            self.get_snapshot_manager().get_snapshot_by_epoch_id(
+                snapshot_epoch_id,
+                /* try_open = */ false,
+                true,
+            )?
+        else {
+            return Ok(None);
+        };
+        let mut values = Vec::with_capacity(keys.len());
+        for key in keys {
+            values.push(snapshot_db.get(key.as_slice())?);
+        }
+        Ok(Some(values))
+    }
+
+    /// Engine entry for the snapshot merge test tool: merge one delta MPT into
+    /// the parent snapshot and produce the next snapshot. The engine drives
+    /// this itself in `check_make_snapshot`; the tool drives it directly so
+    /// that it can compare two ways of reaching the same snapshot.
+    pub fn new_snapshot_by_merging(
+        &self, old_snapshot_epoch_id: &EpochId, snapshot_epoch_id: EpochId,
+        delta_mpt: DeltaMptIterator, in_progress_snapshot_info: SnapshotInfo,
+        new_epoch_height: u64, recover_mpt_with_kv_snapshot_exist: bool,
+    ) -> Result<(RwLockWriteGuard<'_, PersistedSnapshotInfoMap>, SnapshotInfo)>
+    {
+        self.get_snapshot_db_manager().new_snapshot_by_merging(
+            old_snapshot_epoch_id,
+            snapshot_epoch_id,
+            delta_mpt,
+            in_progress_snapshot_info,
+            &self.snapshot_info_map_by_epoch,
+            new_epoch_height,
+            recover_mpt_with_kv_snapshot_exist,
+        )
     }
 
     pub fn get_snapshot_epoch_count(&self) -> u32 {
@@ -2105,6 +2297,8 @@ use crate::{
             node_ref_map::DeltaMptId,
         },
         errors::*,
+        merkle_patricia_trie::{mpt_cursor::rlp_key_value_len, TrieProof},
+        snapshot_sync::MptSlicer,
         state_index_db::{StateIndexDb, StateIndexEntry},
         state_manager::{DeltaDbManager, SnapshotDb, SnapshotDbManager},
         storage_db::{
@@ -2119,7 +2313,8 @@ use crate::{
     snapshot_manager::SnapshotManagerTrait,
     state_manager::{ConsensusRecoveryView, RecoveryPlan, StateConfirmedView},
     storage_db::{
-        DeltaDbManagerTrait, KeyValueDbIterableTrait, SnapshotDbManagerTrait,
+        DeltaDbManagerTrait, KeyValueDbIterableTrait, KeyValueDbTraitRead,
+        OpenSnapshotMptTrait, SnapshotDbManagerTrait, SnapshotDbTrait,
         SnapshotInfo, SnapshotKeptToProvideSyncStatus,
     },
     storage_dir,
@@ -2130,7 +2325,7 @@ use crate::{
 };
 use fallible_iterator::FallibleIterator;
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
-use parking_lot::{Mutex, RwLock, RwLockReadGuard};
+use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use primitives::{
     EpochId, MerkleHash, StateRoot, MERKLE_NULL_NODE, NULL_EPOCH,
 };

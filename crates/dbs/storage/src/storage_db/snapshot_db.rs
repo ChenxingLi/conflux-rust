@@ -111,7 +111,7 @@ impl SnapshotInfo {
     }
 }
 
-pub trait OpenSnapshotMptTrait<'db> {
+pub(crate) trait OpenSnapshotMptTrait<'db> {
     type SnapshotDbBorrowSharedType: 'db + SnapshotMptTraitRead;
     type SnapshotDbBorrowMutType: 'db + SnapshotMptTraitRw;
     type SnapshotDbAsOwnedType: 'db + SnapshotMptTraitRw;
@@ -129,7 +129,7 @@ pub trait OpenSnapshotMptTrait<'db> {
     ) -> StorageResult<Self::SnapshotDbBorrowSharedType>;
 }
 
-pub trait SnapshotDbTrait:
+pub(crate) trait SnapshotDbTrait:
     KeyValueDbTraitOwnedRead
     + KeyValueDbTraitRead
     + KeyValueDbTraitSingleWriter

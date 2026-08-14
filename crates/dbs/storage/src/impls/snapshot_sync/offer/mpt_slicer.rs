@@ -2,7 +2,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-pub struct MptSlicer<'a> {
+pub(crate) struct MptSlicer<'a> {
     cursor: MptCursor<
         &'a mut dyn SnapshotMptTraitRead,
         BasicPathNode<&'a mut dyn SnapshotMptTraitRead>,
@@ -10,13 +10,13 @@ pub struct MptSlicer<'a> {
 }
 
 impl<'a> MptSlicer<'a> {
-    pub fn new(mpt: &'a mut dyn SnapshotMptTraitRead) -> Result<Self> {
+    pub(crate) fn new(mpt: &'a mut dyn SnapshotMptTraitRead) -> Result<Self> {
         let mut cursor = MptCursor::new(mpt);
         cursor.load_root()?;
         Ok(Self { cursor })
     }
 
-    pub fn new_from_key(
+    pub(crate) fn new_from_key(
         mpt: &'a mut dyn SnapshotMptTraitRead, key: &[u8],
     ) -> Result<Self> {
         let mut slicer = Self::new(mpt)?;
@@ -24,9 +24,9 @@ impl<'a> MptSlicer<'a> {
         Ok(slicer)
     }
 
-    pub fn to_proof(&self) -> TrieProof { self.cursor.to_proof() }
+    pub(crate) fn to_proof(&self) -> TrieProof { self.cursor.to_proof() }
 
-    pub fn get_range_end_key(&self) -> Option<&[u8]> {
+    pub(crate) fn get_range_end_key(&self) -> Option<&[u8]> {
         // The cursor stops at the key which just exceed,the rlp_size_limit,
         // or at the root node.
         let key = self
@@ -43,7 +43,7 @@ impl<'a> MptSlicer<'a> {
         }
     }
 
-    pub fn advance(&mut self, mut rlp_size_limit: u64) -> Result<()> {
+    pub(crate) fn advance(&mut self, mut rlp_size_limit: u64) -> Result<()> {
         let current_node = self.cursor.current_node_mut();
         // First, check the value of this node, if we are the first time
         // visiting this node.

@@ -5,9 +5,8 @@
 use cfx_internal_common::state_root_with_aux_info::StateRootWithAuxInfo;
 use cfx_statedb::{StateDb, StateDbExt};
 use cfx_storage::{
-    state_manager::StateManager,
-    storage_db::{KeyValueDbTraitRead, SnapshotDbManagerTrait, SnapshotInfo},
-    DeltaMptIterator, Error as StorageError, OpenOptions, StorageConfiguration,
+    state_manager::StateManager, storage_db::SnapshotInfo, DeltaMptIterator,
+    Error as StorageError, OpenOptions, StorageConfiguration,
 };
 use cfx_types::{Address, AddressSpaceUtil, AddressWithSpace, H256};
 use cfxcore::sync::Error;
@@ -43,10 +42,6 @@ fn main() -> Result<(), Error> {
     let state_manager =
         new_state_manager(test_dir.as_path().to_str().unwrap())?;
     let storage_manager = state_manager.get_storage_manager_arc();
-    let snapshot_db_manager = state_manager
-        .get_storage_manager()
-        .get_snapshot_manager()
-        .get_snapshot_db_manager();
 
     // state1 is only used to build a delta mpt, so the snapshot within it does
     // not matter.
@@ -92,13 +87,12 @@ fn main() -> Result<(), Error> {
         serve_one_step_sync: false,
         snapshot_info_kept_to_provide_sync: Default::default(),
     };
-    let (mut snapshot_info_map_locked, snapshot_info1) = snapshot_db_manager
+    let (mut snapshot_info_map_locked, snapshot_info1) = storage_manager
         .new_snapshot_by_merging(
             &NULL_EPOCH,
             snapshot1_epoch,
             delta_mpt_iterator,
             info,
-            &storage_manager.snapshot_info_map_by_epoch,
             height,
             false,
         )?;
@@ -145,13 +139,12 @@ fn main() -> Result<(), Error> {
         serve_one_step_sync: false,
         snapshot_info_kept_to_provide_sync: Default::default(),
     };
-    let (mut snapshot_info_map_locked, snapshot_info2) = snapshot_db_manager
+    let (mut snapshot_info_map_locked, snapshot_info2) = storage_manager
         .new_snapshot_by_merging(
             &snapshot1_epoch,
             snapshot2_epoch,
             delta_mpt_iterator,
             info,
-            &storage_manager.snapshot_info_map_by_epoch,
             height,
             false,
         )?;
@@ -164,16 +157,16 @@ fn main() -> Result<(), Error> {
         snapshot_info2.clone(),
         &mut snapshot_info_map_locked,
     )?;
-    let snapshot2 = snapshot_db_manager
-        .get_snapshot_by_epoch_id(
-            &snapshot2_epoch,
-            /* try_open = */ false,
-            true,
-        )?
+    let addresses: Vec<Vec<u8>> = accounts_map
+        .keys()
+        .map(|addr| addr.address.as_bytes().to_vec())
+        .collect();
+    let snapshot2_values = storage_manager
+        .read_snapshot_values(&snapshot2_epoch, &addresses)?
         .expect("exists");
-    for (addr, account) in &accounts_map {
-        let value: Option<Box<[u8]>> =
-            snapshot2.get(addr.address.as_bytes())?;
+    for ((addr, account), value) in
+        accounts_map.iter().zip(snapshot2_values.into_iter())
+    {
         assert!(value.is_some(), "Address {:?} does not exist", addr);
         let account_bytes = rlp::encode(account);
         let get_bytes = value.unwrap();
@@ -212,13 +205,12 @@ fn main() -> Result<(), Error> {
         serve_one_step_sync: false,
         snapshot_info_kept_to_provide_sync: Default::default(),
     };
-    let (mut snapshot_info_map_locked, snapshot_info3) = snapshot_db_manager
+    let (mut snapshot_info_map_locked, snapshot_info3) = storage_manager
         .new_snapshot_by_merging(
             &NULL_EPOCH,
             snapshot3_epoch,
             delta_mpt_iterator,
             info,
-            &storage_manager.snapshot_info_map_by_epoch,
             height,
             false,
         )?;

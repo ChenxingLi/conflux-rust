@@ -3,16 +3,8 @@
 // See http://www.gnu.org/licenses/
 
 use crate::sync::Error;
-use cfx_storage::{
-    rlp_key_value_len,
-    storage_db::{
-        key_value_db::KeyValueDbIterableTrait, snapshot_db::SnapshotDbTrait,
-        OpenSnapshotMptTrait,
-    },
-    MptSlicer, StorageManager, TrieProof,
-};
+use cfx_storage::{StorageManager, TrieProof};
 use cfx_types::H256;
-use fallible_iterator::FallibleIterator;
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use primitives::{EpochId, MerkleHash};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
@@ -217,50 +209,27 @@ impl RangedManifest {
             snapshot_epoch_id, start_key
         );
 
-        let snapshot_db_manager =
-            storage_manager.get_storage_manager().get_snapshot_manager();
-
-        let snapshot_db = match snapshot_db_manager.get_snapshot_by_epoch_id(
-            snapshot_epoch_id,
-            /* try_open = */ true,
-            true,
-        )? {
-            Some(db) => db,
-            None => {
-                debug!(
-                    "failed to load manifest, cannot find snapshot {:?}",
-                    snapshot_epoch_id
-                );
-                return Ok(None);
-            }
+        let Some(slice) = storage_manager
+            .get_storage_manager()
+            .slice_snapshot_for_manifest(
+                snapshot_epoch_id,
+                start_key.as_ref().map(|key| key.as_slice()),
+                chunk_size,
+                max_chunks,
+            )?
+        else {
+            debug!(
+                "failed to load manifest, cannot find snapshot {:?}",
+                snapshot_epoch_id
+            );
+            return Ok(None);
         };
-        let mut snapshot_mpt = snapshot_db.open_snapshot_mpt_shared()?;
-        let merkle_root = snapshot_mpt.merkle_root;
-        let mut slicer = match start_key {
-            Some(ref key) => MptSlicer::new_from_key(&mut snapshot_mpt, key)?,
-            None => MptSlicer::new(&mut snapshot_mpt)?,
-        };
+        let merkle_root = slice.merkle_root;
+        let has_next = slice.has_next;
 
         let mut manifest = RangedManifest::default();
-        let mut has_next = true;
-
-        // The slicer advances monotonically through the trie, so the boundaries
-        // come out strictly increasing -- the invariant the receiver enforces
-        // in `validate`.
-        for i in 0..max_chunks {
-            trace!("cut chunks for manifest, loop = {}", i);
-            slicer.advance(chunk_size)?;
-            match slicer.get_range_end_key() {
-                None => {
-                    has_next = false;
-                    break;
-                }
-                Some(key) => {
-                    manifest.chunk_boundaries.push(key.to_vec());
-                    manifest.chunk_boundary_proofs.push(slicer.to_proof());
-                }
-            }
-        }
+        manifest.chunk_boundaries = slice.chunk_boundaries;
+        manifest.chunk_boundary_proofs = slice.chunk_boundary_proofs;
 
         if has_next {
             manifest.next = Some(
@@ -343,46 +312,42 @@ impl Chunk {
             snapshot_epoch_id, chunk_key
         );
 
-        let snapshot_db_manager =
-            storage_manager.get_storage_manager().get_snapshot_manager();
-
-        let snapshot_db = match snapshot_db_manager.get_snapshot_by_epoch_id(
-            snapshot_epoch_id,
-            /* try_open = */ true,
-            false,
-        )? {
-            Some(db) => db,
-            None => {
-                debug!("failed to load chunk, cannot find snapshot by checkpoint {:?}",
-                       snapshot_epoch_id);
-                return Ok(None);
-            }
-        };
-
-        let mut kv_iterator = snapshot_db.snapshot_kv_iterator()?.take();
         let lower_bound_incl =
             chunk_key.lower_bound_incl.clone().unwrap_or_default();
         let upper_bound_excl =
             chunk_key.upper_bound_excl.as_ref().map(|k| k.as_slice());
-        let mut kvs = kv_iterator
-            .iter_range(lower_bound_incl.as_slice(), upper_bound_excl)?
-            .take();
 
-        let mut keys = Vec::new();
-        let mut values = Vec::new();
-        let mut chunk_size = 0;
-        while let Some((key, value)) = kvs.next()? {
-            chunk_size += rlp_key_value_len(key.len() as u16, value.len());
-            if chunk_size > max_chunk_size {
-                let msg =
-                    format!("Exceed max allowed chunk size {}", max_chunk_size);
-                error!("{}", msg);
-                return Err(Error::InvalidSnapshotChunk(msg).into());
-            }
+        // The size limit stays on this side: it caps what a peer may ask for,
+        // not what the storage engine can read.
+        let Some(kv_chunk) = storage_manager
+            .get_storage_manager()
+            .load_snapshot_kv_range(
+                snapshot_epoch_id,
+                lower_bound_incl.as_slice(),
+                upper_bound_excl,
+                max_chunk_size,
+            )?
+        else {
+            debug!(
+                "failed to load chunk, cannot find snapshot by checkpoint {:?}",
+                snapshot_epoch_id
+            );
+            return Ok(None);
+        };
 
-            keys.push(key);
-            values.push(value.into());
+        if kv_chunk.exceeded_max_rlp_size {
+            let msg =
+                format!("Exceed max allowed chunk size {}", max_chunk_size);
+            error!("{}", msg);
+            return Err(Error::InvalidSnapshotChunk(msg).into());
         }
+
+        let keys = kv_chunk.keys;
+        let values = kv_chunk
+            .values
+            .into_iter()
+            .map(|v| v.into())
+            .collect::<Vec<_>>();
 
         debug!(
             "complete to load chunk, items = {}, chunk_key = {:?}",

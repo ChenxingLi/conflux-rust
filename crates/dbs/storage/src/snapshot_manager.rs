@@ -3,7 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 /// Archive nodes and full nodes react differently for snapshot management.
-pub trait SnapshotManagerTrait: GetSnapshotDbManager {
+pub(crate) trait SnapshotManagerTrait: GetSnapshotDbManager {
     // FIXME: add check_make_register_snapshot_background into trait
 
     fn get_snapshot_by_epoch_id(
@@ -25,7 +25,7 @@ pub trait SnapshotManagerTrait: GetSnapshotDbManager {
     ) -> Result<()>;
 }
 
-pub trait GetSnapshotDbManager {
+pub(crate) trait GetSnapshotDbManager {
     type SnapshotDb: SnapshotDbTrait<ValueType = Box<[u8]>>;
     type SnapshotDbManager: SnapshotDbManagerTrait<
         SnapshotDb = Self::SnapshotDb,

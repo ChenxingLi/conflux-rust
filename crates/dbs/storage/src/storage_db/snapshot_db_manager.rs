@@ -12,7 +12,7 @@ pub struct SnapshotPersistState {
     pub max_snapshot_epoch_height_has_mpt: Option<u64>,
 }
 
-pub trait SnapshotDbWriteableTrait: KeyValueDbTypes {
+pub(crate) trait SnapshotDbWriteableTrait: KeyValueDbTypes {
     type SnapshotDbBorrowMutType: SnapshotMptTraitRw;
 
     fn start_transaction(&mut self) -> Result<()>;
@@ -29,7 +29,7 @@ pub trait SnapshotDbWriteableTrait: KeyValueDbTypes {
 }
 
 /// The trait for database manager of Snapshot.
-pub trait SnapshotDbManagerTrait {
+pub(crate) trait SnapshotDbManagerTrait {
     type SnapshotDb: SnapshotDbTrait<ValueType = Box<[u8]>>;
     type SnapshotDbWrite: SnapshotDbWriteableTrait<ValueType = Box<[u8]>>;
 
