@@ -38,6 +38,11 @@ pub struct StateManager {
     storage_manager: Arc<StorageManager>,
     single_mpt_storage_manager: Option<Arc<SingleMptStorageManager>>,
     pub number_committed_nodes: AtomicUsize,
+    /// A clone of the handle owned by `storage_manager`. `commit` writes
+    /// entries into it, and nothing resolves an epoch's coordinates out of it
+    /// yet.
+    #[ignore_malloc_size_of = "rocksdb handle owned by StorageManager"]
+    state_index_db: Arc<StateIndexDb>,
 }
 
 impl Drop for StateManager {
@@ -65,11 +70,20 @@ impl StateManager {
         };
 
         let storage_manager = StorageManager::new_arc(conf)?;
+        let state_index_db = storage_manager.state_index_db();
+
         Ok(Self {
             storage_manager,
             single_mpt_storage_manager,
             number_committed_nodes: Default::default(),
+            state_index_db,
         })
+    }
+
+    /// The engine's own state index. Only write entry points use it in this
+    /// commit; the open path is untouched.
+    pub(crate) fn state_index_db(&self) -> &StateIndexDb {
+        &self.state_index_db
     }
 
     pub fn log_usage(&self) {
@@ -856,6 +870,7 @@ use crate::{
         delta_mpt::*,
         errors::*,
         replicated_state::ReplicatedState,
+        state_index_db::StateIndexDb,
         storage_db::{
             delta_db_manager_rocksdb::DeltaDbManagerRocksdb,
             snapshot_db_manager_sqlite::SnapshotDbManagerSqlite,

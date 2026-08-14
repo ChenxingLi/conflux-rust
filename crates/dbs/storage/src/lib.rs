@@ -30,6 +30,9 @@ pub mod storage_dir {
     lazy_static! {
         pub static ref DELTA_MPTS_DIR: PathBuf =
             ["storage_db", "delta_mpts"].iter().collect::<PathBuf>();
+        /// The engine's own state index, relative to `path_storage_dir`,
+        /// i.e. sitting next to the other storage dbs.
+        pub static ref STATE_INDEX_DB_PATH: PathBuf = "state_index_db".into();
         pub static ref SNAPSHOT_DIR: PathBuf =
             ["storage_db", "snapshot"].iter().collect::<PathBuf>();
         pub static ref SNAPSHOT_INFO_DB_NAME: &'static str = "snapshot_info";

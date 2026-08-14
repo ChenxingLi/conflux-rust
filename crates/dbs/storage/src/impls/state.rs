@@ -86,6 +86,29 @@ impl State {
         }
     }
 
+    /// Build the private index entry for the epoch being committed and store
+    /// it. This is the index's write port for a locally executed epoch. Two
+    /// more follow: the first boot rebuild in C2.2 and the sync registration
+    /// in C3, which is where all three are named together.
+    fn write_state_index_entry(
+        &self, epoch_id: &EpochId, delta_root: &MerkleHash,
+    ) -> Result<()> {
+        let entry = StateIndexEntry {
+            snapshot_epoch_id: self.snapshot_epoch_id,
+            snapshot_merkle_root: self.snapshot_merkle_root,
+            intermediate_epoch_id: self.intermediate_epoch_id,
+            intermediate_delta_root: self.intermediate_trie_root_merkle,
+            maybe_intermediate_mpt_key_padding: self
+                .maybe_intermediate_trie_key_padding
+                .clone(),
+            delta_mpt_key_padding: self.delta_trie_key_padding.clone(),
+            delta_root: *delta_root,
+            maybe_height: self.height,
+            maybe_delta_trie_height: self.delta_trie_height,
+        };
+        self.manager.state_index_db().put(epoch_id, &entry)
+    }
+
     fn check_freshly_synced_snapshot(&self, op: &'static str) -> Result<()> {
         // Can't offer proof if we are operating on a synced snapshot, which is
         // missing intermediate mpt.
@@ -330,6 +353,22 @@ impl StateTrait for State {
 
             commit_result?;
         }
+
+        // Write the coordinates into the engine's own index. Nothing reads
+        // them back yet; the open path still resolves coordinates out of the
+        // commitment row's `aux_info`.        //
+        // Every field is read straight off the state object, which is where
+        // the open path already put them. In particular
+        // `maybe_intermediate_trie_key_padding` is taken as is rather than
+        // recomputed: it is chained along the epochs and cannot be derived
+        // from this epoch's own merkle roots.
+        //
+        // The index write follows a db commit that has already succeeded, and
+        // the two are not one transaction, so a crash in between leaves an
+        // epoch which is committed but has no index entry. Nothing resolves
+        // coordinates out of the index yet, so such a hole is not observable.
+        self.write_state_index_entry(&epoch_id, &merkle_root)?;
+
         if self.delta_trie_height.unwrap()
             >= self
                 .manager
@@ -1061,6 +1100,7 @@ use crate::{
             KVInserter, MptKeyValue, TrieProof, VanillaChildrenTable,
         },
         node_merkle_proof::NodeMerkleProof,
+        state_index_db::StateIndexEntry,
         state_manager::*,
         state_proof::StateProof,
     },

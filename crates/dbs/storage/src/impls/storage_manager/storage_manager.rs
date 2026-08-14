@@ -137,6 +137,11 @@ pub struct StorageManager {
 
     pub persist_state_from_initialization:
         RwLock<Option<(Option<EpochId>, HashSet<EpochId>, u64, Option<u64>)>>,
+
+    /// The engine's own state index. Owned here because `new_arc` creates
+    /// the storage dir it lives in. `State::commit` writes entries into it,
+    /// and nothing resolves an epoch's coordinates out of it yet.
+    state_index_db: Arc<StateIndexDb>,
 }
 
 impl MallocSizeOf for StorageManager {
@@ -214,6 +219,16 @@ impl StorageManager {
             fs::create_dir_all(storage_dir)?;
         }
 
+        // Opened right after the storage dir it sits in has been created just
+        // above, so that "the index directory is created under a parent
+        // that exists" holds by construction. Moving this earlier fails on a
+        // fresh data dir and takes the whole engine construction down.
+        let state_index_db = Arc::new(StateIndexDb::open(
+            storage_conf
+                .path_storage_dir
+                .join(&*storage_dir::STATE_INDEX_DB_PATH),
+        )?);
+
         let (_, snapshot_info_db) = KvdbSqlite::open_or_create(
             &storage_conf.path_snapshot_info_db,
             SNAPSHOT_KVDB_STATEMENTS.clone(),
@@ -271,6 +286,7 @@ impl StorageManager {
             storage_conf,
             intermediate_trie_root_merkle: RwLock::new(None),
             persist_state_from_initialization: RwLock::new(None),
+            state_index_db,
         }));
 
         let storage_manager_arc =
@@ -402,6 +418,12 @@ impl StorageManager {
 
     pub fn get_snapshot_epoch_count(&self) -> u32 {
         self.storage_conf.consensus_param.snapshot_epoch_count
+    }
+
+    /// The engine's own state index. `StateManager` holds a clone of this
+    /// handle for the commit write port.
+    pub(crate) fn state_index_db(&self) -> Arc<StateIndexDb> {
+        self.state_index_db.clone()
     }
 
     pub fn get_snapshot_info_at_epoch(
@@ -1588,6 +1610,7 @@ use crate::{
             node_ref_map::DeltaMptId,
         },
         errors::*,
+        state_index_db::StateIndexDb,
         state_manager::{DeltaDbManager, SnapshotDb, SnapshotDbManager},
         storage_db::{
             kvdb_sqlite::{
