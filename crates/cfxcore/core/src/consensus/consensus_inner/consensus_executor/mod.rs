@@ -729,25 +729,27 @@ impl ConsensusExecutor {
         // do it again
         debug!("compute_state_for_block {:?}", block_hash);
         {
-            // The commitment row no longer gives the coordinates, only the
-            // answer to "was this epoch executed at all", which is the gate
-            // this branch has always been.
+            // Computed means both halves are there: the state itself, and the
+            // commitment row consensus writes after it. The two writes are not
+            // one, so an interrupted run can leave the state without the row.
+            // The caller reads the row as soon as this returns, so answering
+            // "computed" off the state alone hands it a row which is not
+            // there; a missing row falls through and the epoch is computed
+            // again, which writes it.
             let executed = self
                 .handler
                 .data_man
                 .get_epoch_execution_commitment_with_db(&block_hash)
                 .is_some();
-            // The state is computed and is retrievable from storage.
-            if let Some(maybe_cached_state_result) = executed.then(|| {
-                self.handler
+            if executed {
+                let maybe_cached_state = self
+                    .handler
                     .data_man
                     .storage_manager
                     .open_state(&block_hash, OpenOptions::read_only())
-            }) {
-                if let Ok(Some(_)) = maybe_cached_state_result {
+                    .map_err(|_| "Internal storage error".to_owned())?;
+                if maybe_cached_state.is_some() {
                     return Ok(());
-                } else {
-                    return Err("Internal storage error".to_owned());
                 }
             }
         }
@@ -1717,12 +1719,6 @@ impl ConsensusExecutionHandler {
         ) {
             bail!("state is not ready");
         }
-
-        // The commitment row is only the gate here, as it was before; the
-        // coordinates come from the engine's own index.
-        self.data_man
-            .get_epoch_execution_commitment_with_db(epoch_id)
-            .expect("state index should exist");
 
         let state_db = StateDb::new_readonly(
             self.data_man

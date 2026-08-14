@@ -81,25 +81,15 @@ impl ConsensusGraph {
                 height, hash, state_availability_boundary
             ));
         }
-        // The commitment row is no longer the source of the coordinates, only
-        // the gate deciding whether the epoch was executed at all. Keeping the
-        // gate keeps this call site's answer unchanged.
-        let executed = self
+        let maybe_state = self
             .data_man
-            .get_epoch_execution_commitment_with_db(&hash)
-            .is_some();
-        let maybe_state = match executed {
-            true => self
-                .data_man
-                .storage_manager
-                .open_layered_state(
-                    &hash,
-                    OpenOptions::read_only().with_try_open(true),
-                    /* open_mpt_snapshot = */ true,
-                )
-                .map_err(|e| format!("Error to get state, err={:?}", e))?,
-            false => None,
-        };
+            .storage_manager
+            .open_layered_state(
+                &hash,
+                OpenOptions::read_only().with_try_open(true),
+                /* open_mpt_snapshot = */ true,
+            )
+            .map_err(|e| format!("Error to get state, err={:?}", e))?;
 
         let state = match maybe_state {
             Some(state) => state,
@@ -133,24 +123,17 @@ impl ConsensusGraph {
                 height, hash, state_availability_boundary
             ));
         }
-        // Same gate as in `get_storage_state_by_height_and_hash`.
-        let executed = self
+        // Same gate removal as in `get_storage_state_by_height_and_hash`.
+        let maybe_state = self
             .data_man
-            .get_epoch_execution_commitment_with_db(&hash)
-            .is_some();
-        let maybe_state = match executed {
-            true => self
-                .data_man
-                .storage_manager
-                .open_state(
-                    &hash,
-                    OpenOptions::read_only()
-                        .with_try_open(true)
-                        .with_space(space),
-                )
-                .map_err(|e| format!("Error to get state, err={:?}", e))?,
-            false => None,
-        };
+            .storage_manager
+            .open_state(
+                &hash,
+                OpenOptions::read_only()
+                    .with_try_open(true)
+                    .with_space(space),
+            )
+            .map_err(|e| format!("Error to get state, err={:?}", e))?;
 
         let state = match maybe_state {
             Some(state) => state,

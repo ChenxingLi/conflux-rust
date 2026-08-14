@@ -21,7 +21,7 @@ use crate::{
     NodeType, Notifications, SharedTransactionPool,
 };
 use cfx_parameters::{consensus::*, consensus_internal::*};
-use cfx_storage::{storage_db::SnapshotDbManagerTrait, OpenOptions};
+use cfx_storage::storage_db::SnapshotDbManagerTrait;
 use cfx_types::H256;
 use hibitset::{BitSet, BitSetLike, DrainableBitSet};
 use parking_lot::Mutex;
@@ -2174,57 +2174,43 @@ impl ConsensusNewBlockHandler {
             let pivot_arena_index = inner.pivot_chain[pivot_index];
             let pivot_hash = inner.arena[pivot_arena_index].hash;
 
-            let maybe_epoch_execution_commitment =
-                self.data_man.get_epoch_execution_commitment(&pivot_hash);
-            if let Some(_commitment) = *maybe_epoch_execution_commitment {
-                if self
-                    .data_man
-                    .storage_manager
-                    .open_layered_state(
+            if self.data_man.storage_manager.usable_as_base(&pivot_hash) {
+                epoch_count += 1;
+
+                // force to recompute last 5 epochs in case state database
+                // is not ready in last shutdown
+                if epoch_count > DEFERRED_STATE_EPOCH_COUNT {
+                    let reward_execution_info = self
+                        .executor
+                        .get_reward_execution_info(inner, pivot_arena_index);
+
+                    let pivot_block_height = self
+                        .data_man
+                        .block_header_by_hash(&pivot_hash)
+                        .expect("must exists")
+                        .height();
+
+                    // ensure current epoch is new executed whether there
+                    // is a fork or not
+                    if self.executor.epoch_executed_and_recovered(
                         &pivot_hash,
-                        OpenOptions::read_only(),
-                        /* open_mpt_snapshot = */ false,
-                    )
-                    .expect("DB Error")
-                    .is_some()
-                {
-                    epoch_count += 1;
-
-                    // force to recompute last 5 epochs in case state database
-                    // is not ready in last shutdown
-                    if epoch_count > DEFERRED_STATE_EPOCH_COUNT {
-                        let reward_execution_info =
-                            self.executor.get_reward_execution_info(
-                                inner,
-                                pivot_arena_index,
-                            );
-
-                        let pivot_block_height = self
-                            .data_man
-                            .block_header_by_hash(&pivot_hash)
-                            .expect("must exists")
-                            .height();
-
-                        // ensure current epoch is new executed whether there
-                        // is a fork or not
-                        if self.executor.epoch_executed_and_recovered(
-                            &pivot_hash,
-                            &inner.get_epoch_block_hashes(pivot_arena_index),
-                            true,
-                            &reward_execution_info,
-                            pivot_block_height,
-                        ) {
-                            force_compute_index = pivot_index + 1;
-                            debug!(
-                                "Force compute start index {}",
-                                force_compute_index
-                            );
-                            break;
-                        }
+                        &inner.get_epoch_block_hashes(pivot_arena_index),
+                        true,
+                        &reward_execution_info,
+                        pivot_block_height,
+                    ) {
+                        force_compute_index = pivot_index + 1;
+                        debug!(
+                            "Force compute start index {}",
+                            force_compute_index
+                        );
+                        break;
                     }
-                } else {
-                    epoch_count = 0;
                 }
+            } else {
+                // An epoch whose state does not open breaks the run of
+                // consecutive usable epochs, so the count starts over.
+                epoch_count = 0;
             }
         }
 

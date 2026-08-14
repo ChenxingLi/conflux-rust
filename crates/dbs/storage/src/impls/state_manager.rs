@@ -1261,6 +1261,34 @@ impl StateManager {
         }
     }
 
+    /// Can the epoch `base` identifies serve as the execution base of its
+    /// child epoch? A per epoch existence question, asked when the
+    /// sync path skips epochs it cannot execute and when the restart path
+    /// locates the recompute start.
+    ///
+    /// Answered by the read only open, not by the base open: the two are not
+    /// known to agree on availability in the snapshot sync special case.
+    ///
+    /// An engine error answers `false`. Every caller reacts to `false` by
+    /// skipping the epoch or by re-executing it, and both are the safe move
+    /// when the truth cannot be read off the disk.
+    pub fn usable_as_base(&self, base: &EpochId) -> bool {
+        match self.get_state_trees(
+            base, /* try_open = */ false,
+            /* open_mpt_snapshot = */ false,
+        ) {
+            Ok(maybe_state_trees) => maybe_state_trees.is_some(),
+            Err(e) => {
+                warn!(
+                    "usable_as_base({:?}): the engine could not tell, {:?}. \
+                     Answering not usable.",
+                    base, e
+                );
+                false
+            }
+        }
+    }
+
     /// Open one version of the state for an operational export. The export
     /// needs the callback traversal, which `StorageView` does not offer, so it
     /// gets a concrete export object rather than going through

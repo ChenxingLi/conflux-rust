@@ -171,26 +171,18 @@ impl LedgerInfo {
     fn state_of(&self, epoch: u64) -> Result<State, Error> {
         let pivot = self.pivot_hash_of(epoch)?;
 
-        // The commitment row stays as the gate telling whether the epoch was
-        // executed; the coordinates come from the engine's own index now.
-        let executed = self
+        let state = self
             .consensus
             .data_manager()
-            .get_epoch_execution_commitment_with_db(&pivot)
-            .is_some();
-        let state = executed.then(|| {
-            self.consensus
-                .data_manager()
-                .storage_manager
-                .open_layered_state(
-                    &pivot,
-                    OpenOptions::read_only().with_try_open(true),
-                    /* open_mpt_snapshot = */ true,
-                )
-        });
+            .storage_manager
+            .open_layered_state(
+                &pivot,
+                OpenOptions::read_only().with_try_open(true),
+                /* open_mpt_snapshot = */ true,
+            );
 
         match state {
-            Some(Ok(Some(state))) => Ok(state),
+            Ok(Some(state)) => Ok(state),
             _ => {
                 bail!(Error::InternalError(format!(
                     "State of epoch {} not found",

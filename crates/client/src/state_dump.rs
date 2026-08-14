@@ -125,12 +125,6 @@ fn prepare_state_export(
 
     let state_root = block.pivot_header.deferred_state_root();
 
-    // The commitment row is only the gate for "was this epoch executed"; the
-    // coordinates come from the engine's own index now.
-    data_man
-        .get_epoch_execution_commitment_with_db(&epoch_hash)
-        .ok_or("Failed to get state index")?;
-
     let export = state_manager
         .open_state_for_export(
             &epoch_hash,
