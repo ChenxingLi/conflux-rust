@@ -86,6 +86,24 @@ impl State {
         }
     }
 
+    /// The two height fields of the index entry, on the convention the open
+    /// path's callers use for a base state.
+    ///
+    /// Genesis is the one epoch where that differs from the state object's own
+    /// pair: the object is built with `(1, 1)` and keeps it, but the entry has
+    /// to record `(0, 0)`. Writing `(1, 1)` would give the first epoch a delta
+    /// depth of 2 and push every snapshot boundary one epoch down the chain,
+    /// and it would do so without an error: the shifted coordinates resolve to
+    /// the empty snapshot registered at genesis, the shift succeeds, and only
+    /// a state root mismatch much later exposes it.
+    fn index_entry_heights(&self) -> (Option<u64>, Option<u32>) {
+        if self.parent_epoch_id == NULL_EPOCH {
+            (Some(0), Some(0))
+        } else {
+            (self.height, self.delta_trie_height)
+        }
+    }
+
     /// Build the private index entry for the epoch being committed and store
     /// it. One of the index's three write ports, next to
     /// [`StateManager::migrate_state_index`], which fills it on the first
@@ -97,6 +115,8 @@ impl State {
     fn write_state_index_entry(
         &self, epoch_id: &EpochId, delta_root: &MerkleHash,
     ) -> Result<()> {
+        let (maybe_height, maybe_delta_trie_height) =
+            self.index_entry_heights();
         let entry = StateIndexEntry {
             snapshot_epoch_id: self.snapshot_epoch_id,
             snapshot_merkle_root: self.snapshot_merkle_root,
@@ -107,8 +127,8 @@ impl State {
                 .clone(),
             delta_mpt_key_padding: self.delta_trie_key_padding.clone(),
             delta_root: *delta_root,
-            maybe_height: self.height,
-            maybe_delta_trie_height: self.delta_trie_height,
+            maybe_height,
+            maybe_delta_trie_height,
         };
         self.manager.state_index_db().put(epoch_id, &entry)
     }
@@ -361,12 +381,15 @@ impl StateTrait for State {
         // Write the coordinates into the engine's own index, which is what
         // the open path resolves from. The commitment row is still written
         // with the same coordinates in its `aux_info`; nothing resolves from
-        // that copy.        //
-        // Every field is read straight off the state object, which is where
-        // the open path already put them. In particular
+        // that copy.
+        //
+        // Every coordinate field is read straight off the state object, which
+        // is where the open path already put them. In particular
         // `maybe_intermediate_trie_key_padding` is taken as is rather than
         // recomputed: it is chained along the epochs and cannot be derived
-        // from this epoch's own merkle roots.        //
+        // from this epoch's own merkle roots. The two height fields are the
+        // one place where the entry and the state object can differ, see
+        // `index_entry_heights`.        //
         // The index write follows a db commit that has already succeeded, and
         // the two are not one transaction. A crash in between leaves an epoch
         // which is committed but has no index entry. That window is accepted:

@@ -482,22 +482,8 @@ impl StateManager {
     }
 
     /// The physical coordinates of one epoch, read out of the engine's own
-    /// index instead of off the `StateIndex` the caller built.
-    ///
-    /// Six fields come from the entry: `snapshot_epoch_id`,
-    /// `snapshot_merkle_root`, `intermediate_epoch_id`,
-    /// `intermediate_trie_root_merkle` (`intermediate_delta_root` in the
-    /// entry), `maybe_intermediate_mpt_key_padding` and
-    /// `delta_mpt_key_padding`. The caller's copies of those are ignored.
-    ///
-    /// Three do not. `epoch_id` is the lookup key. `maybe_height` and
-    /// `maybe_delta_trie_height` stay the caller's, because the entry holds
-    /// the engine's own convention for them and the two disagree at the
-    /// genesis epoch: the genesis state object carries height 1 and delta trie
-    /// height 1, while consensus calls that epoch height 0. Taking the shift
-    /// decision from the entry would move every snapshot boundary one epoch
-    /// down the chain, so the genesis entry has to be written on the consensus
-    /// convention before those two can be sourced from it.
+    /// index. Only the epoch id comes from the caller; every other field of
+    /// the returned `StateIndex` is the entry's.
     ///
     /// `Ok(None)` when the epoch has no entry, which every caller treats as
     /// "this version is not available". Epochs without an entry exist by
@@ -526,8 +512,8 @@ impl StateManager {
                 .maybe_intermediate_mpt_key_padding,
             epoch_id: state_index.epoch_id,
             delta_mpt_key_padding: entry.delta_mpt_key_padding,
-            maybe_delta_trie_height: state_index.maybe_delta_trie_height,
-            maybe_height: state_index.maybe_height,
+            maybe_delta_trie_height: entry.maybe_delta_trie_height,
+            maybe_height: entry.maybe_height,
         }))
     }
 
