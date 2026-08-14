@@ -147,3 +147,174 @@ impl StateIndexDb {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use primitives::{DeltaMptKeyPadding, MerkleHash, MERKLE_NULL_NODE};
+    use rand::random;
+    use std::fs;
+
+    /// An index on a directory of its own, removed when the test ends. The
+    /// parent directory has to exist before the index is opened, the same
+    /// ordering `StorageManager::new_arc` establishes.
+    struct TempIndex {
+        dir: std::path::PathBuf,
+        index: Option<StateIndexDb>,
+    }
+
+    impl TempIndex {
+        fn new() -> Self {
+            let dir = std::env::temp_dir()
+                .join(format!("cfx_state_index_test_{}", random::<u64>()));
+            fs::create_dir_all(&dir).unwrap();
+            let index = StateIndexDb::open(dir.join("state_index_db")).unwrap();
+            Self {
+                dir,
+                index: Some(index),
+            }
+        }
+
+        /// Closes the handle and opens the same path again, which is what a
+        /// restart does to the index.
+        fn reopen(&mut self) {
+            self.index = None;
+            self.index = Some(
+                StateIndexDb::open(self.dir.join("state_index_db")).unwrap(),
+            );
+        }
+
+        fn index(&self) -> &StateIndexDb { self.index.as_ref().unwrap() }
+    }
+
+    impl Drop for TempIndex {
+        fn drop(&mut self) {
+            self.index.take();
+            fs::remove_dir_all(&self.dir).ok();
+        }
+    }
+
+    fn padding(byte: u8) -> DeltaMptKeyPadding {
+        let mut p = DeltaMptKeyPadding::default();
+        p[..].copy_from_slice(&[byte; 32]);
+        p
+    }
+
+    fn epoch(byte: u8) -> EpochId { EpochId::from([byte; 32]) }
+
+    /// An entry with every optional field present, i.e. what a commit in the
+    /// middle of a snapshot period writes.
+    fn full_entry() -> StateIndexEntry {
+        StateIndexEntry {
+            snapshot_epoch_id: epoch(0x11),
+            snapshot_merkle_root: MerkleHash::from([0x21; 32]),
+            intermediate_epoch_id: epoch(0x12),
+            intermediate_delta_root: MerkleHash::from([0x22; 32]),
+            maybe_intermediate_mpt_key_padding: Some(padding(0x31)),
+            delta_mpt_key_padding: padding(0x32),
+            delta_root: MerkleHash::from([0x23; 32]),
+            maybe_height: Some(4_200_000_000_000u64),
+            maybe_delta_trie_height: Some(7),
+        }
+    }
+
+    fn assert_same_entry(left: &StateIndexEntry, right: &StateIndexEntry) {
+        assert_eq!(left.snapshot_epoch_id, right.snapshot_epoch_id);
+        assert_eq!(left.snapshot_merkle_root, right.snapshot_merkle_root);
+        assert_eq!(left.intermediate_epoch_id, right.intermediate_epoch_id);
+        assert_eq!(left.intermediate_delta_root, right.intermediate_delta_root);
+        assert_eq!(
+            left.maybe_intermediate_mpt_key_padding,
+            right.maybe_intermediate_mpt_key_padding
+        );
+        assert_eq!(left.delta_mpt_key_padding, right.delta_mpt_key_padding);
+        assert_eq!(left.delta_root, right.delta_root);
+        assert_eq!(left.maybe_height, right.maybe_height);
+        assert_eq!(left.maybe_delta_trie_height, right.maybe_delta_trie_height);
+    }
+
+    // ---- the entry encoding -------------------------------------------
+
+    #[test]
+    fn entry_round_trips_with_every_field_present() {
+        let entry = full_entry();
+        let bytes = entry.rlp_bytes();
+        let decoded = StateIndexEntry::decode(&Rlp::new(&bytes)).unwrap();
+        assert_same_entry(&decoded, &entry);
+        // The triplet the entry answers with is the one it stores.
+        assert_eq!(
+            decoded.state_root().snapshot_root,
+            entry.snapshot_merkle_root
+        );
+        assert_eq!(
+            decoded.state_root().intermediate_delta_root,
+            entry.intermediate_delta_root
+        );
+        assert_eq!(decoded.state_root().delta_root, entry.delta_root);
+    }
+
+    /// The lowest surviving period has no previous period to take the
+    /// intermediate padding from, and the test only open paths carry no
+    /// height, so both `None` shapes are shapes the index really stores.
+    #[test]
+    fn entry_round_trips_with_the_empty_shapes() {
+        let entry = StateIndexEntry {
+            maybe_intermediate_mpt_key_padding: None,
+            maybe_height: None,
+            maybe_delta_trie_height: None,
+            intermediate_delta_root: MERKLE_NULL_NODE,
+            ..full_entry()
+        };
+        let bytes = entry.rlp_bytes();
+        let decoded = StateIndexEntry::decode(&Rlp::new(&bytes)).unwrap();
+        assert_same_entry(&decoded, &entry);
+        assert!(decoded.maybe_intermediate_mpt_key_padding.is_none());
+        assert!(decoded.maybe_height.is_none());
+        assert!(decoded.maybe_delta_trie_height.is_none());
+    }
+
+    #[test]
+    fn entry_has_nine_items_and_the_option_shapes_rlp_expects() {
+        let with_some = full_entry().rlp_bytes();
+        let rlp = Rlp::new(&with_some);
+        assert_eq!(rlp.item_count().unwrap(), 9);
+        // Item 4 is the only chained field: a one item list when present.
+        let slot = rlp.at(4).unwrap();
+        assert!(slot.is_list());
+        assert_eq!(slot.item_count().unwrap(), 1);
+        assert_eq!(slot.at(0).unwrap().data().unwrap().len(), 32);
+        // Item 7, the height, is present as a one item list too.
+        assert_eq!(rlp.at(7).unwrap().item_count().unwrap(), 1);
+
+        let entry = StateIndexEntry {
+            maybe_intermediate_mpt_key_padding: None,
+            maybe_height: None,
+            ..full_entry()
+        };
+        let with_none = entry.rlp_bytes();
+        let rlp = Rlp::new(&with_none);
+        assert_eq!(rlp.item_count().unwrap(), 9);
+        assert_eq!(rlp.at(4).unwrap().item_count().unwrap(), 0);
+        assert_eq!(rlp.at(4).unwrap().as_raw(), &[0xc0u8]);
+        assert_eq!(rlp.at(7).unwrap().item_count().unwrap(), 0);
+    }
+
+    // ---- the index as a store ------------------------------------------
+
+    #[test]
+    fn entry_survives_a_put_get_and_a_reopen() {
+        let mut temp = TempIndex::new();
+        let id = epoch(0xa1);
+        assert!(temp.index().get(&id).unwrap().is_none());
+
+        let entry = full_entry();
+        temp.index().put(&id, &entry).unwrap();
+        assert_same_entry(&temp.index().get(&id).unwrap().unwrap(), &entry);
+
+        temp.reopen();
+        assert_same_entry(&temp.index().get(&id).unwrap().unwrap(), &entry);
+
+        temp.index().remove(&id).unwrap();
+        assert!(temp.index().get(&id).unwrap().is_none());
+    }
+}
