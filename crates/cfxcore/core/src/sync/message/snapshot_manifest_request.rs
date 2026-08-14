@@ -50,7 +50,7 @@ impl Handleable for SnapshotManifestRequest {
         let manifest = match RangedManifest::load(
             &self.snapshot_to_sync,
             self.start_chunk.clone(),
-            &ctx.manager.graph.data_man.storage_manager,
+            &ctx.manager.storage,
             ctx.manager.protocol_config.chunk_size_byte,
             ctx.manager.protocol_config.max_chunk_number_in_manifest,
         ) {

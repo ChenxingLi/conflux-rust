@@ -6,17 +6,11 @@ use crate::{
     consensus::SharedConsensusGraph,
     light_protocol::{message::WitnessInfoWithHeight, Error},
 };
-use cfx_internal_common::StateRootWithAuxInfo;
 use cfx_parameters::consensus::DEFERRED_STATE_EPOCH_COUNT;
 
-use cfx_storage::{
-    state::{State, StateDbGetOriginalMethods, StateTrait},
-    OpenOptions, StateProof, StorageRootProof,
-};
-use cfx_types::{Address, AddressSpaceUtil, Bloom, H256};
+use cfx_types::{Bloom, H256};
 use primitives::{
-    Block, BlockHeader, BlockHeaderBuilder, BlockReceipts, CheckInput,
-    EpochNumber, StorageKeyWithSpace, StorageRoot,
+    Block, BlockHeader, BlockHeaderBuilder, BlockReceipts, EpochNumber,
 };
 
 pub struct LedgerInfo {
@@ -62,7 +56,7 @@ impl LedgerInfo {
 
     /// Get hash of block at `height` on the pivot chain, if it exists.
     #[inline]
-    fn pivot_hash_of(&self, height: u64) -> Result<H256, Error> {
+    pub fn pivot_hash_of(&self, height: u64) -> Result<H256, Error> {
         let epoch = EpochNumber::Number(height);
         Ok(self
             .consensus
@@ -164,74 +158,6 @@ impl LedgerInfo {
     #[inline]
     pub fn snapshot_epoch_count(&self) -> u32 {
         self.consensus.data_manager().get_snapshot_epoch_count()
-    }
-
-    /// Get the state trie corresponding to the execution of `epoch`.
-    #[inline]
-    fn state_of(&self, epoch: u64) -> Result<State, Error> {
-        let pivot = self.pivot_hash_of(epoch)?;
-
-        let state = self
-            .consensus
-            .data_manager()
-            .storage_manager
-            .open_layered_state(
-                &pivot,
-                OpenOptions::read_only().with_try_open(true),
-                /* open_mpt_snapshot = */ true,
-            );
-
-        match state {
-            Ok(Some(state)) => Ok(state),
-            _ => {
-                bail!(Error::InternalError(format!(
-                    "State of epoch {} not found",
-                    epoch
-                )));
-            }
-        }
-    }
-
-    /// Get the state trie roots corresponding to the execution of `epoch`.
-    #[inline]
-    pub fn state_root_of(
-        &self, epoch: u64,
-    ) -> Result<StateRootWithAuxInfo, Error> {
-        match self.state_of(epoch)?.get_state_root() {
-            Ok(root) => Ok(root),
-            Err(e) => {
-                bail!(Error::InternalError(format!(
-                    "State root of epoch {} not found: {:?}",
-                    epoch, e
-                )));
-            }
-        }
-    }
-
-    /// Get the state trie entry under `key` at `epoch`.
-    #[inline]
-    pub fn state_entry_at(
-        &self, epoch: u64, key: &Vec<u8>,
-    ) -> Result<(Option<Vec<u8>>, StateProof), Error> {
-        let state = self.state_of(epoch)?;
-
-        let key = StorageKeyWithSpace::from_key_bytes::<CheckInput>(&key)?;
-
-        let (value, proof) = state.get_original_raw_with_proof(key)?;
-
-        let value = value.map(|x| x.to_vec());
-        Ok((value, proof))
-    }
-
-    /// Get the storage root of contract `address` at `epoch`.
-    #[inline]
-    pub fn storage_root_of(
-        &self, epoch: u64, address: &Address,
-    ) -> Result<(StorageRoot, StorageRootProof), Error> {
-        let state = self.state_of(epoch)?;
-        Ok(state.get_original_storage_root_with_proof(
-            &address.with_native_space(),
-        )?)
     }
 
     /// Get the epoch receipts corresponding to the execution of `epoch`.

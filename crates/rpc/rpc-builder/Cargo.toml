@@ -28,6 +28,7 @@ cfxcore = { workspace = true }
 cfxcore-accounts = { workspace = true }
 cfx-rpc-cfx-types = { workspace = true }
 cfx-rpc-middlewares = { workspace = true }
+cfx-storage = { workspace = true }
 cfx-tasks = { workspace = true }
 network = { workspace = true }
 parking_lot = { workspace = true }

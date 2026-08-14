@@ -53,6 +53,7 @@ impl FullClient {
     > {
         let (
             data_man,
+            _storage_manager,
             pow,
             txpool,
             consensus,

@@ -8,6 +8,7 @@ use crate::{
 };
 use blockgen::BlockGenerator;
 use cfx_rpc_builder::RpcServerHandle;
+use cfx_storage::StorageManager;
 use cfx_tasks::TaskManager;
 use cfxcore::{
     pow::PowComputer, ConsensusGraph, NodeType, SynchronizationService,
@@ -20,6 +21,7 @@ use tokio::runtime::Runtime as TokioRuntime;
 
 pub struct ArchiveClientExtraComponents {
     pub consensus: Arc<ConsensusGraph>,
+    pub storage: Arc<StorageManager>,
     pub sync: Arc<SynchronizationService>,
     pub txpool: Arc<TransactionPool>,
     pub pow: Arc<PowComputer>,
@@ -60,6 +62,7 @@ impl ArchiveClient {
         Self::process_config(&mut conf);
         let (
             data_man,
+            _storage_manager,
             pow,
             txpool,
             consensus,
@@ -82,6 +85,7 @@ impl ArchiveClient {
             pos_handler: Some(pos_handler),
             other_components: ArchiveClientExtraComponents {
                 consensus,
+                storage: _storage_manager,
                 sync,
                 txpool,
                 pow,

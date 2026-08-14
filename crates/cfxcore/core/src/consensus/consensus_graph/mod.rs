@@ -29,7 +29,7 @@ use crate::{
 };
 
 use cfx_executor::spec::CommonParams;
-use cfx_storage::StorageEngine;
+use cfx_storage::{StorageEngine, StorageManager};
 
 use super::config::ConsensusConfig;
 
@@ -62,9 +62,7 @@ pub struct ConsensusGraph {
     pub inner: Arc<RwLock<ConsensusGraphInner>>,
     pub txpool: SharedTransactionPool,
     pub data_man: Arc<BlockDataManager>,
-    /// The state engine the RPC state reads go through. The read path names
-    /// the engine by its interface; the engine specific query behind
-    /// `cfx_getStorageRoot` keeps its own concrete handle.
+    /// The storage engine the RPC state reads go through.
     storage: Arc<dyn StorageEngine>,
     executor: Arc<ConsensusExecutor>,
     statistics: SharedStatistics,
@@ -100,9 +98,9 @@ impl ConsensusGraph {
     pub fn with_era_genesis(
         conf: ConsensusConfig, txpool: SharedTransactionPool,
         statistics: SharedStatistics, data_man: Arc<BlockDataManager>,
-        pow_config: ProofOfWorkConfig, pow: Arc<PowComputer>,
-        era_genesis_block_hash: &H256, era_stable_block_hash: &H256,
-        notifications: Arc<Notifications>,
+        storage: Arc<StorageManager>, pow_config: ProofOfWorkConfig,
+        pow: Arc<PowComputer>, era_genesis_block_hash: &H256,
+        era_stable_block_hash: &H256, notifications: Arc<Notifications>,
         execution_conf: ConsensusExecutionConfiguration,
         verification_config: VerificationConfig, node_type: NodeType,
         pos_verifier: Arc<PosVerifier>, pivot_hint: Option<Arc<PivotHint>>,
@@ -121,6 +119,7 @@ impl ConsensusGraph {
         let executor = ConsensusExecutor::start(
             txpool.clone(),
             data_man.clone(),
+            storage.clone(),
             inner.clone(),
             execution_conf,
             verification_config,
@@ -132,7 +131,7 @@ impl ConsensusGraph {
         let graph = ConsensusGraph {
             inner,
             txpool: txpool.clone(),
-            storage: data_man.storage_manager.clone(),
+            storage: storage.clone(),
             data_man: data_man.clone(),
             executor: executor.clone(),
             statistics: statistics.clone(),
@@ -140,6 +139,7 @@ impl ConsensusGraph {
                 conf.clone(),
                 txpool,
                 data_man,
+                storage,
                 executor,
                 statistics,
                 notifications,
@@ -169,8 +169,8 @@ impl ConsensusGraph {
     pub fn new(
         conf: ConsensusConfig, txpool: SharedTransactionPool,
         statistics: SharedStatistics, data_man: Arc<BlockDataManager>,
-        pow_config: ProofOfWorkConfig, pow: Arc<PowComputer>,
-        notifications: Arc<Notifications>,
+        storage: Arc<StorageManager>, pow_config: ProofOfWorkConfig,
+        pow: Arc<PowComputer>, notifications: Arc<Notifications>,
         execution_conf: ConsensusExecutionConfiguration,
         verification_conf: VerificationConfig, node_type: NodeType,
         pos_verifier: Arc<PosVerifier>, pivot_hint: Option<Arc<PivotHint>>,
@@ -183,6 +183,7 @@ impl ConsensusGraph {
             txpool,
             statistics,
             data_man,
+            storage,
             pow_config,
             pow,
             &genesis_hash,

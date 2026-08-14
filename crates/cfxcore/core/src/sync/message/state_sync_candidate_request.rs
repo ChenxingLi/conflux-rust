@@ -34,12 +34,7 @@ impl Handleable for StateSyncCandidateRequest {
     fn handle(self, ctx: &Context) -> Result<(), Error> {
         let mut supported_candidates =
             Vec::with_capacity(self.candidates.len());
-        let storage_manager = ctx
-            .manager
-            .graph
-            .data_man
-            .storage_manager
-            .get_storage_manager();
+        let storage_manager = ctx.manager.storage.get_storage_manager();
         for candidate in self.candidates {
             match candidate {
                 SnapshotSyncCandidate::FullSync {

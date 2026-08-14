@@ -9,10 +9,7 @@ use crate::{
     pow::{PowComputer, TargetDifficultyManager},
 };
 use cfx_executor::internal_contract::make_staking_events;
-use cfx_storage::{
-    state_manager::OpenOptions, utils::guarded_value::*, StorageManager,
-    StorageVersion,
-};
+use cfx_storage::utils::guarded_value::*;
 use cfx_types::{Bloom, Space, H256};
 pub use cfxcore_types::block_data_manager::block_data_types;
 use db::SystemDB;
@@ -140,7 +137,9 @@ pub struct BlockDataManager {
 
     /// This is the original genesis block.
     pub true_genesis: Arc<Block>,
-    pub storage_manager: Arc<StorageManager>,
+    /// The number of epochs in a snapshot period, a construction time
+    /// configuration of the state engine.
+    snapshot_epoch_count: u32,
     cache_man: Arc<Mutex<CacheManager<CacheId>>>,
     pub target_difficulty_manager: TargetDifficultyManager,
     gc_progress: Arc<Mutex<GCProgress>>,
@@ -169,9 +168,14 @@ pub struct BlockDataManager {
 }
 
 impl BlockDataManager {
+    /// `true_genesis_state_root` is only consulted on a fresh database, where
+    /// the true genesis commitment row is written for the first time. It is a
+    /// closure because on any other start the true genesis state may already
+    /// have been reclaimed, and opening it would fail.
     pub fn new(
         cache_conf: CacheConfig, true_genesis: Arc<Block>, db: Arc<SystemDB>,
-        storage_manager: Arc<StorageManager>,
+        snapshot_epoch_count: u32,
+        true_genesis_state_root: impl FnOnce() -> StateRootWithAuxInfo,
         worker_pool: Arc<Mutex<ThreadPool>>, config: DataManagerConfiguration,
         pow: Arc<PowComputer>,
     ) -> Self {
@@ -208,7 +212,7 @@ impl BlockDataManager {
                 cache_conf.invalid_block_hashes_cache_size_in_count,
             )),
             true_genesis: true_genesis.clone(),
-            storage_manager,
+            snapshot_epoch_count,
             cache_man,
             instance_id: Mutex::new(0),
             config,
@@ -291,7 +295,7 @@ impl BlockDataManager {
             );
             data_man.insert_epoch_execution_commitment(
                 data_man.true_genesis.hash(),
-                data_man.true_genesis_state_root(),
+                true_genesis_state_root(),
                 *data_man.true_genesis.block_header.deferred_receipts_root(),
                 *data_man
                     .true_genesis
@@ -357,20 +361,6 @@ impl BlockDataManager {
 
         // persist new instance id
         self.db_manager.insert_instance_id_to_db(*my_instance_id);
-    }
-
-    /// This will return the state root of true genesis block.
-    pub fn true_genesis_state_root(&self) -> StateRootWithAuxInfo {
-        let true_genesis_hash = self.true_genesis.hash();
-        self.storage_manager
-            .open_state(
-                StorageVersion::Epoch(true_genesis_hash),
-                OpenOptions::read_only(),
-            )
-            .unwrap()
-            .unwrap()
-            .get_state_root()
-            .unwrap()
     }
 
     pub fn transaction_by_hash(
@@ -1610,19 +1600,12 @@ impl BlockDataManager {
         (block, epochs_reverse_order)
     }
 
-    pub fn get_snapshot_epoch_count(&self) -> u32 {
-        self.storage_manager
-            .get_storage_manager()
-            .get_snapshot_epoch_count()
-    }
+    pub fn get_snapshot_epoch_count(&self) -> u32 { self.snapshot_epoch_count }
 
     pub fn get_snapshot_blame_plus_depth(&self) -> usize {
         // We need the extra + 1 to get a state root that points to the
         // snapshot we want.
-        self.storage_manager
-            .get_storage_manager()
-            .get_snapshot_epoch_count() as usize
-            + 1
+        self.snapshot_epoch_count as usize + 1
     }
 
     pub fn get_executed_state_root(&self, block_hash: &H256) -> Option<H256> {

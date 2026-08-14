@@ -24,7 +24,7 @@ use cfx_parameters::genesis::{
     DEV_GENESIS_KEY_PAIR_2, GENESIS_ACCOUNT_ADDRESS,
 };
 use cfx_rpc_cfx_types::apis::ApiSet;
-use cfx_storage::StorageManager;
+use cfx_storage::{OpenOptions, StorageManager, StorageVersion};
 use cfx_tasks::TaskManager;
 use cfx_types::{address_util::AddressUtil, Address, Space, U256};
 pub use cfxcore::pos::pos::PosDropHandle;
@@ -136,6 +136,7 @@ pub fn initialize_common_modules(
         Arc<SecretStore>,
         HashMap<Address, U256>,
         Arc<BlockDataManager>,
+        Arc<StorageManager>,
         Arc<PowComputer>,
         Arc<PosVerifier>,
         Arc<TransactionPool>,
@@ -377,11 +378,27 @@ pub fn initialize_common_modules(
         conf.raw_conf.pos_genesis_pivot_decision = Some(genesis_block.hash());
     }
 
+    let genesis_hash = genesis_block.hash();
     let data_man = Arc::new(BlockDataManager::new(
         cache_config,
         Arc::new(genesis_block),
         ledger_db.clone(),
-        storage_manager,
+        storage_manager
+            .config()
+            .consensus_param
+            .snapshot_epoch_count,
+        || {
+            storage_manager
+                .clone()
+                .open_state(
+                    StorageVersion::Epoch(genesis_hash),
+                    OpenOptions::read_only(),
+                )
+                .unwrap()
+                .unwrap()
+                .get_state_root()
+                .unwrap()
+        },
         worker_thread_pool,
         conf.data_mananger_config(),
         pow.clone(),
@@ -422,6 +439,7 @@ pub fn initialize_common_modules(
         conf.txpool_config(),
         verification_config.clone(),
         data_man.clone(),
+        storage_manager.clone(),
         machine.clone(),
     ));
 
@@ -438,6 +456,7 @@ pub fn initialize_common_modules(
         txpool.clone(),
         statistics.clone(),
         data_man.clone(),
+        storage_manager.clone(),
         pow_config.clone(),
         pow.clone(),
         notifications.clone(),
@@ -495,6 +514,7 @@ pub fn initialize_common_modules(
         secret_store,
         genesis_accounts,
         data_man,
+        storage_manager,
         pow,
         pos_verifier,
         txpool,
@@ -513,6 +533,7 @@ pub fn initialize_not_light_node_modules(
 ) -> Result<
     (
         Arc<BlockDataManager>,
+        Arc<StorageManager>,
         Arc<PowComputer>,
         Arc<TransactionPool>,
         Arc<ConsensusGraph>,
@@ -532,6 +553,7 @@ pub fn initialize_not_light_node_modules(
         secret_store,
         genesis_accounts,
         data_man,
+        storage_manager,
         pow,
         pos_verifier,
         txpool,
@@ -548,6 +570,7 @@ pub fn initialize_not_light_node_modules(
         sync_graph.clone(),
         Arc::downgrade(&network),
         txpool.clone(),
+        storage_manager.clone(),
         conf.raw_conf.throttling_conf.clone(),
         node_type,
     ));
@@ -562,6 +585,7 @@ pub fn initialize_not_light_node_modules(
         SyncPhaseType::CatchUpRecoverBlockHeaderFromDB,
         light_provider,
         consensus.clone(),
+        storage_manager.clone(),
     ));
     sync.register().unwrap();
 
@@ -570,6 +594,7 @@ pub fn initialize_not_light_node_modules(
     {
         let secret_store = secret_store.clone();
         let data_man = data_man.clone();
+        let storage_manager = storage_manager.clone();
         let txpool = txpool.clone();
         let consensus = consensus.clone();
         let sync = sync.clone();
@@ -582,7 +607,7 @@ pub fn initialize_not_light_node_modules(
                 // Note `db_manager` is not wrapped in Arc, so it will still be included
                 // in `data_man_size`.
                 let data_manager_db_cache_size = data_man.db_manager.size_of(&mut ops) / mb;
-                let storage_manager_size = data_man.storage_manager.size_of(&mut ops) / mb;
+                let storage_manager_size = storage_manager.size_of(&mut ops) / mb;
                 let data_man_size = data_man.size_of(&mut ops) / mb;
                 let tx_pool_size = txpool.size_of(&mut ops) / mb;
                 let consensus_graph_size = consensus.size_of(&mut ops) / mb;
@@ -681,6 +706,7 @@ pub fn initialize_not_light_node_modules(
     let cfx_rpc_server_handle =
         tokio_runtime.block_on(launch_cfx_async_rpc_servers(
             consensus.clone(),
+            storage_manager.clone(),
             sync.clone(),
             txpool.clone(),
             data_man.clone(),
@@ -701,6 +727,7 @@ pub fn initialize_not_light_node_modules(
     let debug_cfx_rpc_server_handle =
         tokio_runtime.block_on(launch_cfx_async_rpc_servers(
             consensus.clone(),
+            storage_manager.clone(),
             sync.clone(),
             txpool.clone(),
             data_man.clone(),
@@ -736,6 +763,7 @@ pub fn initialize_not_light_node_modules(
 
     Ok((
         data_man,
+        storage_manager,
         pow,
         txpool,
         consensus,

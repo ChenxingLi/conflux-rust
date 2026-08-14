@@ -167,7 +167,7 @@ fn main() {
         timer_ratio, timer_beta, beta, h_ratio, era_epoch_count
     );
 
-    let (sync, consensus, data_man, genesis_block) =
+    let (sync, consensus, data_man, genesis_block, storage_manager) =
         initialize_synchronization_graph(
             db_dir,
             beta,
@@ -355,6 +355,7 @@ fn main() {
     let (_sync_n, consensus_n) =
         initialize_synchronization_graph_with_data_manager(
             data_man,
+            storage_manager,
             beta,
             h_ratio,
             timer_ratio,

@@ -63,6 +63,7 @@ impl LightClient {
             secret_store,
             _genesis_accounts,
             data_man,
+            _storage_manager,
             pow,
             pos_verifier,
             txpool,

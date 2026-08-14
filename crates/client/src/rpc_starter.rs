@@ -15,6 +15,7 @@ use cfx_rpc_cfx_api::{
     TestRpcServer,
 };
 use cfx_rpc_cfx_types::apis::ApiSet;
+use cfx_storage::StorageManager;
 use cfx_tasks::TaskExecutor;
 use cfxcore::{
     block_data_manager::BlockDataManager, consensus::pos_handler::PosVerifier,
@@ -102,11 +103,11 @@ pub async fn launch_async_rpc_servers(
 
 // start core space rpc server v2(async)
 pub async fn launch_cfx_async_rpc_servers(
-    consensus: SharedConsensusGraph, sync: SharedSynchronizationService,
-    tx_pool: SharedTransactionPool, data_man: Arc<BlockDataManager>,
-    network: Arc<NetworkService>, pos_handler: Arc<PosVerifier>,
-    notifications: Arc<Notifications>, executor: TaskExecutor,
-    accounts: Arc<cfxcore_accounts::AccountProvider>,
+    consensus: SharedConsensusGraph, storage_engine: Arc<StorageManager>,
+    sync: SharedSynchronizationService, tx_pool: SharedTransactionPool,
+    data_man: Arc<BlockDataManager>, network: Arc<NetworkService>,
+    pos_handler: Arc<PosVerifier>, notifications: Arc<Notifications>,
+    executor: TaskExecutor, accounts: Arc<cfxcore_accounts::AccountProvider>,
     exit: Arc<(parking_lot::Mutex<bool>, parking_lot::Condvar)>,
     block_gen: BlockGeneratorTestApi,
     maybe_txgen: Option<Arc<TransactionGenerator>>,
@@ -166,6 +167,7 @@ pub async fn launch_cfx_async_rpc_servers(
     let rpc_module_builder = CfxRpcModuleBuilder::new(
         rpc_conf,
         consensus,
+        storage_engine,
         sync,
         tx_pool,
         executor,

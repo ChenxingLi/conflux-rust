@@ -77,9 +77,8 @@ fn txexe_benchmark(c: &mut Criterion) {
             let mut state = State::new(StateDb::new_readonly(
                 handler
                     .other_components
-                    .consensus
-                    .data_man
-                    .storage_manager
+                    .storage
+                    .clone()
                     .open_state(
                         StorageVersion::Epoch(
                             handler

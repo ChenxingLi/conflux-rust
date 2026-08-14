@@ -213,7 +213,8 @@ pub type SharedTransactionPool = Arc<TransactionPool>;
 impl TransactionPool {
     pub fn new(
         config: TxPoolConfig, verification_config: VerificationConfig,
-        data_man: Arc<BlockDataManager>, machine: Arc<Machine>,
+        data_man: Arc<BlockDataManager>, storage: Arc<dyn StorageEngine>,
+        machine: Arc<Machine>,
     ) -> Self {
         let genesis_hash = data_man.true_genesis.hash();
         let inner = TransactionPoolInner::new(
@@ -222,7 +223,6 @@ impl TransactionPool {
             config.max_packing_batch_size,
             config.packing_pool_degree,
         );
-        let storage: Arc<dyn StorageEngine> = data_man.storage_manager.clone();
         let best_executed_state = Mutex::new(
             Self::get_best_executed_state_by_epoch(&storage, genesis_hash)
                 .expect("The genesis state is guaranteed to exist."),

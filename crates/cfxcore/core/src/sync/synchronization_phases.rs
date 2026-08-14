@@ -421,18 +421,10 @@ impl SynchronizationPhaseTrait for CatchUpFillBlockBodyPhase {
     ) {
         info!("start phase {:?}", self.name());
         {
-            let full_state_start_height = self
-                .graph
-                .data_man
-                .storage_manager
-                .config()
-                .full_state_start_height();
-            let full_state_space = self
-                .graph
-                .data_man
-                .storage_manager
-                .config()
-                .single_mpt_space;
+            let full_state_start_height =
+                sync_handler.storage.config().full_state_start_height();
+            let full_state_space =
+                sync_handler.storage.config().single_mpt_space;
             // For both archive and full node, synced_epoch_id possible be
             // `None`. It wil be none when stable epoch is equal to
             // true genesis In both cases, we should set

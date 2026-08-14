@@ -39,12 +39,17 @@ use crate::{
     verification::{compute_epoch_receipt_proof, compute_transaction_proof},
     TransactionPool,
 };
-use cfx_internal_common::ChainIdParamsDeprecated;
+use cfx_internal_common::{ChainIdParamsDeprecated, StateRootWithAuxInfo};
 use cfx_parameters::light::{
     MAX_EPOCHS_TO_SEND, MAX_HEADERS_TO_SEND, MAX_ITEMS_TO_SEND,
     MAX_TXS_TO_SEND, MAX_WITNESSES_TO_SEND,
 };
-use cfx_types::H256;
+use cfx_storage::{
+    state::{State, StateDbGetOriginalMethods, StateTrait},
+    OpenOptions, StateProof, StorageManager,
+    StorageRootProof as EngineStorageRootProof,
+};
+use cfx_types::{Address, AddressSpaceUtil, H256};
 use diem_types::validator_config::{ConsensusPublicKey, ConsensusVRFPublicKey};
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use network::{
@@ -54,7 +59,8 @@ use network::{
 };
 use parking_lot::RwLock;
 use primitives::{
-    SignedTransaction, TransactionIndex, TransactionWithSignature,
+    CheckInput, SignedTransaction, StorageKeyWithSpace, StorageRoot,
+    TransactionIndex, TransactionWithSignature,
 };
 use rand::prelude::SliceRandom;
 use rlp::Rlp;
@@ -95,6 +101,12 @@ pub struct Provider {
     // shared transaction pool
     tx_pool: Arc<TransactionPool>,
 
+    /// The state engine as the concrete type rather than the interface:
+    /// serving a light client means producing merkle proofs, which are bound
+    /// to this engine's database format and are not part of the interface.
+    #[ignore_malloc_size_of = "the storage engine is measured through the handle the client keeps"]
+    storage: Arc<StorageManager>,
+
     throttling_config_file: Option<String>,
 }
 
@@ -102,7 +114,8 @@ impl Provider {
     pub fn new(
         consensus: SharedConsensusGraph, graph: Arc<SynchronizationGraph>,
         network: Weak<NetworkService>, tx_pool: Arc<TransactionPool>,
-        throttling_config_file: Option<String>, node_type: NodeType,
+        storage: Arc<StorageManager>, throttling_config_file: Option<String>,
+        node_type: NodeType,
     ) -> Self {
         let ledger = LedgerInfo::new(consensus.clone());
         let peers = Peers::new();
@@ -116,8 +129,75 @@ impl Provider {
             network,
             peers,
             tx_pool,
+            storage,
             throttling_config_file,
         }
+    }
+
+    /// Get the state trie corresponding to the execution of `epoch`.
+    ///
+    /// The three methods below live here rather than on the shared helper
+    /// `LedgerInfo` because serving state proofs is this object's job, and the
+    /// engine handle belongs with the role that needs it.
+    #[inline]
+    fn state_of(&self, epoch: u64) -> Result<State> {
+        let pivot = self.ledger.pivot_hash_of(epoch)?;
+
+        let state = self.storage.open_layered_state(
+            &pivot,
+            OpenOptions::read_only().with_try_open(true),
+            /* open_mpt_snapshot = */ true,
+        );
+
+        match state {
+            Ok(Some(state)) => Ok(state),
+            _ => {
+                bail!(Error::InternalError(format!(
+                    "State of epoch {} not found",
+                    epoch
+                )));
+            }
+        }
+    }
+
+    /// Get the state trie roots corresponding to the execution of `epoch`.
+    #[inline]
+    fn state_root_of(&self, epoch: u64) -> Result<StateRootWithAuxInfo> {
+        match self.state_of(epoch)?.get_state_root() {
+            Ok(root) => Ok(root),
+            Err(e) => {
+                bail!(Error::InternalError(format!(
+                    "State root of epoch {} not found: {:?}",
+                    epoch, e
+                )));
+            }
+        }
+    }
+
+    /// Get the state trie entry under `key` at `epoch`.
+    #[inline]
+    fn state_entry_at(
+        &self, epoch: u64, key: &Vec<u8>,
+    ) -> Result<(Option<Vec<u8>>, StateProof)> {
+        let state = self.state_of(epoch)?;
+
+        let key = StorageKeyWithSpace::from_key_bytes::<CheckInput>(&key)?;
+
+        let (value, proof) = state.get_original_raw_with_proof(key)?;
+
+        let value = value.map(|x| x.to_vec());
+        Ok((value, proof))
+    }
+
+    /// Get the storage root of contract `address` at `epoch`.
+    #[inline]
+    fn storage_root_of(
+        &self, epoch: u64, address: &Address,
+    ) -> Result<(StorageRoot, EngineStorageRootProof)> {
+        let state = self.state_of(epoch)?;
+        Ok(state.get_original_storage_root_with_proof(
+            &address.with_native_space(),
+        )?)
     }
 
     pub fn register(
@@ -491,7 +571,7 @@ impl Provider {
             .into_iter()
             .take(MAX_ITEMS_TO_SEND)
             .map::<Result<_>, _>(|epoch| {
-                let state_root = self.ledger.state_root_of(epoch)?.state_root;
+                let state_root = self.state_root_of(epoch)?.state_root;
                 Ok(StateRootWithEpoch { epoch, state_root })
             });
 
@@ -514,21 +594,19 @@ impl Provider {
         let snapshot_epoch_count = self.ledger.snapshot_epoch_count() as u64;
 
         // state root in current snapshot period
-        let state_root = self.ledger.state_root_of(key.epoch)?.state_root;
+        let state_root = self.state_root_of(key.epoch)?.state_root;
 
         // state root in previous snapshot period
         let prev_snapshot_state_root = match key.epoch {
             e if e <= snapshot_epoch_count => None,
             _ => Some(
-                self.ledger
-                    .state_root_of(key.epoch - snapshot_epoch_count)?
+                self.state_root_of(key.epoch - snapshot_epoch_count)?
                     .state_root,
             ),
         };
 
         // state entry and state proof
-        let (entry, state_proof) =
-            self.ledger.state_entry_at(key.epoch, &key.key)?;
+        let (entry, state_proof) = self.state_entry_at(key.epoch, &key.key)?;
 
         let proof = StateEntryProof {
             state_root,
@@ -860,21 +938,20 @@ impl Provider {
         let snapshot_epoch_count = self.ledger.snapshot_epoch_count() as u64;
 
         // state root in current snapshot period
-        let state_root = self.ledger.state_root_of(key.epoch)?.state_root;
+        let state_root = self.state_root_of(key.epoch)?.state_root;
 
         // state root in previous snapshot period
         let prev_snapshot_state_root = match key.epoch {
             e if e <= snapshot_epoch_count => None,
             _ => Some(
-                self.ledger
-                    .state_root_of(key.epoch - snapshot_epoch_count)?
+                self.state_root_of(key.epoch - snapshot_epoch_count)?
                     .state_root,
             ),
         };
 
         // storage root and merkle proof
         let (root, merkle_proof) =
-            self.ledger.storage_root_of(key.epoch, &key.address)?;
+            self.storage_root_of(key.epoch, &key.address)?;
 
         let proof = StorageRootProof {
             state_root,

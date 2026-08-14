@@ -93,12 +93,25 @@ fn prepare_state_export(
     config: &StateDumpConfig,
 ) -> Result<(StateExport, H256), String> {
     println("Preparing state...");
-    let (data_man, _, _, consensus, sync_service, _, _, _, _, _, _, _) =
-        initialize_not_light_node_modules(
-            conf,
-            exit_cond_var,
-            NodeType::Archive,
-        )?;
+    let (
+        _data_man,
+        storage_manager,
+        _,
+        _,
+        consensus,
+        sync_service,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+    ) = initialize_not_light_node_modules(
+        conf,
+        exit_cond_var,
+        NodeType::Archive,
+    )?;
 
     while sync_service.catch_up_mode() {
         thread::sleep(Duration::from_secs(1));
@@ -109,7 +122,7 @@ fn prepare_state_export(
     2. Iterate through the state, and dump the account state
     */
 
-    let state_manager = data_man.storage_manager.clone();
+    let state_manager = storage_manager;
     let target_height = match config.block {
         Some(epoch) => epoch,
         None => consensus.latest_confirmed_epoch_number(),

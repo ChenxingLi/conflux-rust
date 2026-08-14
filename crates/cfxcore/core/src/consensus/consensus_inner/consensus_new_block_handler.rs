@@ -63,10 +63,10 @@ pub struct ConsensusNewBlockHandler {
 impl ConsensusNewBlockHandler {
     pub fn new(
         conf: ConsensusConfig, txpool: SharedTransactionPool,
-        data_man: Arc<BlockDataManager>, executor: Arc<ConsensusExecutor>,
-        statistics: SharedStatistics, notifications: Arc<Notifications>,
-        node_type: NodeType, pos_verifier: Arc<PosVerifier>,
-        pivot_hint: Option<Arc<PivotHint>>,
+        data_man: Arc<BlockDataManager>, storage: Arc<dyn StorageEngine>,
+        executor: Arc<ConsensusExecutor>, statistics: SharedStatistics,
+        notifications: Arc<Notifications>, node_type: NodeType,
+        pos_verifier: Arc<PosVerifier>, pivot_hint: Option<Arc<PivotHint>>,
     ) -> Self {
         let epochs_sender = notifications.epochs_ordered.clone();
         let blame_verifier =
@@ -76,7 +76,7 @@ impl ConsensusNewBlockHandler {
             pos_verifier,
             conf,
             txpool,
-            storage: data_man.storage_manager.clone(),
+            storage,
             data_man,
             executor,
             statistics,

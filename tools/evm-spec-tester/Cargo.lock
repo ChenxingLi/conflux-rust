@@ -1712,6 +1712,7 @@ dependencies = [
  "cfx-rpc-eth-api",
  "cfx-rpc-eth-impl",
  "cfx-rpc-middlewares",
+ "cfx-storage",
  "cfx-tasks",
  "cfxcore",
  "cfxcore-accounts",

@@ -28,6 +28,7 @@ use crate::{
 };
 use cfx_internal_common::ChainIdParamsDeprecated;
 use cfx_parameters::{block::MAX_BLOCK_SIZE_IN_BYTES, sync::*};
+use cfx_storage::StorageManager;
 use cfx_types::H256;
 use diem_types::validator_config::{ConsensusPublicKey, ConsensusVRFPublicKey};
 use malloc_size_of::{new_malloc_size_ops, MallocSizeOf};
@@ -383,6 +384,12 @@ pub struct SynchronizationProtocolHandler {
 
     // provider for serving light protocol queries
     light_provider: Arc<LightProvider>,
+
+    /// The storage engine as the concrete type rather than the interface:
+    /// snapshot sync splits manifests and chunks, queries snapshot information
+    /// and lands a rebuilt snapshot, none of which the interface expresses.
+    #[ignore_malloc_size_of = "the storage engine is measured through the handle the client keeps"]
+    pub storage: Arc<StorageManager>,
 }
 
 #[derive(Clone, Default, DeriveMallocSizeOf)]
@@ -436,6 +443,7 @@ impl SynchronizationProtocolHandler {
         initial_sync_phase: SyncPhaseType,
         sync_graph: SharedSynchronizationGraph,
         light_provider: Arc<LightProvider>, consensus: Arc<ConsensusGraph>,
+        storage: Arc<StorageManager>,
     ) -> Self {
         let sync_state = Arc::new(SynchronizationState::new(
             protocol_config.is_consortium,
@@ -478,6 +486,7 @@ impl SynchronizationProtocolHandler {
             state_sync,
             synced_epoch_id: Default::default(),
             light_provider,
+            storage,
         }
     }
 

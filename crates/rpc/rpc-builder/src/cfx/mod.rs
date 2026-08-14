@@ -18,6 +18,7 @@ use cfx_rpc_cfx_impl::{
     TestHandler, TraceHandler, TxPoolHandler,
 };
 use cfx_rpc_cfx_types::RpcImplConfiguration;
+use cfx_storage::StorageManager;
 use cfx_tasks::TaskExecutor;
 use cfxcore::{
     block_data_manager::BlockDataManager, consensus::pos_handler::PosVerifier,
@@ -49,6 +50,7 @@ pub const DEFAULT_WS_PORT: u16 = 12538;
 pub struct RpcModuleBuilder {
     rpc_impl_config: RpcImplConfiguration,
     consensus: SharedConsensusGraph,
+    storage_engine: Arc<StorageManager>,
     sync: SharedSynchronizationService,
     tx_pool: SharedTransactionPool,
     executor: TaskExecutor,
@@ -66,6 +68,7 @@ pub struct RpcModuleBuilder {
 impl RpcModuleBuilder {
     pub fn new(
         rpc_impl_config: RpcImplConfiguration, consensus: SharedConsensusGraph,
+        storage_engine: Arc<StorageManager>,
         sync: SharedSynchronizationService, tx_pool: SharedTransactionPool,
         executor: TaskExecutor, data_man: Arc<BlockDataManager>,
         network: Arc<NetworkService>, pos_handler: Arc<PosVerifier>,
@@ -77,6 +80,7 @@ impl RpcModuleBuilder {
         Self {
             rpc_impl_config,
             consensus,
+            storage_engine,
             sync,
             tx_pool,
             executor,
@@ -103,6 +107,7 @@ impl RpcModuleBuilder {
             let Self {
                 rpc_impl_config,
                 consensus,
+                storage_engine,
                 sync,
                 tx_pool,
                 executor,
@@ -120,6 +125,7 @@ impl RpcModuleBuilder {
             let mut registry = RpcRegistryInner::new(
                 rpc_impl_config,
                 consensus,
+                storage_engine,
                 sync,
                 tx_pool,
                 executor,
@@ -147,6 +153,7 @@ impl RpcModuleBuilder {
 pub struct RpcRegistryInner {
     rpc_impl_config: RpcImplConfiguration,
     consensus: SharedConsensusGraph,
+    storage_engine: Arc<StorageManager>,
     sync: SharedSynchronizationService,
     tx_pool: SharedTransactionPool,
     executor: TaskExecutor,
@@ -165,6 +172,7 @@ pub struct RpcRegistryInner {
 impl RpcRegistryInner {
     pub fn new(
         rpc_impl_config: RpcImplConfiguration, consensus: SharedConsensusGraph,
+        storage_engine: Arc<StorageManager>,
         sync: SharedSynchronizationService, tx_pool: SharedTransactionPool,
         executor: TaskExecutor, data_man: Arc<BlockDataManager>,
         network: Arc<NetworkService>, pos_handler: Arc<PosVerifier>,
@@ -176,6 +184,7 @@ impl RpcRegistryInner {
         Self {
             rpc_impl_config,
             consensus,
+            storage_engine,
             sync,
             tx_pool,
             executor,
@@ -232,6 +241,7 @@ impl RpcRegistryInner {
                                 CfxHandler::new(
                                     self.rpc_impl_config.clone(),
                                     self.consensus.clone(),
+                                    self.storage_engine.clone(),
                                     self.sync.clone(),
                                     self.tx_pool.clone(),
                                     self.accounts.clone(),
@@ -278,6 +288,7 @@ impl RpcRegistryInner {
                             CfxRpcServer::into_rpc(CfxHandler::new(
                                 self.rpc_impl_config.clone(),
                                 self.consensus.clone(),
+                                self.storage_engine.clone(),
                                 self.sync.clone(),
                                 self.tx_pool.clone(),
                                 self.accounts.clone(),

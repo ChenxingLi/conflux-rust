@@ -58,9 +58,7 @@ impl SnapshotChunkManager {
             chunk_boundary_proofs.clone(),
             snapshot_info.merkle_root,
             ctx.manager
-                .graph
-                .data_man
-                .storage_manager
+                .storage
                 .get_storage_manager()
                 .get_snapshot_manager()
                 .get_snapshot_db_manager(),
@@ -122,7 +120,7 @@ impl SnapshotChunkManager {
 
             // start to restore and update status
             self.restorer.finalize_restoration(
-                ctx.manager.graph.data_man.storage_manager.clone(),
+                ctx.manager.storage.clone(),
                 self.snapshot_info.clone(),
                 self.parent_snapshot_info.clone(),
                 self.synced_state_root.clone(),

@@ -54,7 +54,9 @@ use cfx_statedb::{
     },
     StateDbExt,
 };
-use cfx_storage::{state::StateDbGetOriginalMethods, OpenOptions};
+use cfx_storage::{
+    state::StateDbGetOriginalMethods, OpenOptions, StorageManager,
+};
 use cfx_types::{
     Address, AddressSpaceUtil, BigEndianHash, Space, H160, H256, H520, U128,
     U256, U64,
@@ -111,6 +113,10 @@ struct BlockExecInfo {
 pub struct CfxHandler {
     pub config: RpcImplConfiguration,
     pub consensus: SharedConsensusGraph,
+    /// The concrete engine, for `cfx_getStorageRoot`: the storage root is
+    /// answered per layer, which the engine's own entry point serves and the
+    /// interface does not.
+    pub storage_engine: Arc<StorageManager>,
     pub sync: SharedSynchronizationService,
     pub tx_pool: SharedTransactionPool,
     pub accounts: Arc<AccountProvider>,
@@ -123,6 +129,7 @@ pub struct CfxHandler {
 impl CfxHandler {
     pub fn new(
         config: RpcImplConfiguration, consensus: SharedConsensusGraph,
+        storage_engine: Arc<StorageManager>,
         sync: SharedSynchronizationService, tx_pool: SharedTransactionPool,
         accounts: Arc<AccountProvider>, pos_handler: Arc<PosVerifier>,
         block_gen: BlockGeneratorTestApi,
@@ -132,6 +139,7 @@ impl CfxHandler {
         CfxHandler {
             config,
             consensus,
+            storage_engine,
             sync,
             tx_pool,
             accounts,
@@ -867,8 +875,7 @@ impl CfxRpcServer for CfxHandler {
         // entry point serves and the interface does not. Consensus answers
         // where to look; the state is opened here.
         let state = self
-            .data_man
-            .storage_manager
+            .storage_engine
             .open_layered_state(
                 &epoch_hash,
                 OpenOptions::read_only().with_try_open(true),

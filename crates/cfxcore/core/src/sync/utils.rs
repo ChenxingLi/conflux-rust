@@ -13,7 +13,9 @@ use cfx_parameters::{
     tx_pool::TXPOOL_DEFAULT_NONCE_BITS,
     WORKER_COMPUTATION_PARALLELISM,
 };
-use cfx_storage::{StorageConfiguration, StorageManager};
+use cfx_storage::{
+    OpenOptions, StorageConfiguration, StorageManager, StorageVersion,
+};
 use cfx_types::{
     address_util::AddressUtil, Address, AddressSpaceUtil, AllChainID, H256,
     U256,
@@ -109,7 +111,7 @@ pub fn create_simple_block(
 
 pub fn initialize_data_manager(
     db_dir: &str, dbtype: DbType, pow: Arc<PowComputer>, vm: VmFactory,
-) -> (Arc<BlockDataManager>, Arc<Block>) {
+) -> (Arc<BlockDataManager>, Arc<Block>, Arc<StorageManager>) {
     let ledger_db = db::open_database(
         db_dir,
         &db::db_config(
@@ -161,12 +163,25 @@ pub fn initialize_data_manager(
             initial_seed: Default::default(),
         }),
     ));
+    let genesis_hash = genesis_block.hash();
 
     let data_man = Arc::new(BlockDataManager::new(
         CacheConfig::default(),
         genesis_block.clone(),
         ledger_db.clone(),
-        storage_manager,
+        cfx_parameters::consensus::SNAPSHOT_EPOCHS_CAPACITY,
+        || {
+            storage_manager
+                .clone()
+                .open_state(
+                    StorageVersion::Epoch(genesis_hash),
+                    OpenOptions::read_only(),
+                )
+                .unwrap()
+                .unwrap()
+                .get_state_root()
+                .unwrap()
+        },
         worker_thread_pool,
         DataManagerConfiguration::new(
             false,                          /* do not persist transaction
@@ -177,12 +192,13 @@ pub fn initialize_data_manager(
         ),
         pow,
     ));
-    (data_man, genesis_block)
+    (data_man, genesis_block, storage_manager)
 }
 
 pub fn initialize_synchronization_graph_with_data_manager(
-    data_man: Arc<BlockDataManager>, beta: u64, h: u64, tcr: u64, tcb: u64,
-    era_epoch_count: u64, pow: Arc<PowComputer>, vm: VmFactory,
+    data_man: Arc<BlockDataManager>, storage: Arc<StorageManager>, beta: u64,
+    h: u64, tcr: u64, tcb: u64, era_epoch_count: u64, pow: Arc<PowComputer>,
+    vm: VmFactory,
 ) -> (Arc<SynchronizationGraph>, Arc<ConsensusGraph>) {
     let mut params = CommonParams::default();
     params.transition_heights.cip1559 = u64::MAX;
@@ -217,6 +233,7 @@ pub fn initialize_synchronization_graph_with_data_manager(
         TxPoolConfig::default(),
         verification_config.clone(),
         data_man.clone(),
+        storage.clone(),
         machine.clone(),
     ));
     let statistics = Arc::new(Statistics::new());
@@ -271,6 +288,7 @@ pub fn initialize_synchronization_graph_with_data_manager(
         txpool.clone(),
         statistics.clone(),
         data_man.clone(),
+        storage,
         pow_config.clone(),
         pow.clone(),
         notifications.clone(),
@@ -309,15 +327,17 @@ pub fn initialize_synchronization_graph(
     Arc<ConsensusGraph>,
     Arc<BlockDataManager>,
     Arc<Block>,
+    Arc<StorageManager>,
 ) {
     let vm = VmFactory::new(1024 * 32);
     let pow = Arc::new(PowComputer::new(true));
 
-    let (data_man, genesis_block) =
+    let (data_man, genesis_block, storage_manager) =
         initialize_data_manager(db_dir, dbtype, pow.clone(), vm.clone());
 
     let (sync, consensus) = initialize_synchronization_graph_with_data_manager(
         data_man.clone(),
+        storage_manager.clone(),
         beta,
         h,
         tcr,
@@ -327,5 +347,5 @@ pub fn initialize_synchronization_graph(
         vm,
     );
 
-    (sync, consensus, data_man, genesis_block)
+    (sync, consensus, data_man, genesis_block, storage_manager)
 }

@@ -59,7 +59,7 @@ impl Handleable for SnapshotChunkRequest {
         let chunk = match Chunk::load(
             snapshot_epoch_id,
             &self.chunk_key,
-            &ctx.manager.graph.data_man.storage_manager,
+            &ctx.manager.storage,
             ctx.manager.protocol_config.chunk_size_byte * 2,
         ) {
             Ok(Some(chunk)) => chunk,

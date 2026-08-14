@@ -188,6 +188,7 @@ pub struct ConsensusExecutor {
 impl ConsensusExecutor {
     pub fn start(
         tx_pool: SharedTransactionPool, data_man: Arc<BlockDataManager>,
+        storage: Arc<dyn StorageEngine>,
         consensus_inner: Arc<RwLock<ConsensusGraphInner>>,
         config: ConsensusExecutionConfiguration,
         verification_config: VerificationConfig, bench_mode: bool,
@@ -197,6 +198,7 @@ impl ConsensusExecutor {
         let handler = Arc::new(ConsensusExecutionHandler::new(
             tx_pool,
             data_man.clone(),
+            storage,
             config,
             verification_config,
             machine,
@@ -850,13 +852,14 @@ pub struct ConsensusExecutionHandler {
 impl ConsensusExecutionHandler {
     pub fn new(
         tx_pool: SharedTransactionPool, data_man: Arc<BlockDataManager>,
+        storage: Arc<dyn StorageEngine>,
         config: ConsensusExecutionConfiguration,
         verification_config: VerificationConfig, machine: Arc<Machine>,
         pos_verifier: Arc<PosVerifier>,
     ) -> Self {
         ConsensusExecutionHandler {
             tx_pool,
-            storage: data_man.storage_manager.clone(),
+            storage,
             data_man,
             config,
             verification_config,
