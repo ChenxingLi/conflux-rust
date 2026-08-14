@@ -1102,6 +1102,38 @@ impl ConsensusNewBlockHandler {
         block_status
     }
 
+    /// Move `StateAvailabilityBoundary::lower_bound` up to where the storage
+    /// engine reports its physical openable lower bound, which drops the same
+    /// prefix of the pivot hash mirror kept in that struct.
+    ///
+    /// The first guard keeps `lower_bound`, the index origin of the mirror,
+    /// from moving down. The second one carries the restart window: the engine
+    /// persists its bound across restarts, while this struct is rebuilt as
+    /// `[cur_era_stable_height, cur_era_stable_height]` in
+    /// `CatchUpFillBlockBodyPhase::start`, so the reported bound can sit far
+    /// above `upper_bound` until the replay has filled the mirror back up to
+    /// it. Skipping such a report costs a late trim, not a wrong one: the
+    /// engine keeps its record and the next confirmation reports the same
+    /// number again.
+    fn adjust_state_availability_lower_bound(
+        &self, physical_openable_lower_bound: u64,
+    ) {
+        let mut boundary = self.data_man.state_availability_boundary.write();
+        if physical_openable_lower_bound > boundary.lower_bound
+            && physical_openable_lower_bound <= boundary.upper_bound
+        {
+            boundary.adjust_lower_bound(physical_openable_lower_bound);
+        } else {
+            debug!(
+                "state availability lower bound left alone: engine reports {}, \
+                 boundary is [{}, {}]",
+                physical_openable_lower_bound,
+                boundary.lower_bound,
+                boundary.upper_bound,
+            );
+        }
+    }
+
     fn activate_block(
         &self, inner: &mut ConsensusGraphInner, me: usize,
         meter: &ConfirmationMeter, queue: &mut VecDeque<usize>,
@@ -1619,7 +1651,8 @@ impl ConsensusNewBlockHandler {
             }
             confirmed_height =
                 inner.confirmed_height_for_state_maintenance(confirmed_height);
-            self.data_man
+            let physical_openable_lower_bound = self
+                .data_man
                 .storage_manager
                 .get_storage_manager()
                 .maintain_state_confirmed(
@@ -1627,10 +1660,12 @@ impl ConsensusNewBlockHandler {
                     inner.cur_era_stable_height,
                     self.conf.inner_conf.era_epoch_count,
                     confirmed_height,
-                    &self.data_man.state_availability_boundary,
                 )
                 // FIXME: propogate error.
                 .expect(&concat!(file!(), ":", line!(), ":", column!()));
+            self.adjust_state_availability_lower_bound(
+                physical_openable_lower_bound,
+            );
             self.set_block_tx_packed(inner, me);
             self.delayed_tx_recycle_in_skipped_blocks(inner, capped_fork_at);
 
@@ -2096,7 +2131,8 @@ impl ConsensusNewBlockHandler {
                             confirmed_height,
                         );
 
-                    self.data_man
+                    let physical_openable_lower_bound = self
+                        .data_man
                         .storage_manager
                         .get_storage_manager()
                         .maintain_state_confirmed(
@@ -2104,7 +2140,6 @@ impl ConsensusNewBlockHandler {
                             inner.cur_era_stable_height,
                             self.conf.inner_conf.era_epoch_count,
                             confirmed_height,
-                            &self.data_man.state_availability_boundary,
                         )
                         .expect(&concat!(
                             file!(),
@@ -2113,6 +2148,9 @@ impl ConsensusNewBlockHandler {
                             ":",
                             column!()
                         ));
+                    self.adjust_state_availability_lower_bound(
+                        physical_openable_lower_bound,
+                    );
                 }
             }
         }

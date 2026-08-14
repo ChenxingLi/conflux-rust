@@ -1564,7 +1564,6 @@ struct TxReplayer {
     block_height: Cell<i64>,
     commit_log: KvdbSqlite<Box<[u8]>>,
     commit_log_vec: Mutex<Vec<StateRootWithAuxInfo>>,
-    state_availability_boundary: RwLock<StateAvailabilityBoundary>,
 
     exit: Arc<(Mutex<bool>, Condvar)>,
 }
@@ -1645,16 +1644,6 @@ impl TxReplayer {
             )?
             .1,
             commit_log_vec: Default::default(),
-            state_availability_boundary: RwLock::new(
-                StateAvailabilityBoundary {
-                    pivot_chain: vec![],
-                    lower_bound: 0,
-                    upper_bound: 0,
-                    optimistic_executed_height: None,
-                    full_state_start_height: None,
-                    full_state_space: None,
-                },
-            ),
             exit,
         })
     }
@@ -1672,12 +1661,6 @@ impl TxReplayer {
             latest_state.compute_state_root(None).unwrap();
         let epoch_id = state_root_with_aux.state_root.delta_root;
         latest_state.commit(epoch_id, None).unwrap();
-        {
-            let mut state_availability_boundary_mut =
-                self.state_availability_boundary.write();
-            state_availability_boundary_mut.upper_bound = block_height as u64;
-            state_availability_boundary_mut.pivot_chain.push(epoch_id);
-        }
         let confirmation_lag = 20;
         if block_height > confirmation_lag {
             let confirmed_height = (block_height - confirmation_lag) as u64;
@@ -1691,7 +1674,6 @@ impl TxReplayer {
                 .maintain_snapshots_pivot_chain_confirmed(
                     confirmed_height,
                     confirmed_epoch_hash,
-                    &self.state_availability_boundary,
                     &|_height, _find_nearest_snapshot_multiple_of| false,
                     /*
                     &|height, _find_nearest_snapshot_multiple_of| {
@@ -2147,9 +2129,7 @@ fn main() -> errors::Result<()> {
     }
 }
 
-use cfx_internal_common::{
-    state_root_with_aux_info::StateRootWithAuxInfo, StateAvailabilityBoundary,
-};
+use cfx_internal_common::state_root_with_aux_info::StateRootWithAuxInfo;
 use cfx_statedb::{StateDb, StateDbExt};
 use cfx_storage::{
     storage_db::key_value_db::{KeyValueDbTrait, KeyValueDbTraitRead},

@@ -994,7 +994,6 @@ impl StorageManager {
     pub fn maintain_state_confirmed<ConsensusInner: StateMaintenanceTrait>(
         &self, consensus_inner: &ConsensusInner, stable_checkpoint_height: u64,
         era_epoch_count: u64, confirmed_height: u64,
-        state_availability_boundary: &RwLock<StateAvailabilityBoundary>,
     ) -> Result<u64> {
         let additional_state_height_gap =
             (self.storage_conf.additional_maintained_snapshot_count
@@ -1031,7 +1030,6 @@ impl StorageManager {
         self.maintain_snapshots_pivot_chain_confirmed(
             maintained_state_height_lower_bound,
             &maintained_epoch_id,
-            state_availability_boundary,
             &|height, find_nearest_snapshot_multiple_of| {
                 extra_snapshots_to_keep_predicate(
                     &self.storage_conf,
@@ -1075,7 +1073,6 @@ impl StorageManager {
     pub fn maintain_snapshots_pivot_chain_confirmed(
         &self, maintained_state_height_lower_bound: u64,
         maintained_epoch_id: &EpochId,
-        state_availability_boundary: &RwLock<StateAvailabilityBoundary>,
         extra_snapshots_to_keep: &dyn Fn(u64, &mut bool) -> bool,
         stable_checkpoint_height: u64,
     ) -> Result<()> {
@@ -1387,31 +1384,17 @@ impl StorageManager {
         if !non_pivot_snapshots_to_remove.is_empty()
             || !old_pivot_snapshots_to_remove.is_empty()
         {
-            // The engine's own record of the physical openable lower bound
-            // follows garbage collection: the first boot derivation only
-            // seeds it, from here on every advance is written through. It is
-            // written before the snapshots are actually removed just below,
-            // so a crash in between leaves a bound which claims less than
-            // what is on disk, never more.
-            //
-            // The block below pushes the same advance into
-            // `StateAvailabilityBoundary`. This is a second, independent
-            // record of it, on the engine's own side.
+            // Written before the snapshots below are actually removed, so a
+            // crash in between leaves a bound which claims less than what is
+            // on disk, never more. This is the only record of the advance;
+            // consensus reads it back as the return value of
+            // `maintain_state_confirmed`.
             if first_available_state_height
                 > self.physical_openable_lower_bound()
             {
                 self.set_physical_openable_lower_bound(
                     first_available_state_height,
                 )?;
-            }
-
-            {
-                // TODO: Archive node may do something different.
-                let state_boundary = &mut *state_availability_boundary.write();
-                if first_available_state_height > state_boundary.lower_bound {
-                    state_boundary
-                        .adjust_lower_bound(first_available_state_height);
-                }
             }
 
             self.remove_snapshots(
@@ -1794,9 +1777,7 @@ use crate::{
     OpenDeltaDbLru, ProvideExtraSnapshotSyncConfig, StateIndex,
     StorageConfiguration,
 };
-use cfx_internal_common::{
-    consensus_api::StateMaintenanceTrait, StateAvailabilityBoundary,
-};
+use cfx_internal_common::consensus_api::StateMaintenanceTrait;
 use fallible_iterator::FallibleIterator;
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use parking_lot::{Mutex, RwLock, RwLockReadGuard};
