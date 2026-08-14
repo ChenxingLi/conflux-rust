@@ -651,7 +651,7 @@ use crate::{
         snapshot::verifier::FakeSnapshotDb, DumpedMptKvIterator,
         TEST_NUMBER_OF_KEYS,
     },
-    StateIndex, StorageStateTraitExt,
+    StateIndex,
 };
 #[cfg(test)]
 use parking_lot::Mutex;

@@ -54,19 +54,6 @@ pub trait StateTrait: Sync + Send {
     fn commit(&mut self, epoch: EpochId) -> Result<StateRootWithAuxInfo>;
 }
 
-pub trait StateTraitExt {
-    fn get_with_proof(
-        &self, access_key: StorageKeyWithSpace,
-    ) -> Result<(Option<Box<[u8]>>, StateProof)>;
-
-    /// Compute the merkle of the node under `access_key` in all tries.
-    /// Node merkle is computed on the value and children hashes, ignoring the
-    /// compressed path.
-    fn get_node_merkle_all_versions<WithProof: StaticBool>(
-        &self, access_key: StorageKeyWithSpace,
-    ) -> Result<(NodeMerkleTriplet, NodeMerkleProof)>;
-}
-
 // We skip the accessed_entries for getting original value.
 pub trait StateDbGetOriginalMethods {
     fn get_original_raw_with_proof(
@@ -83,12 +70,8 @@ pub trait StateDbGetOriginalMethods {
 }
 
 use super::{
-    impls::{
-        errors::*, node_merkle_proof::NodeMerkleProof, state_proof::StateProof,
-    },
+    impls::{errors::*, state_proof::StateProof},
     MptKeyValue, StateRootWithAuxInfo,
 };
 use crate::StorageRootProof;
-use primitives::{
-    EpochId, NodeMerkleTriplet, StaticBool, StorageKeyWithSpace, StorageRoot,
-};
+use primitives::{EpochId, StorageKeyWithSpace, StorageRoot};

@@ -218,10 +218,7 @@ pub use self::{
         },
     },
     replicated_state::ReplicatedState,
-    state::{
-        State as StorageState, StateTrait as StorageStateTrait,
-        StateTraitExt as StorageStateTraitExt,
-    },
+    state::{State as StorageState, StateTrait as StorageStateTrait},
     state_manager::{StateIndex, StateManager as StorageManager},
     storage_db::{KeyValueDbIterableTrait, KeyValueDbTrait},
 };

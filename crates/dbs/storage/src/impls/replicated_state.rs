@@ -1,13 +1,8 @@
-use crate::{
-    impls::errors::*, state::StateTrait, MptKeyValue, NodeMerkleProof,
-    StateProof, StorageStateTraitExt,
-};
+use crate::{impls::errors::*, state::StateTrait, MptKeyValue};
 use cfx_internal_common::StateRootWithAuxInfo;
 use cfx_types::Space;
 use parking_lot::Mutex;
-use primitives::{
-    EpochId, NodeMerkleTriplet, StaticBool, StorageKey, StorageKeyWithSpace,
-};
+use primitives::{EpochId, StorageKey, StorageKeyWithSpace};
 use std::{
     sync::mpsc::{channel, Sender},
     thread::{self, JoinHandle},
@@ -346,22 +341,5 @@ impl<Main: StateTrait> StateTrait for ReplicatedState<Main> {
             .join()
             .expect("ReplicationHandler thread join error")?;
         r
-    }
-}
-
-impl<Main: StorageStateTraitExt> StorageStateTraitExt
-    for ReplicatedState<Main>
-{
-    fn get_with_proof(
-        &self, access_key: StorageKeyWithSpace,
-    ) -> Result<(Option<Box<[u8]>>, StateProof)> {
-        self.state.get_with_proof(access_key)
-    }
-
-    fn get_node_merkle_all_versions<WithProof: StaticBool>(
-        &self, access_key: StorageKeyWithSpace,
-    ) -> Result<(NodeMerkleTriplet, NodeMerkleProof)> {
-        self.state
-            .get_node_merkle_all_versions::<WithProof>(access_key)
     }
 }

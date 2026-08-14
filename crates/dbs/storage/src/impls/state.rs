@@ -386,8 +386,8 @@ impl StateTrait for State {
     }
 }
 
-impl StateTraitExt for State {
-    fn get_with_proof(
+impl State {
+    pub fn get_with_proof(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<(Option<Box<[u8]>>, StateProof)> {
         self.ensure_temp_slab_for_db_load();
@@ -396,7 +396,10 @@ impl StateTraitExt for State {
         self.get_from_all_tries::<WithProof>(access_key)
     }
 
-    fn get_node_merkle_all_versions<WithProof: StaticBool>(
+    /// Compute the merkle of the node under `access_key` in all tries.
+    /// Node merkle is computed on the value and children hashes, ignoring the
+    /// compressed path.
+    pub fn get_node_merkle_all_versions<WithProof: StaticBool>(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<(NodeMerkleTriplet, NodeMerkleProof)> {
         self.check_freshly_synced_snapshot("proof")?;

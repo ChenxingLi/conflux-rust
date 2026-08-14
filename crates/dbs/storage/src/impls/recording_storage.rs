@@ -28,7 +28,7 @@ impl<Storage: StateTrait> RecordingStorage<Storage> {
     }
 }
 
-impl<Storage: StateTrait + StateTraitExt> RecordingStorage<Storage> {
+impl RecordingStorage<State> {
     fn record_kvs(&self, kvs: &Vec<MptKeyValue>) -> Result<()> {
         let mut proof_merger = self.proof_merger.lock();
 
@@ -43,9 +43,7 @@ impl<Storage: StateTrait + StateTraitExt> RecordingStorage<Storage> {
     }
 }
 
-impl<Storage: StateTrait + StateTraitExt> StateTrait
-    for RecordingStorage<Storage>
-{
+impl StateTrait for RecordingStorage<State> {
     delegate! {
         to self.storage {
             fn set(&mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>) -> Result<()>;
