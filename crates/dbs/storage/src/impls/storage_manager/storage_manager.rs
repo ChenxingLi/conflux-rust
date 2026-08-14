@@ -139,8 +139,8 @@ pub struct StorageManager {
         RwLock<Option<(Option<EpochId>, HashSet<EpochId>, u64, Option<u64>)>>,
 
     /// The engine's own state index. Owned here because `new_arc` creates
-    /// the storage dir it lives in. `State::commit` writes entries into it,
-    /// and nothing resolves an epoch's coordinates out of it yet.
+    /// the storage dir it lives in, and because the maintenance which advances
+    /// the physical openable lower bound runs inside this struct.
     state_index_db: Arc<StateIndexDb>,
 
     /// The lowest height on disk from which execution can run continuously
@@ -485,11 +485,8 @@ impl StorageManager {
     ///
     /// The entry is the whole registration. Nothing is written into the delta
     /// MPT of the synced snapshot, because an epoch which is its own snapshot
-    /// layer has an empty delta layer by construction.
-    ///
-    /// This is a write port only. Nothing here is read back yet: the open path
-    /// still resolves coordinates from the commitment row, and the public
-    /// fields the sync path writes are still written by its caller.
+    /// layer has an empty delta layer by construction and the open path
+    /// recognizes that from the entry alone.
     pub fn register_synced_snapshot_state(
         self: &Arc<Self>, snapshot_epoch_id: &EpochId,
         snapshot_info: &SnapshotInfo, synced_state_root: &StateRoot,

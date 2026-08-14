@@ -38,9 +38,9 @@ pub struct StateManager {
     storage_manager: Arc<StorageManager>,
     single_mpt_storage_manager: Option<Arc<SingleMptStorageManager>>,
     pub number_committed_nodes: AtomicUsize,
-    /// A clone of the handle owned by `storage_manager`. `commit` writes
-    /// entries into it, and nothing resolves an epoch's coordinates out of it
-    /// yet.
+    /// A clone of the handle owned by `storage_manager`. `commit` writes into
+    /// it and the open path resolves coordinates out of it, see
+    /// `resolve_coordinates`.
     #[ignore_malloc_size_of = "rocksdb handle owned by StorageManager"]
     state_index_db: Arc<StateIndexDb>,
 }
@@ -80,8 +80,7 @@ impl StateManager {
         })
     }
 
-    /// The engine's own state index. Only write entry points use it in this
-    /// commit; the open path is untouched.
+    /// The engine's own state index.
     pub(crate) fn state_index_db(&self) -> &StateIndexDb {
         &self.state_index_db
     }
@@ -482,6 +481,56 @@ impl StateManager {
         &self.storage_manager
     }
 
+    /// The physical coordinates of one epoch, read out of the engine's own
+    /// index instead of off the `StateIndex` the caller built.
+    ///
+    /// Six fields come from the entry: `snapshot_epoch_id`,
+    /// `snapshot_merkle_root`, `intermediate_epoch_id`,
+    /// `intermediate_trie_root_merkle` (`intermediate_delta_root` in the
+    /// entry), `maybe_intermediate_mpt_key_padding` and
+    /// `delta_mpt_key_padding`. The caller's copies of those are ignored.
+    ///
+    /// Three do not. `epoch_id` is the lookup key. `maybe_height` and
+    /// `maybe_delta_trie_height` stay the caller's, because the entry holds
+    /// the engine's own convention for them and the two disagree at the
+    /// genesis epoch: the genesis state object carries height 1 and delta trie
+    /// height 1, while consensus calls that epoch height 0. Taking the shift
+    /// decision from the entry would move every snapshot boundary one epoch
+    /// down the chain, so the genesis entry has to be written on the consensus
+    /// convention before those two can be sourced from it.
+    ///
+    /// `Ok(None)` when the epoch has no entry, which every caller treats as
+    /// "this version is not available". Epochs without an entry exist by
+    /// design: the first boot migration leaves the current delta segment above
+    /// the newest snapshot uncovered, and a crash between a db commit and its
+    /// index write leaves the same kind of hole. Both heal by re-executing
+    /// that segment.
+    fn resolve_coordinates(
+        &self, state_index: &StateIndex,
+    ) -> Result<Option<StateIndex>> {
+        let Some(entry) = self.state_index_db.get(&state_index.epoch_id)?
+        else {
+            warn!(
+                "resolve_coordinates, no index entry for epoch {:?}.",
+                state_index.epoch_id,
+            );
+            return Ok(None);
+        };
+
+        Ok(Some(StateIndex {
+            snapshot_epoch_id: entry.snapshot_epoch_id,
+            snapshot_merkle_root: entry.snapshot_merkle_root,
+            intermediate_epoch_id: entry.intermediate_epoch_id,
+            intermediate_trie_root_merkle: entry.intermediate_delta_root,
+            maybe_intermediate_mpt_key_padding: entry
+                .maybe_intermediate_mpt_key_padding,
+            epoch_id: state_index.epoch_id,
+            delta_mpt_key_padding: entry.delta_mpt_key_padding,
+            maybe_delta_trie_height: state_index.maybe_delta_trie_height,
+            maybe_height: state_index.maybe_height,
+        }))
+    }
+
     /// delta_mpt_key_padding is required. When None is passed,
     /// it's calculated for the state_trees.
     #[inline]
@@ -548,6 +597,11 @@ impl StateManager {
         &self, state_index: &StateIndex, try_open: bool,
         open_mpt_snapshot: bool,
     ) -> Result<Option<StateTrees>> {
+        let Some(resolved) = self.resolve_coordinates(state_index)? else {
+            return Ok(None);
+        };
+        let state_index = &resolved;
+
         let maybe_intermediate_mpt;
         let maybe_intermediate_mpt_key_padding;
         let delta_mpt;
@@ -661,6 +715,12 @@ impl StateManager {
         &self, parent_state_index: &StateIndex, try_open: bool,
         open_mpt_snapshot: bool,
     ) -> Result<Option<StateTrees>> {
+        let Some(resolved) = self.resolve_coordinates(parent_state_index)?
+        else {
+            return Ok(None);
+        };
+        let parent_state_index = &resolved;
+
         let maybe_height = parent_state_index.maybe_height.map(|x| x + 1);
 
         let snapshot;

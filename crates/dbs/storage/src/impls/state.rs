@@ -358,19 +358,23 @@ impl StateTrait for State {
             commit_result?;
         }
 
-        // Write the coordinates into the engine's own index. Nothing reads
-        // them back yet; the open path still resolves coordinates out of the
-        // commitment row's `aux_info`.        //
+        // Write the coordinates into the engine's own index, which is what
+        // the open path resolves from. The commitment row is still written
+        // with the same coordinates in its `aux_info`; nothing resolves from
+        // that copy.        //
         // Every field is read straight off the state object, which is where
         // the open path already put them. In particular
         // `maybe_intermediate_trie_key_padding` is taken as is rather than
         // recomputed: it is chained along the epochs and cannot be derived
-        // from this epoch's own merkle roots.
-        //
+        // from this epoch's own merkle roots.        //
         // The index write follows a db commit that has already succeeded, and
-        // the two are not one transaction, so a crash in between leaves an
-        // epoch which is committed but has no index entry. Nothing resolves
-        // coordinates out of the index yet, so such a hole is not observable.
+        // the two are not one transaction. A crash in between leaves an epoch
+        // which is committed but has no index entry. That window is accepted:
+        // such an epoch necessarily sits in the current delta segment above
+        // the newest snapshot, which the first boot migration leaves without
+        // entries anyway. An epoch with no entry does not open, so the restart
+        // replay re-executes it and the commit registers its entry again; the
+        // hole heals with no repair pass.
         self.write_state_index_entry(&epoch_id, &merkle_root)?;
 
         if self.delta_trie_height.unwrap()

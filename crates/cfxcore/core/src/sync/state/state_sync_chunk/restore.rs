@@ -128,10 +128,9 @@ impl Restorer {
         // that snapshot's delta MPT, which only exists once the snapshot is in
         // the registry.
         //
-        // The open path still resolves this epoch's coordinates from its
-        // commitment row, and the two public fields below are still the
-        // channel which carries the sync result into the engine. This call
-        // only makes the disk carry the engine's own copy as well, for a state
+        // The two public fields below are still the channel which carries the
+        // sync result into the engine. This entry is the only one this epoch
+        // ever gets, for a state
         // no other write port of the index can reach: `State::commit` never
         // runs for a synced snapshot, and the first boot migration derives a
         // period from the two snapshots below it, which a freshly synced node

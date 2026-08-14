@@ -5,10 +5,9 @@
 //! The engine's own persistent state index.
 //!
 //! It maps an epoch id to the physical coordinates of the state version at
-//! that epoch, plus the state root triplet and the height. The open path does
-//! not resolve from it: it takes those coordinates out of the `aux_info` field
-//! of the commitment row, which consensus owns. So `commit` is the only thing
-//! that fills this table and nothing yet depends on what is in it.
+//! that epoch, plus the state root triplet and the height. The open path
+//! resolves its coordinates from here. The commitment row still carries the
+//! same coordinates in its `aux_info`; nothing resolves from that copy.
 //!
 //! One field cannot be recomputed and therefore must be stored: the
 //! intermediate layer key padding. It is carried along the chain -- on a
@@ -131,7 +130,6 @@ impl StateIndexDb {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub fn get(&self, epoch: &EpochId) -> Result<Option<StateIndexEntry>> {
         match self.db.get(epoch.as_ref())? {
             None => Ok(None),
