@@ -1,7 +1,7 @@
 use crate::errors::{invalid_params_check, Result as CoreResult};
 
 use cfx_statedb::StateDb;
-use cfx_storage::{state::StateTrait, StorageState};
+use cfx_storage::{state::StateTrait, OpenOptions, StorageState};
 use cfx_types::{Space, H256};
 
 use primitives::EpochNumber;
@@ -81,19 +81,24 @@ impl ConsensusGraph {
                 height, hash, state_availability_boundary
             ));
         }
-        let maybe_state_readonly_index =
-            self.data_man.get_state_readonly_index(&hash).into();
-        let maybe_state = match maybe_state_readonly_index {
-            Some(state_readonly_index) => self
+        // The commitment row is no longer the source of the coordinates, only
+        // the gate deciding whether the epoch was executed at all. Keeping the
+        // gate keeps this call site's answer unchanged.
+        let executed = self
+            .data_man
+            .get_epoch_execution_commitment_with_db(&hash)
+            .is_some();
+        let maybe_state = match executed {
+            true => self
                 .data_man
                 .storage_manager
-                .get_state_no_commit_inner(
-                    state_readonly_index,
-                    /* try_open = */ true,
-                    true,
+                .open_layered_state(
+                    &hash,
+                    OpenOptions::read_only().with_try_open(true),
+                    /* open_mpt_snapshot = */ true,
                 )
                 .map_err(|e| format!("Error to get state, err={:?}", e))?,
-            None => None,
+            false => None,
         };
 
         let state = match maybe_state {
@@ -128,19 +133,23 @@ impl ConsensusGraph {
                 height, hash, state_availability_boundary
             ));
         }
-        let maybe_state_readonly_index =
-            self.data_man.get_state_readonly_index(&hash).into();
-        let maybe_state = match maybe_state_readonly_index {
-            Some(state_readonly_index) => self
+        // Same gate as in `get_storage_state_by_height_and_hash`.
+        let executed = self
+            .data_man
+            .get_epoch_execution_commitment_with_db(&hash)
+            .is_some();
+        let maybe_state = match executed {
+            true => self
                 .data_man
                 .storage_manager
-                .get_state_no_commit(
-                    state_readonly_index,
-                    /* try_open = */ true,
-                    space,
+                .open_state(
+                    &hash,
+                    OpenOptions::read_only()
+                        .with_try_open(true)
+                        .with_space(space),
                 )
                 .map_err(|e| format!("Error to get state, err={:?}", e))?,
-            None => None,
+            false => None,
         };
 
         let state = match maybe_state {
