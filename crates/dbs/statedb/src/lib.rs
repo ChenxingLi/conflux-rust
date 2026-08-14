@@ -244,26 +244,23 @@ mod impls {
                 }
             }
             // Then, remove all un-modified existing keys.
-            let deleted = self.storage.read_all(key_prefix)?;
             // We must update the accessed_entries.
-            if let Some(storage_deleted) = &deleted {
-                for (k, v) in storage_deleted {
-                    let entry = accessed_entries.entry(k.clone());
-                    let was_vacant = if let Occupied(_) = &entry {
-                        // Nothing to do for existing entry, because we have
-                        // already scanned through accessed_entries.
-                        false
-                    } else {
-                        true
-                    };
-                    if was_vacant {
-                        deleted_kvs.push((k.clone(), v.clone()));
-                        if !AM::READ_ONLY {
-                            entry.or_insert(EntryValue::new_modified(
-                                Some((&**v).into()),
-                                None,
-                            ));
-                        }
+            for (k, v) in self.storage.iter_prefix(key_prefix)? {
+                let entry = accessed_entries.entry(k.clone());
+                let was_vacant = if let Occupied(_) = &entry {
+                    // Nothing to do for existing entry, because we have
+                    // already scanned through accessed_entries.
+                    false
+                } else {
+                    true
+                };
+                if was_vacant {
+                    deleted_kvs.push((k.clone(), v.clone()));
+                    if !AM::READ_ONLY {
+                        entry.or_insert(EntryValue::new_modified(
+                            Some((&*v).into()),
+                            None,
+                        ));
                     }
                 }
             }

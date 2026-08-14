@@ -43,18 +43,7 @@ impl RecordingStorage<State> {
     }
 }
 
-impl StateTrait for RecordingStorage<State> {
-    delegate! {
-        to self.storage {
-            fn set(&mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>) -> Result<()>;
-            fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()>;
-            fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo>;
-            fn get_state_root(&self) -> Result<StateRootWithAuxInfo>;
-            fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo>;
-            fn read_all_with_callback(&mut self, access_key_prefix: StorageKeyWithSpace, callback: &mut dyn FnMut(MptKeyValue), only_account_key: bool) -> Result<()>;
-        }
-    }
-
+impl StorageView for RecordingStorage<State> {
     // we need to record `get` operations
     fn get(
         &self, access_key: StorageKeyWithSpace,
@@ -64,15 +53,25 @@ impl StateTrait for RecordingStorage<State> {
         Ok(val)
     }
 
-    fn read_all(
+    fn iter_prefix(
         &self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>> {
-        match self.storage.read_all(access_key_prefix)? {
-            None => Ok(None),
-            Some(kvs) => {
-                self.record_kvs(&kvs)?;
-                Ok(Some(kvs))
-            }
+    ) -> Result<Box<dyn Iterator<Item = MptKeyValue>>> {
+        let kvs: Vec<MptKeyValue> =
+            self.storage.iter_prefix(access_key_prefix)?.collect();
+        self.record_kvs(&kvs)?;
+        Ok(Box::new(kvs.into_iter()))
+    }
+}
+
+impl StateTrait for RecordingStorage<State> {
+    delegate! {
+        to self.storage {
+            fn set(&mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>) -> Result<()>;
+            fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()>;
+            fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo>;
+            fn get_state_root(&self) -> Result<StateRootWithAuxInfo>;
+            fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo>;
+            fn read_all_with_callback(&mut self, access_key_prefix: StorageKeyWithSpace, callback: &mut dyn FnMut(MptKeyValue), only_account_key: bool) -> Result<()>;
         }
     }
 }

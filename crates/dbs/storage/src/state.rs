@@ -15,20 +15,40 @@ use cfx_types::AddressWithSpace;
 pub type WithProof = primitives::static_bool::Yes;
 pub type NoProof = primitives::static_bool::No;
 
+/// A read-only handle on one version of the state. This is the interface the
+/// execution engine and the transaction pool need: a point read and a prefix
+/// lookup, nothing else.
+///
+/// `iter_prefix` returns a boxed iterator rather than a `Vec`. The three
+/// layers of the state have to be merged and de-duplicated before the first
+/// item can be produced, so the current implementations materialize the result
+/// and hand back an iterator over it.
+///
+/// `iter_prefix` guarantees that a key appears at most once, carrying the value
+/// from the newest layer that has it, and that keys shadowed by a tombstone do
+/// not appear at all. It does NOT guarantee a globally sorted order: the items
+/// come out as three concatenated sorted runs, one per layer. That order
+/// reaches the execution path through `StateDb`'s range delete, so it is
+/// consensus visible — do not "fix" it into a global sort without an
+/// equivalence argument.
+pub trait StorageView: Sync + Send {
+    fn get(&self, access_key: StorageKeyWithSpace)
+        -> Result<Option<Box<[u8]>>>;
+
+    fn iter_prefix(
+        &self, access_key_prefix: StorageKeyWithSpace,
+    ) -> Result<Box<dyn Iterator<Item = MptKeyValue>>>;
+}
+
 // The trait is created to separate the implementation to another file, and the
 // concrete struct is put into inner mod, because the implementation is
 // anticipated to be too complex to present in the same file of the API.
-pub trait StateTrait: Sync + Send {
+pub trait StateTrait: StorageView {
     // Actions.
-    fn get(&self, access_key: StorageKeyWithSpace)
-        -> Result<Option<Box<[u8]>>>;
     fn set(
         &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
     ) -> Result<()>;
     fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()>;
-    fn read_all(
-        &self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>>;
 
     fn read_all_with_callback(
         &mut self, _access_key_prefix: StorageKeyWithSpace,

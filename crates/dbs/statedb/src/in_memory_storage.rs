@@ -4,7 +4,10 @@ use std::{
 };
 
 use cfx_internal_common::StateRootWithAuxInfo;
-use cfx_storage::{state::StateTrait as StorageTrait, Error, Result};
+use cfx_storage::{
+    state::{StateTrait as StorageTrait, StorageView},
+    Error, MptKeyValue, Result,
+};
 use cfx_types::H256;
 use primitives::StorageKeyWithSpace;
 use tiny_keccak::{Hasher, Keccak};
@@ -30,13 +33,22 @@ impl InmemoryStorage {
     }
 }
 
-impl StorageTrait for InmemoryStorage {
+impl StorageView for InmemoryStorage {
     fn get(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<Option<Box<[u8]>>> {
         Ok(self.inner.get(&access_key.to_key_bytes()).cloned())
     }
 
+    fn iter_prefix(
+        &self, access_key_prefix: StorageKeyWithSpace,
+    ) -> Result<Box<dyn Iterator<Item = MptKeyValue>>> {
+        let kvs = read_prefix(&self.inner, &access_key_prefix.to_key_bytes());
+        Ok(Box::new(kvs.into_iter()))
+    }
+}
+
+impl StorageTrait for InmemoryStorage {
     fn set(
         &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
     ) -> Result<()> {
@@ -47,13 +59,6 @@ impl StorageTrait for InmemoryStorage {
     fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
         self.inner.remove(&access_key.to_key_bytes());
         Ok(())
-    }
-
-    fn read_all(
-        &self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<cfx_storage::MptKeyValue>>> {
-        let kvs = read_prefix(&self.inner, &access_key_prefix.to_key_bytes());
-        Ok(if kvs.is_empty() { None } else { Some(kvs) })
     }
 
     fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {

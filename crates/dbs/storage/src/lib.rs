@@ -218,7 +218,9 @@ pub use self::{
         },
     },
     replicated_state::ReplicatedState,
-    state::{State as StorageState, StateTrait as StorageStateTrait},
+    state::{
+        State as StorageState, StateTrait as StorageStateTrait, StorageView,
+    },
     state_manager::{StateIndex, StateManager as StorageManager},
     storage_db::{KeyValueDbIterableTrait, KeyValueDbTrait},
 };

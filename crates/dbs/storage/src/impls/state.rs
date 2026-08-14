@@ -230,7 +230,7 @@ impl Drop for State {
     }
 }
 
-impl StateTrait for State {
+impl StorageView for State {
     fn get(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<Option<Box<[u8]>>> {
@@ -240,6 +240,18 @@ impl StateTrait for State {
             .map(|(value, _)| value)
     }
 
+    fn iter_prefix(
+        &self, access_key_prefix: StorageKeyWithSpace,
+    ) -> Result<Box<dyn Iterator<Item = MptKeyValue>>> {
+        Ok(Box::new(
+            self.read_all_impl(access_key_prefix)?
+                .unwrap_or_default()
+                .into_iter(),
+        ))
+    }
+}
+
+impl StateTrait for State {
     fn set(
         &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
     ) -> Result<()> {
@@ -263,12 +275,6 @@ impl StateTrait for State {
     fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
         self.set(access_key, MptValue::<Box<[u8]>>::TombStone.unwrap())?;
         Ok(())
-    }
-
-    fn read_all(
-        &self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>> {
-        self.read_all_impl(access_key_prefix)
     }
 
     fn read_all_with_callback(

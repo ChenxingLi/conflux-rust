@@ -6,6 +6,7 @@ use super::StateDbGeneric;
 use cfx_internal_common::StateRootWithAuxInfo;
 use cfx_storage::{
     utils::access_mode, Error, MptKeyValue, Result, StorageStateTrait,
+    StorageView,
 };
 use parking_lot::Mutex;
 use primitives::{EpochId, StorageKey, StorageKeyWithSpace, MERKLE_NULL_NODE};
@@ -46,22 +47,7 @@ impl MockStorage {
 }
 
 #[allow(unused)]
-impl StorageStateTrait for MockStorage {
-    fn commit(&mut self, epoch: EpochId) -> Result<StateRootWithAuxInfo> {
-        self.compute_state_root()
-    }
-
-    fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
-        Ok(StateRootWithAuxInfo::genesis(&MERKLE_NULL_NODE))
-    }
-
-    fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
-        self.num_writes += 1;
-        let key = access_key.to_key_bytes();
-        self.contents.remove(&key);
-        Ok(())
-    }
-
+impl StorageView for MockStorage {
     fn get(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<Option<Box<[u8]>>> {
@@ -70,22 +56,9 @@ impl StorageStateTrait for MockStorage {
         Ok(self.contents.get(&key).cloned())
     }
 
-    fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
-        Err(Error::Msg("No state root".to_owned()).into())
-    }
-
-    fn set(
-        &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
-    ) -> Result<()> {
-        self.num_writes += 1;
-        let key = access_key.to_key_bytes();
-        self.contents.insert(key, value);
-        Ok(())
-    }
-
-    fn read_all(
+    fn iter_prefix(
         &self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>> {
+    ) -> Result<Box<dyn Iterator<Item = MptKeyValue>>> {
         let prefix = access_key_prefix.to_key_bytes();
 
         let keys: Vec<_> = self
@@ -103,7 +76,38 @@ impl StorageStateTrait for MockStorage {
             kvs.push((k.clone(), v.clone()));
         }
 
-        Ok(Some(kvs))
+        Ok(Box::new(kvs.into_iter()))
+    }
+}
+
+#[allow(unused)]
+impl StorageStateTrait for MockStorage {
+    fn commit(&mut self, epoch: EpochId) -> Result<StateRootWithAuxInfo> {
+        self.compute_state_root()
+    }
+
+    fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
+        Ok(StateRootWithAuxInfo::genesis(&MERKLE_NULL_NODE))
+    }
+
+    fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
+        self.num_writes += 1;
+        let key = access_key.to_key_bytes();
+        self.contents.remove(&key);
+        Ok(())
+    }
+
+    fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
+        Err(Error::Msg("No state root".to_owned()).into())
+    }
+
+    fn set(
+        &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
+    ) -> Result<()> {
+        self.num_writes += 1;
+        let key = access_key.to_key_bytes();
+        self.contents.insert(key, value);
+        Ok(())
     }
 }
 

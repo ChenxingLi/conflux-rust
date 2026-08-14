@@ -1,4 +1,8 @@
-use crate::{impls::errors::*, state::StateTrait, MptKeyValue};
+use crate::{
+    impls::errors::*,
+    state::{StateTrait, StorageView},
+    MptKeyValue,
+};
 use cfx_internal_common::StateRootWithAuxInfo;
 use cfx_types::Space;
 use parking_lot::Mutex;
@@ -253,13 +257,21 @@ impl<'a> From<StorageKeyWithSpace<'a>> for OwnedStorageKeyWithSpace {
     }
 }
 
-impl<Main: StateTrait> StateTrait for ReplicatedState<Main> {
+impl<Main: StateTrait> StorageView for ReplicatedState<Main> {
     fn get(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<Option<Box<[u8]>>> {
         self.state.get(access_key)
     }
 
+    fn iter_prefix(
+        &self, access_key_prefix: StorageKeyWithSpace,
+    ) -> Result<Box<dyn Iterator<Item = MptKeyValue>>> {
+        self.state.iter_prefix(access_key_prefix)
+    }
+}
+
+impl<Main: StateTrait> StateTrait for ReplicatedState<Main> {
     fn set(
         &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
     ) -> Result<()> {
@@ -275,12 +287,6 @@ impl<Main: StateTrait> StateTrait for ReplicatedState<Main> {
             access_key: access_key.into(),
         });
         self.state.delete(access_key)
-    }
-
-    fn read_all(
-        &self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Option<Vec<MptKeyValue>>> {
-        self.state.read_all(access_key_prefix)
     }
 
     fn read_all_with_callback(
