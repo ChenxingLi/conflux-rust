@@ -144,16 +144,15 @@ pub struct StorageManager {
     state_index_db: Arc<StateIndexDb>,
 
     /// The lowest height on disk from which execution can run continuously
-    /// upwards, which is the engine's share of what
-    /// `StateAvailabilityBoundary::lower_bound` mixes together today. It lives
-    /// next to the index because snapshot garbage collection, which advances
-    /// it, runs here, and the in memory value and the record inside the index
-    /// have to move together. Loaded from the index at construction, derived
-    /// from the snapshot registry on the boot which finds no record.
+    /// upwards. It lives next to the index because snapshot garbage
+    /// collection, which advances it, runs here, and the in memory value and
+    /// the record inside the index have to move together. Loaded from the
+    /// index at construction, derived from the snapshot registry on the boot
+    /// which finds no record.
     ///
-    /// Its only reader is the monotonicity guard of its own writer: garbage
-    /// collection compares the height it reached against this value and writes
-    /// only when that height is higher. Nothing else acts on the number.
+    /// The execution lower bound consensus takes from its era and checkpoint
+    /// policy is not here and cannot be derived here; it stays with
+    /// consensus.
     physical_openable_lower_bound: RwLock<u64>,
 }
 
@@ -445,9 +444,7 @@ impl StorageManager {
         self.state_index_db.clone()
     }
 
-    /// Write only for now. It exists so that the value garbage collection and
-    /// the first boot derivation produce is not lost; nothing consults it yet.
-    #[allow(dead_code)]
+    /// The engine's answer to "how far has garbage collection advanced".
     pub(crate) fn physical_openable_lower_bound(&self) -> u64 {
         *self.physical_openable_lower_bound.read()
     }
@@ -512,7 +509,23 @@ impl StorageManager {
             "register_synced_snapshot_state: epoch={:?} entry={:?}",
             snapshot_epoch_id, entry
         );
-        self.state_index_db.put(snapshot_epoch_id, &entry)
+        self.state_index_db.put(snapshot_epoch_id, &entry)?;
+
+        // A synced snapshot is a new floor: nothing below the synced height
+        // can be executed upwards, because nothing below it was ever executed
+        // here. That is exactly the physical openable lower bound of design
+        // v5 4.3, and garbage collection is not the only thing which moves
+        // it. Consensus records the same number in its own share of the old
+        // boundary, by rebuilding it at the synced height when the sync phase
+        // ends; this is the engine's copy of that fact.
+        //
+        // Raise only. A record already above the synced height is claiming
+        // less is openable than what is on disk, which is the safe direction;
+        // lowering it back would claim more.
+        if snapshot_info.height > self.physical_openable_lower_bound() {
+            self.set_physical_openable_lower_bound(snapshot_info.height)?;
+        }
+        Ok(())
     }
 
     /// A snapshot of the whole snapshot registry, keyed by snapshot epoch id.
@@ -983,8 +996,11 @@ impl StorageManager {
             } else {
                 0
             };
+        // "Has garbage collection already passed this height" is a question
+        // about what is on disk, so the engine's own record of the physical
+        // openable lower bound is what answers it.
         if maintained_state_height_lower_bound
-            <= state_availability_boundary.read().lower_bound
+            <= self.physical_openable_lower_bound()
         {
             return Ok(());
         }
