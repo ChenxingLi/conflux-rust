@@ -21,6 +21,10 @@ pub fn get_state_by_epoch_id(epoch_id: &EpochId) -> State {
     State::new(StateDb::new_for_unit_test_with_epoch(epoch_id)).unwrap()
 }
 
+/// A state to write the epoch after genesis on. The genesis epoch is
+/// committed here, and the state handed back is opened on it, because a
+/// `State` is spent by its commit: it reads through the view of its parent
+/// version, which the commit leaves alone.
 #[cfg(test)]
 pub fn get_state_for_genesis_write() -> State {
     let mut state = State::new(StateDb::new_for_unit_test())
@@ -32,12 +36,14 @@ pub fn get_state_for_genesis_write() -> State {
     )
     .expect("no db error");
     let genesis_epoch_id = EpochId::default();
-    state.commit_for_test(genesis_epoch_id).expect(
-        // This is a comment to let cargo format the rest in a single line.
-        &concat!(file!(), ":", line!(), ":", column!()),
-    );
-
     state
+        .commit(genesis_epoch_id, /* debug_record = */ None)
+        .expect(
+            // This is a comment to let cargo format the rest in a single line.
+            &concat!(file!(), ":", line!(), ":", column!()),
+        );
+
+    get_state_by_epoch_id(&genesis_epoch_id)
 }
 
 fn u256_to_vec(val: &U256) -> Vec<u8> { val.to_big_endian().to_vec() }
@@ -470,9 +476,9 @@ fn checkpoint_get_storage_at() {
             true,
         )
         .unwrap();
-    state
-        .commit_for_test(BigEndianHash::from_uint(&U256::from(1u64)))
-        .unwrap();
+    let epoch_id_1: EpochId = BigEndianHash::from_uint(&U256::from(1u64));
+    state.commit(epoch_id_1, /* debug_record = */ None).unwrap();
+    let mut state = get_state_by_epoch_id(&epoch_id_1);
 
     substates.clear();
     substates.push(Substate::new());
@@ -916,11 +922,10 @@ fn create_contract_fail_previous_storage() {
         *COLLATERAL_DRIPS_PER_STORAGE_KEY
     );
     assert_eq!(state.balance(&a_s).unwrap(), U256::zero());
-    state
-        .commit_for_test(BigEndianHash::from_uint(&U256::from(1)))
-        .unwrap();
+    let epoch_id_1: EpochId = BigEndianHash::from_uint(&U256::from(1));
+    state.commit(epoch_id_1, /* debug_record = */ None).unwrap();
+    let mut state = get_state_by_epoch_id(&epoch_id_1);
 
-    state.clear();
     substates.clear();
     substates.push(Substate::new());
 
@@ -931,7 +936,6 @@ fn create_contract_fail_previous_storage() {
     state.clear();
     substates.clear();
     substates.push(Substate::new());
-    state = get_state_by_epoch_id(&BigEndianHash::from_uint(&U256::from(1)));
     assert_eq!(
         state.total_storage_tokens(),
         *COLLATERAL_DRIPS_PER_STORAGE_KEY

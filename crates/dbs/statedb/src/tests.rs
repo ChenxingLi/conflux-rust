@@ -2,116 +2,20 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use super::StateDbGeneric;
-use cfx_internal_common::StateRootWithAuxInfo;
-use cfx_storage::{
-    utils::access_mode, Error, MptKeyValue, Result, StorageStateTrait,
-    StorageView,
-};
-use parking_lot::Mutex;
+use super::{inmemory_manager::InmemoryManager, StateDbGeneric};
+use cfx_storage::utils::access_mode;
 use primitives::{EpochId, StorageKey, StorageKeyWithSpace, MERKLE_NULL_NODE};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 type StorageValue = Box<[u8]>;
-type RawStorage = HashMap<Vec<u8>, StorageValue>;
-
-struct MockStorage {
-    pub contents: RawStorage,
-    num_reads: Mutex<u64>,
-    num_writes: u64,
-}
-
-impl MockStorage {
-    #[allow(unused)]
-    fn empty() -> Self {
-        MockStorage {
-            contents: Default::default(),
-            num_reads: Mutex::new(0),
-            num_writes: 0,
-        }
-    }
-
-    fn with_contents(contents: RawStorage) -> Self {
-        MockStorage {
-            contents,
-            num_reads: Mutex::new(0),
-            num_writes: 0,
-        }
-    }
-
-    #[allow(unused)]
-    pub fn get_num_reads(&self) -> u64 { *self.num_reads.lock() }
-
-    #[allow(unused)]
-    pub fn get_num_writes(&self) -> u64 { self.num_writes }
-}
-
-#[allow(unused)]
-impl StorageView for MockStorage {
-    fn get(
-        &self, access_key: StorageKeyWithSpace,
-    ) -> Result<Option<Box<[u8]>>> {
-        *self.num_reads.lock() += 1;
-        let key = access_key.to_key_bytes();
-        Ok(self.contents.get(&key).cloned())
-    }
-
-    fn iter_prefix(
-        &self, access_key_prefix: StorageKeyWithSpace,
-    ) -> Result<Box<dyn Iterator<Item = MptKeyValue>>> {
-        let prefix = access_key_prefix.to_key_bytes();
-
-        let keys: Vec<_> = self
-            .contents
-            .keys()
-            .filter(|k| k.starts_with(&prefix[..]))
-            .cloned()
-            .collect();
-
-        let mut kvs = vec![];
-
-        for k in keys {
-            *self.num_reads.lock() += 1;
-            let v = self.contents.get(&k).unwrap();
-            kvs.push((k.clone(), v.clone()));
-        }
-
-        Ok(Box::new(kvs.into_iter()))
-    }
-}
-
-#[allow(unused)]
-impl StorageStateTrait for MockStorage {
-    fn commit(&mut self, epoch: EpochId) -> Result<StateRootWithAuxInfo> {
-        self.compute_state_root()
-    }
-
-    fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
-        Ok(StateRootWithAuxInfo::genesis(&MERKLE_NULL_NODE))
-    }
-
-    fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
-        self.num_writes += 1;
-        let key = access_key.to_key_bytes();
-        self.contents.remove(&key);
-        Ok(())
-    }
-
-    fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
-        Err(Error::Msg("No state root".to_owned()).into())
-    }
-
-    fn set(
-        &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
-    ) -> Result<()> {
-        self.num_writes += 1;
-        let key = access_key.to_key_bytes();
-        self.contents.insert(key, value);
-        Ok(())
-    }
-}
+type RawStorage = BTreeMap<Vec<u8>, StorageValue>;
 
 type StateDbTest = StateDbGeneric;
+
+/// The epoch these tests read their fixture out of. It is the parent of the
+/// epoch they commit, and it exists because the in memory engine was seeded
+/// with it, not because anything committed it.
+fn base_epoch() -> EpochId { EpochId::from_low_u64_be(1) }
 
 // convert `key` to storage interface format
 fn storage_key(key: &'static [u8]) -> StorageKeyWithSpace<'static> {
@@ -131,8 +35,10 @@ fn init_state_db() -> StateDbTest {
     contents.insert(key(b"11"), value(b"v0"));
     contents.insert(key(b"22"), value(b"v0"));
 
-    let storage = MockStorage::with_contents(contents);
-    StateDbTest::new_on_owned_state(Box::new(storage))
+    let manager = InmemoryManager::new();
+    manager.seed(base_epoch(), contents);
+    StateDbTest::new_for_commit(manager, base_epoch(), 1)
+        .expect("the base epoch was just seeded")
 }
 
 #[allow(unused)]
@@ -168,20 +74,8 @@ fn test_basic() {
         .unwrap();
 
     state_db.commit(MERKLE_NULL_NODE, None).unwrap();
-    // FIXME(lpl): Enable tests.
-    // let storage = (state_db.get_storage_mut() as &dyn
-    // Any).downcast_ref::<MockStorage>().unwrap(); let contents =
-    // &storage.contents;
-    //
-    // // we expect only one value after commit
-    // let expected: HashMap<_, _> =
-    //     [(key(b"11"), value(b"v1"))].iter().cloned().collect();
-    //
-    // assert_eq!(*contents, expected);
-    //
-    // // we need to read all values touched
-    // assert_eq!(storage.get_num_reads(), 4);
-    //
-    // // we need to write all values modified or removed
-    // assert_eq!(storage.get_num_writes(), 4);
+    // FIXME(lpl): Enable tests. The disabled assertions checked the contents
+    // of the committed epoch and how many reads and writes reaching it took;
+    // they have to be rewritten against the storage engine behind `StateDb`,
+    // which is what holds the committed epoch now.
 }

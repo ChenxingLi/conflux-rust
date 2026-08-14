@@ -138,14 +138,3 @@ impl State {
         }
     }
 }
-
-impl State {
-    // Some test code will reuse state incorrectly, so we implement a version
-    // which does not take ownership when committing.
-    #[cfg(test)]
-    pub fn commit_for_test(&mut self, epoch_id: EpochId) -> DbResult<()> {
-        self.apply_changes_to_statedb(None)?;
-        self.db.commit(epoch_id, None)?;
-        Ok(())
-    }
-}

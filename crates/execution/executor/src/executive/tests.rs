@@ -419,9 +419,9 @@ fn test_revert() {
     state
         .new_contract_with_code(&contract_address_with_space, U256::zero())
         .expect(&concat!(file!(), ":", line!(), ":", column!()));
-    state
-        .commit_for_test(BigEndianHash::from_uint(&U256::from(1)))
-        .unwrap();
+    let epoch_id: EpochId = BigEndianHash::from_uint(&U256::from(1));
+    state.commit(epoch_id, /* debug_record = */ None).unwrap();
+    let mut state = get_state_by_epoch_id(&epoch_id);
 
     let mut params = ActionParams::default();
     params.address = contract_address;
@@ -1089,7 +1089,8 @@ fn test_commission_privilege_all_whitelisted_across_epochs() {
         .unwrap()
         .unwrap();
     state.discard_checkpoint();
-    state.commit_for_test(epoch_id).unwrap();
+    state.commit(epoch_id, /* debug_record = */ None).unwrap();
+    let state = get_state_by_epoch_id(&epoch_id);
 
     assert_eq!(
         true,

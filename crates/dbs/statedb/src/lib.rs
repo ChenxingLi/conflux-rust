@@ -8,8 +8,8 @@ extern crate cfx_util_macros;
 extern crate log;
 
 pub mod global_params;
-#[cfg(feature = "testonly_code")]
-mod in_memory_storage;
+#[cfg(any(test, feature = "testonly_code"))]
+mod inmemory_manager;
 mod statedb_ext;
 use cfx_types::H256;
 use primitives::StorageValue;
@@ -19,6 +19,8 @@ use cfx_db_errors::statedb as error;
 #[cfg(test)]
 mod tests;
 
+#[cfg(any(test, feature = "testonly_code"))]
+pub use self::inmemory_manager::InmemoryManager;
 pub use self::{
     error::{Error, Result},
     impls::StateDb as StateDbGeneric,
@@ -63,8 +65,10 @@ mod impls {
 
         /// A writable state object handed in from outside, which serves both
         /// the reads and the commit. It is kept for the callers which cannot
-        /// name a parent version yet: unit tests and benchmarks, which commit
-        /// into a mock state, until an in memory engine replaces the mocks.
+        /// name a parent version yet: the executor's account level tests, an
+        /// example and the storage benchmark, all of which open a writable
+        /// state on the engine themselves. It goes away together with the
+        /// write capable trait object it holds.
         OwnedState(Box<dyn StorageStateTrait>),
     }
 
@@ -164,20 +168,32 @@ mod impls {
             }
         }
 
-        #[cfg(feature = "testonly_code")]
+        /// A commit capable instance on the in memory engine's empty base.
+        /// The engine is the one shared by every unit test on this thread, so
+        /// an epoch committed here can be opened again by
+        /// `new_for_unit_test_with_epoch`.
+        #[cfg(any(test, feature = "testonly_code"))]
         pub fn new_for_unit_test() -> Self {
-            use self::in_memory_storage::InmemoryStorage;
+            use super::inmemory_manager::InmemoryManager;
 
-            Self::new_on_owned_state(Box::new(InmemoryStorage::default()))
+            Self::new_for_genesis(InmemoryManager::for_current_thread())
+                .expect("the empty base is always open")
         }
 
-        #[cfg(feature = "testonly_code")]
+        /// A commit capable instance on top of an epoch some earlier unit test
+        /// step committed into the in memory engine of this thread. It panics
+        /// on an epoch that was never committed, which is what the
+        /// `InmemoryStorage` lookup it replaces did.
+        #[cfg(any(test, feature = "testonly_code"))]
         pub fn new_for_unit_test_with_epoch(epoch_id: &EpochId) -> Self {
-            use self::in_memory_storage::InmemoryStorage;
+            use super::inmemory_manager::InmemoryManager;
 
-            Self::new_on_owned_state(Box::new(
-                InmemoryStorage::from_epoch_id(epoch_id).unwrap(),
-            ))
+            Self::new_for_commit(
+                InmemoryManager::for_current_thread(),
+                *epoch_id,
+                0,
+            )
+            .expect("the epoch was committed by an earlier test step")
         }
 
         #[cfg(test)]
