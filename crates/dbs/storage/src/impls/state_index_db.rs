@@ -374,4 +374,108 @@ mod tests {
         temp.index().remove(&id).unwrap();
         assert!(temp.index().get(&id).unwrap().is_none());
     }
+
+    // ---- the physical openable lower bound -------------------------------
+
+    #[test]
+    fn lower_bound_round_trips_and_survives_a_reopen() {
+        let mut temp = TempIndex::new();
+        // No record on a fresh index: this is the one boot which derives the
+        // bound from the registry instead of reading it.
+        assert_eq!(temp.index().load_lower_bound().unwrap(), None);
+
+        temp.index().store_lower_bound(0).unwrap();
+        assert_eq!(temp.index().load_lower_bound().unwrap(), Some(0));
+
+        temp.index().store_lower_bound(123_456).unwrap();
+        assert_eq!(temp.index().load_lower_bound().unwrap(), Some(123_456));
+
+        temp.reopen();
+        assert_eq!(temp.index().load_lower_bound().unwrap(), Some(123_456));
+
+        // The store keeps no monotonicity of its own; the caller decides it.
+        temp.index().store_lower_bound(7).unwrap();
+        assert_eq!(temp.index().load_lower_bound().unwrap(), Some(7));
+
+        temp.index().store_lower_bound(u64::MAX).unwrap();
+        assert_eq!(temp.index().load_lower_bound().unwrap(), Some(u64::MAX));
+    }
+
+    #[test]
+    fn lower_bound_and_entries_do_not_collide() {
+        let temp = TempIndex::new();
+        let id = epoch(0xb2);
+        temp.index().put(&id, &full_entry()).unwrap();
+        temp.index().store_lower_bound(99).unwrap();
+        temp.index().set_migrated().unwrap();
+
+        assert_eq!(temp.index().load_lower_bound().unwrap(), Some(99));
+        assert!(temp.index().get(&id).unwrap().is_some());
+        assert!(temp.index().migrated().unwrap());
+    }
+
+    /// The degradation branch of `load_lower_bound`: a record whose byte
+    /// length is not 8 is reported as "no record at all".
+    #[test]
+    fn a_lower_bound_record_of_the_wrong_length_reads_as_no_record() {
+        let temp = TempIndex::new();
+        temp.index().set_migrated().unwrap();
+
+        for corrupt in [vec![], vec![0u8; 7], vec![0u8; 9]] {
+            temp.index().db.put(LOWER_BOUND_KEY, &corrupt).unwrap();
+            assert_eq!(
+                temp.index().load_lower_bound().unwrap(),
+                None,
+                "a {} byte record did not read as absent",
+                corrupt.len()
+            );
+        }
+
+        // A corrupt entry value, in contrast, is an error rather than an
+        // absence: the two records of this index disagree on how to treat a
+        // record they cannot make sense of.
+        let id = epoch(0xc3);
+        temp.index()
+            .db
+            .put(id.as_ref(), &[0xff, 0xff, 0xff])
+            .unwrap();
+        assert!(temp.index().get(&id).is_err());
+    }
+
+    // ---- the first boot migration mark -----------------------------------
+
+    #[test]
+    fn migration_mark_is_absent_until_set_and_then_survives_a_reopen() {
+        let mut temp = TempIndex::new();
+        // Nothing set: the boot which runs the migration.
+        assert!(!temp.index().migrated().unwrap());
+
+        temp.index().set_migrated().unwrap();
+        assert!(temp.index().migrated().unwrap());
+
+        // Once the record exists the derivation must not run again, and a
+        // restart is exactly where that would happen.
+        temp.reopen();
+        assert!(temp.index().migrated().unwrap());
+
+        // Setting it twice is the same state, so a migration which reruns
+        // before crashing leaves nothing inconsistent behind.
+        temp.index().set_migrated().unwrap();
+        assert!(temp.index().migrated().unwrap());
+    }
+
+    /// The mark is keyed on something an epoch id cannot be, so no entry can
+    /// set it and no entry is shadowed by it.
+    #[test]
+    fn migration_mark_key_cannot_be_an_epoch_id() {
+        assert_ne!(MIGRATION_MARK_KEY.len(), EpochId::len_bytes());
+        assert_ne!(LOWER_BOUND_KEY.len(), EpochId::len_bytes());
+        assert_ne!(MIGRATION_MARK_KEY, LOWER_BOUND_KEY);
+
+        // And the mark is not readable as an entry, nor an entry as the mark.
+        let temp = TempIndex::new();
+        temp.index().put(&epoch(0xd4), &full_entry()).unwrap();
+        assert!(!temp.index().migrated().unwrap());
+        assert_eq!(temp.index().load_lower_bound().unwrap(), None);
+    }
 }
