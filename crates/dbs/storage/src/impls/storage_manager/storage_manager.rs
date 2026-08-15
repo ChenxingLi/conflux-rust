@@ -148,10 +148,11 @@ pub struct StorageManager {
 
     pub storage_conf: StorageConfiguration,
 
-    // used during startup for the next compute epoch
-    pub intermediate_trie_root_merkle: RwLock<Option<MerkleHash>>,
-
-    pub persist_state_from_initialization:
+    /// What the startup self check found on disk, consumed by the recovery
+    /// handshake. The sync landing overwrites it through
+    /// `note_synced_snapshot`, because the self check runs before the sync
+    /// and therefore cannot have seen the snapshot the sync brings in.
+    persist_state_from_initialization:
         RwLock<Option<(Option<EpochId>, HashSet<EpochId>, u64, Option<u64>)>>,
 
     /// Set by `plan_recovery` while the restart replay still has commits to
@@ -171,10 +172,6 @@ pub struct StorageManager {
     /// the record inside the index have to move together. Loaded from the
     /// index at construction, derived from the snapshot registry on the boot
     /// which finds no record.
-    ///
-    /// The execution lower bound consensus takes from its era and checkpoint
-    /// policy is not here and cannot be derived here; it stays with
-    /// consensus.
     physical_openable_lower_bound: RwLock<u64>,
 }
 
@@ -323,7 +320,6 @@ impl StorageManager {
             snapshot_info_map_by_epoch: RwLock::new(snapshot_info_map),
             last_confirmed_snapshottable_epoch_id: Default::default(),
             storage_conf,
-            intermediate_trie_root_merkle: RwLock::new(None),
             persist_state_from_initialization: RwLock::new(None),
             recovery_mode: RwLock::new(None),
             state_index_db,
@@ -534,21 +530,27 @@ impl StorageManager {
         );
         self.state_index_db.put(snapshot_epoch_id, &entry)?;
 
-        // A synced snapshot is a new floor: nothing below the synced height
-        // can be executed upwards, because nothing below it was ever executed
-        // here. That is exactly the physical openable lower bound of design
-        // v5 4.3, and garbage collection is not the only thing which moves
-        // it. Consensus records the same number in its own share of the old
-        // boundary, by rebuilding it at the synced height when the sync phase
-        // ends; this is the engine's copy of that fact.
-        //
-        // Raise only. A record already above the synced height is claiming
-        // less is openable than what is on disk, which is the safe direction;
-        // lowering it back would claim more.
+        // A synced snapshot is a new floor: nothing below the synced height can
+        // be executed upwards, because nothing below it was ever executed
+        // here. Raise only -- a record already above the synced height claims
+        // less is openable than what is on disk, which is the safe direction,
+        // while lowering it back would claim more.
         if snapshot_info.height > self.physical_openable_lower_bound() {
             self.set_physical_openable_lower_bound(snapshot_info.height)?;
         }
         Ok(())
+    }
+
+    /// A snapshot landed by the sync at `snapshot_height`. The startup self
+    /// check ran before the sync, so its report describes a disk which did not
+    /// yet hold this snapshot, and the recovery handshake would act on it by
+    /// rebuilding an MPT the sync has just delivered. This replaces the report
+    /// with what the disk holds now: nothing removed but the genesis
+    /// placeholder, the newest snapshot at the synced height, and no snapshot
+    /// carrying a usable MPT.
+    pub fn note_synced_snapshot(&self, snapshot_height: u64) {
+        *self.persist_state_from_initialization.write() =
+            Some((None, HashSet::from([NULL_EPOCH]), snapshot_height, None));
     }
 
     /// A snapshot of the whole snapshot registry, keyed by snapshot epoch id.
@@ -1070,16 +1072,9 @@ impl StorageManager {
     ) -> RecoveryPlan {
         let mut start_compute_epoch_height =
             view.proposed_recompute_start_height();
-        let mut need_set_intermediate_trie_root_merkle = false;
         let max_height_has_mpt = self.recover_latest_mpt_snapshot_if_needed(
             view,
             &mut start_compute_epoch_height,
-            &mut need_set_intermediate_trie_root_merkle,
-        );
-        self.set_intermediate_trie_root_merkle(
-            view,
-            start_compute_epoch_height,
-            need_set_intermediate_trie_root_merkle,
         );
         self.enter_recovery_mode(
             view,
@@ -1184,7 +1179,6 @@ impl StorageManager {
     fn recover_latest_mpt_snapshot_if_needed(
         &self, view: &dyn ConsensusRecoveryView,
         start_compute_epoch_height: &mut u64,
-        need_set_intermediate_trie_root_merkle: &mut bool,
     ) -> Option<u64> {
         let end_height = view.replay_window_end_height();
         let stable_height = view.stable_checkpoint_height();
@@ -1194,8 +1188,8 @@ impl StorageManager {
             return Some(end_height);
         }
 
-        // The startup self check leaves its findings in this field, and the
-        // read of them is the engine's own.
+        // What the startup self check found, and what the sync landing
+        // overwrote it with when a snapshot arrived after the check.
         let (
             temp_snapshot_db_existing,
             removed_snapshots,
@@ -1316,9 +1310,6 @@ impl StorageManager {
             } else if *start_compute_epoch_height
                 <= era_pivot_epoch_height + snapshot_epoch_count
             {
-                if *start_compute_epoch_height % snapshot_epoch_count == 1 {
-                    *need_set_intermediate_trie_root_merkle = true;
-                }
             } else if *start_compute_epoch_height
                 <= era_pivot_epoch_height + snapshot_epoch_count * 2
             {
@@ -1393,52 +1384,6 @@ impl StorageManager {
 
             debug!("the latest MPT snapshot is valid");
             Some(end_height)
-        }
-    }
-
-    /// Stage the intermediate root the first commit of the replay will need.
-    /// The two roots it derives from sit in the engine's own index, so the
-    /// engine reads them itself; the public field is where the staged value
-    /// waits for that commit.
-    fn set_intermediate_trie_root_merkle(
-        &self, view: &dyn ConsensusRecoveryView,
-        start_compute_epoch_height: u64,
-        need_set_intermediate_trie_root_merkle: bool,
-    ) {
-        if !self.storage_conf.keep_snapshot_before_stable_checkpoint
-            || need_set_intermediate_trie_root_merkle
-        {
-            let snapshot_epoch_count = self.get_snapshot_epoch_count() as u64;
-            let parent_epoch_id = view
-                .pivot_hash_at_height(start_compute_epoch_height - 1)
-                .expect("pivot hash should be exist");
-
-            let intermediate_trie_root_merkle = match self
-                .state_index_db
-                .get(&parent_epoch_id)
-            {
-                Ok(Some(entry)) => {
-                    if start_compute_epoch_height % snapshot_epoch_count == 1 {
-                        entry.delta_root
-                    } else {
-                        entry.intermediate_delta_root
-                    }
-                }
-                // An empty root is what the parent having no entry means, and
-                // it is not what an unreadable index means. Staging it after a
-                // failed read anchors the first commit of the replay on a root
-                // which is not the parent's, and nothing catches that until a
-                // state root mismatch much further up.
-                Ok(None) => MERKLE_NULL_NODE,
-                Err(e) => panic!(
-                    "index lookup for epoch {:?} failed: {:?}",
-                    parent_epoch_id, e
-                ),
-            };
-
-            debug!("previous pivot hash {:?} intermediate trie root merkle for next pivot {:?}", parent_epoch_id, intermediate_trie_root_merkle);
-            *self.intermediate_trie_root_merkle.write() =
-                Some(intermediate_trie_root_merkle);
         }
     }
 

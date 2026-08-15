@@ -8,7 +8,7 @@ use cfx_storage::{
     storage_db::{SnapshotDbManagerTrait, SnapshotInfo},
     FullSyncVerifier, Result as StorageResult, SnapshotDbManagerSqlite,
 };
-use primitives::{EpochId, MerkleHash, StateRoot, NULL_EPOCH};
+use primitives::{EpochId, MerkleHash, StateRoot};
 use std::sync::Arc;
 
 pub struct Restorer {
@@ -128,32 +128,18 @@ impl Restorer {
         // that snapshot's delta MPT, which only exists once the snapshot is in
         // the registry.
         //
-        // The two public fields below are still the channel which carries the
-        // sync result into the engine. This call puts on disk the only copy of
-        // this epoch's coordinates left, for a state no other write port of
-        // the index can reach: `State::commit` never runs for a synced
-        // snapshot, and the first boot migration derives a period from the two
-        // snapshots below it, which a freshly synced node does not have.
+        // This is the only index write a synced epoch ever gets, since
+        // `State::commit` never runs for one. The next epoch's shift also
+        // takes its intermediate root from the `delta_root` of this entry.
         storage_manager.register_synced_snapshot_state(
             &self.snapshot_epoch_id,
             &snapshot_info,
             &synced_state_root,
         )?;
 
-        debug!(
-            "intermediate_trie_root_merkle for next epoch in finalize_restoration {:?}",
-            synced_state_root.delta_root
-        );
-        *storage_manager.intermediate_trie_root_merkle.write() =
-            Some(synced_state_root.delta_root);
-
-        // rewrite for special case
-        *storage_manager.persist_state_from_initialization.write() = Some((
-            None,
-            std::collections::HashSet::from([NULL_EPOCH]),
-            snapshot_height,
-            None,
-        ));
+        // Tell the storage engine that its startup self check, which ran
+        // before this sync, no longer describes the disk.
+        storage_manager.note_synced_snapshot(snapshot_height);
 
         debug!("Completed snapshot restoration.");
         Ok(())

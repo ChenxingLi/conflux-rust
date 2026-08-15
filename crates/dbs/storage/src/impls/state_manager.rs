@@ -798,16 +798,17 @@ impl StateManager {
                     }
                     maybe_intermediate_mpt = None;
                     maybe_intermediate_mpt_key_padding = None;
+                    // The root the shift freezes as the new intermediate layer
+                    // is the parent epoch's own delta root, carried by its
+                    // index entry.
                     match self
-                        .storage_manager
-                        .intermediate_trie_root_merkle
-                        .write()
-                        .take()
+                        .state_index_db
+                        .get(&parent_state_index.epoch_id)?
                     {
-                        Some(v) => {
-                            intermediate_trie_root_merkle = v;
+                        Some(entry) => {
+                            intermediate_trie_root_merkle = entry.delta_root;
                         }
-                        _ => {
+                        None => {
                             warn!(
                                 "get_state_trees_for_next_epoch, shift snapshot, special case, \
                                 intermediate_trie_root_merkle not found for snapshot {:?}. StateIndex: {:?}.",
@@ -917,16 +918,16 @@ impl StateManager {
                                 }
                                 maybe_intermediate_mpt = None;
                                 maybe_intermediate_mpt_key_padding = None;
+                                // Same source as the other special case above.
                                 match self
-                                    .storage_manager
-                                    .intermediate_trie_root_merkle
-                                    .write()
-                                    .take()
+                                    .state_index_db
+                                    .get(&parent_state_index.epoch_id)?
                                 {
-                                    Some(v) => {
-                                        intermediate_trie_root_merkle = v;
+                                    Some(entry) => {
+                                        intermediate_trie_root_merkle =
+                                            entry.delta_root;
                                     }
-                                    _ => {
+                                    None => {
                                         warn!("get_state_trees_for_next_epoch, shift snapshot, special case, \
                                         intermediate_trie_root_merkle not found for snapshot {:?}. StateIndex: {:?}.", snapshot_epoch_id, parent_state_index,);
                                         return Ok(None);
