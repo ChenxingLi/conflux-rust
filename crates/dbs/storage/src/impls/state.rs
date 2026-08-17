@@ -12,7 +12,7 @@ pub struct State {
     snapshot_merkle_root: MerkleHash,
     maybe_intermediate_trie: Option<Arc<DeltaMpt>>,
     intermediate_trie_root: Option<NodeRefDeltaMpt>,
-    intermediate_trie_root_merkle: MerkleHash,
+    intermediate_delta_root: MerkleHash,
     /// A None value indicate the special case when snapshot_db is actually the
     /// snapshot_db from the intermediate_epoch_id.
     maybe_intermediate_trie_key_padding: Option<DeltaMptKeyPadding>,
@@ -45,8 +45,7 @@ impl State {
             snapshot_merkle_root: state_trees.snapshot_merkle_root,
             maybe_intermediate_trie: state_trees.maybe_intermediate_trie,
             intermediate_trie_root: state_trees.intermediate_trie_root,
-            intermediate_trie_root_merkle: state_trees
-                .intermediate_trie_root_merkle,
+            intermediate_delta_root: state_trees.intermediate_delta_root,
             maybe_intermediate_trie_key_padding: state_trees
                 .maybe_intermediate_trie_key_padding,
             delta_trie: state_trees.delta_trie,
@@ -65,7 +64,7 @@ impl State {
     fn state_root(&self, merkle_root: MerkleHash) -> StateRootWithAuxInfo {
         let state_root = StateRoot {
             snapshot_root: self.snapshot_merkle_root,
-            intermediate_delta_root: self.intermediate_trie_root_merkle,
+            intermediate_delta_root: self.intermediate_delta_root,
             delta_root: merkle_root,
         };
         StateRootWithAuxInfo::from_state_root(state_root)
@@ -106,7 +105,7 @@ impl State {
             snapshot_epoch_id: self.snapshot_epoch_id,
             snapshot_merkle_root: self.snapshot_merkle_root,
             intermediate_epoch_id: self.intermediate_epoch_id,
-            intermediate_delta_root: self.intermediate_trie_root_merkle,
+            intermediate_delta_root: self.intermediate_delta_root,
             maybe_intermediate_mpt_key_padding: self
                 .maybe_intermediate_trie_key_padding
                 .clone(),

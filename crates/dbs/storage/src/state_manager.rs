@@ -235,7 +235,7 @@ pub struct StateIndex {
     pub snapshot_epoch_id: EpochId,
     pub snapshot_merkle_root: MerkleHash,
     pub intermediate_epoch_id: EpochId,
-    pub intermediate_trie_root_merkle: MerkleHash,
+    pub intermediate_delta_root: MerkleHash,
     pub maybe_intermediate_mpt_key_padding: Option<DeltaMptKeyPadding>,
     pub epoch_id: EpochId,
     pub delta_mpt_key_padding: DeltaMptKeyPadding,
