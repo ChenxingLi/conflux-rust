@@ -80,7 +80,6 @@ EXCEPTIONS = {
     "3. the concrete engine type and its adapter entry points (chapter 5)": {
         "StorageManager",
         "StorageState",
-        "StateDbGetOriginalMethods",
         "StateExport",
         "FullSyncVerifier",
         "SnapshotDbManagerSqlite",

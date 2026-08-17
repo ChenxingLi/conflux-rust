@@ -241,7 +241,7 @@ pub use self::{
         state_export::StateExport,
         storage_db::snapshot_db_manager_sqlite::SnapshotDbManagerSqlite,
     },
-    state::{State as StorageState, StateDbGetOriginalMethods},
+    state::State as StorageState,
     state_manager::StateManager as StorageManager,
     storage_db::{SnapshotInfo, SnapshotKeptToProvideSyncStatus},
 };

@@ -45,7 +45,7 @@ use cfx_parameters::light::{
     MAX_TXS_TO_SEND, MAX_WITNESSES_TO_SEND,
 };
 use cfx_storage::{
-    OpenOptions, StateDbGetOriginalMethods, StateProof, StorageManager,
+    OpenOptions, StateProof, StorageManager,
     StorageRootProof as EngineStorageRootProof, StorageState as State,
 };
 use cfx_types::{Address, AddressSpaceUtil, H256};
@@ -178,7 +178,7 @@ impl Provider {
 
         let key = StorageKeyWithSpace::from_key_bytes::<CheckInput>(&key)?;
 
-        let (value, proof) = state.get_original_raw_with_proof(key)?;
+        let (value, proof) = state.get_with_proof(key)?;
 
         let value = value.map(|x| x.to_vec());
         Ok((value, proof))
@@ -190,9 +190,7 @@ impl Provider {
         &self, epoch: u64, address: &Address,
     ) -> Result<(StorageRoot, EngineStorageRootProof)> {
         let state = self.state_of(epoch)?;
-        Ok(state.get_original_storage_root_with_proof(
-            &address.with_native_space(),
-        )?)
+        Ok(state.get_storage_root_with_proof(&address.with_native_space())?)
     }
 
     pub fn register(

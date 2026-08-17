@@ -453,6 +453,30 @@ impl State {
         self.get_from_all_tries::<WithProof>(access_key)
     }
 
+    /// The node merkle triplet of an account's storage root, which is what
+    /// `cfx_getStorageRoot` answers with.
+    pub fn get_storage_root(
+        &self, address: &AddressWithSpace,
+    ) -> Result<StorageRoot> {
+        let key = StorageKey::new_storage_root_key(&address.address)
+            .with_space(address.space);
+
+        let (root, _) = self.get_node_merkle_all_versions::<NoProof>(key)?;
+
+        Ok(root)
+    }
+
+    /// The same triplet with the proof the light protocol serves alongside it.
+    pub fn get_storage_root_with_proof(
+        &self, address: &AddressWithSpace,
+    ) -> Result<(StorageRoot, StorageRootProof)> {
+        let key = StorageKey::new_storage_root_key(&address.address)
+            .with_space(address.space);
+
+        self.get_node_merkle_all_versions::<WithProof>(key)
+            .map_err(Into::into)
+    }
+
     /// Compute the merkle of the node under `access_key` in all tries.
     /// Node merkle is computed on the value and children hashes, ignoring the
     /// compressed path.
@@ -592,37 +616,6 @@ impl State {
         };
 
         Ok((triplet, proof))
-    }
-}
-
-impl StateDbGetOriginalMethods for State {
-    fn get_original_raw_with_proof(
-        &self, key: StorageKeyWithSpace,
-    ) -> Result<(Option<Box<[u8]>>, StateProof)> {
-        let r = Ok(self.get_with_proof(key)?);
-        trace!("get_original_raw_with_proof key={:?}, value={:?}", key, r);
-        r
-    }
-
-    fn get_original_storage_root(
-        &self, address: &AddressWithSpace,
-    ) -> Result<StorageRoot> {
-        let key = StorageKey::new_storage_root_key(&address.address)
-            .with_space(address.space);
-
-        let (root, _) = self.get_node_merkle_all_versions::<NoProof>(key)?;
-
-        Ok(root)
-    }
-
-    fn get_original_storage_root_with_proof(
-        &self, address: &AddressWithSpace,
-    ) -> Result<(StorageRoot, StorageRootProof)> {
-        let key = StorageKey::new_storage_root_key(&address.address)
-            .with_space(address.space);
-
-        self.get_node_merkle_all_versions::<WithProof>(key)
-            .map_err(Into::into)
     }
 }
 

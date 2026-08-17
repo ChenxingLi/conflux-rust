@@ -10,7 +10,6 @@
 /// A writable state is copy-on-write reference to the base state in the
 /// state manager. State is supposed to be owned by single user.
 pub use super::impls::state::State;
-use cfx_types::AddressWithSpace;
 
 pub type WithProof = primitives::static_bool::Yes;
 pub type NoProof = primitives::static_bool::No;
@@ -75,25 +74,6 @@ pub(crate) fn replay_changeset(
     Ok(())
 }
 
-// We skip the accessed_entries for getting original value.
-pub trait StateDbGetOriginalMethods {
-    fn get_original_raw_with_proof(
-        &self, key: StorageKeyWithSpace,
-    ) -> Result<(Option<Box<[u8]>>, StateProof)>;
-
-    fn get_original_storage_root(
-        &self, address: &AddressWithSpace,
-    ) -> Result<StorageRoot>;
-
-    fn get_original_storage_root_with_proof(
-        &self, address: &AddressWithSpace,
-    ) -> Result<(StorageRoot, StorageRootProof)>;
-}
-
-use super::{
-    impls::{errors::*, state_proof::StateProof},
-    MptKeyValue,
-};
-use crate::StorageRootProof;
-use primitives::{EpochId, SkipInputCheck, StorageKeyWithSpace, StorageRoot};
+use super::{impls::errors::*, MptKeyValue};
+use primitives::{EpochId, SkipInputCheck, StorageKeyWithSpace};
 use std::collections::BTreeMap;
