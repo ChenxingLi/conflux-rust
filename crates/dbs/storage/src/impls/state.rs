@@ -130,7 +130,7 @@ impl State {
         }
     }
 
-    fn get_from_delta<WithProof: StaticBool>(
+    fn get_from_delta<const WITH_PROOF: bool>(
         &self, mpt: &DeltaMpt, maybe_root_node: Option<NodeRefDeltaMpt>,
         access_key: &[u8],
     ) -> Result<(MptValue<Box<[u8]>>, Option<TrieProof>)> {
@@ -149,7 +149,7 @@ impl State {
                 )?
                 .get(access_key)?;
 
-                let maybe_proof = match WithProof::value() {
+                let maybe_proof = match WITH_PROOF {
                     false => None,
                     true => Some(
                         SubTrieVisitor::new(
@@ -166,13 +166,13 @@ impl State {
         }
     }
 
-    pub fn get_from_snapshot<WithProof: StaticBool>(
+    pub fn get_from_snapshot<const WITH_PROOF: bool>(
         &self, access_key: &[u8],
     ) -> Result<(Option<Box<[u8]>>, Option<TrieProof>)> {
         let value = self.snapshot_db.get(access_key)?;
         Ok((
             value,
-            if WithProof::value() {
+            if WITH_PROOF {
                 let mut mpt = self.snapshot_db.open_snapshot_mpt_shared()?;
                 let mut cursor = MptCursor::<
                     &mut dyn SnapshotMptTraitRead,
@@ -190,13 +190,13 @@ impl State {
         ))
     }
 
-    fn get_from_all_tries<WithProof: StaticBool>(
+    fn get_from_all_tries<const WITH_PROOF: bool>(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<(Option<Box<[u8]>>, StateProof)> {
         let mut proof = StateProof::default();
 
         let (maybe_value, maybe_delta_proof) = self
-            .get_from_delta::<WithProof>(
+            .get_from_delta::<WITH_PROOF>(
                 &self.delta_trie,
                 self.delta_trie_root.clone(),
                 &to_delta_mpt_key_bytes(
@@ -223,7 +223,7 @@ impl State {
                 self.maybe_intermediate_trie.as_ref()
             {
                 let (maybe_value, maybe_proof) = self
-                    .get_from_delta::<WithProof>(
+                    .get_from_delta::<WITH_PROOF>(
                         intermediate_trie,
                         self.intermediate_trie_root.clone(),
                         &to_delta_mpt_key_bytes(
@@ -250,7 +250,7 @@ impl State {
         }
 
         let (maybe_value, maybe_proof) =
-            self.get_from_snapshot::<WithProof>(&access_key.to_key_bytes())?;
+            self.get_from_snapshot::<WITH_PROOF>(&access_key.to_key_bytes())?;
         proof.with_snapshot(maybe_proof);
 
         Ok((maybe_value, proof))
@@ -271,7 +271,7 @@ impl StorageView for State {
     ) -> Result<Option<Box<[u8]>>> {
         self.ensure_temp_slab_for_db_load();
 
-        self.get_from_all_tries::<NoProof>(access_key)
+        self.get_from_all_tries::<NO_PROOF>(access_key)
             .map(|(value, _)| value)
     }
 
@@ -416,10 +416,15 @@ impl State {
     pub(crate) fn apply_changeset(
         &mut self, changeset: &Changeset,
     ) -> Result<()> {
-        replay_changeset(changeset, |access_key, value| match value {
-            Some(value) => self.set(access_key, value),
-            None => self.delete(access_key),
-        })
+        for (key_bytes, value) in changeset {
+            let access_key =
+                StorageKeyWithSpace::from_key_bytes_unchecked(key_bytes);
+            match value {
+                Some(value) => self.set(access_key, value.clone())?,
+                None => self.delete(access_key)?,
+            }
+        }
+        Ok(())
     }
 
     /// Apply a changeset, compute the state root it produces, then throw the
@@ -450,7 +455,7 @@ impl State {
         self.ensure_temp_slab_for_db_load();
 
         self.check_freshly_synced_snapshot("proof")?;
-        self.get_from_all_tries::<WithProof>(access_key)
+        self.get_from_all_tries::<WITH_PROOF>(access_key)
     }
 
     /// The node merkle triplet of an account's storage root, which is what
@@ -461,7 +466,7 @@ impl State {
         let key = StorageKey::new_storage_root_key(&address.address)
             .with_space(address.space);
 
-        let (root, _) = self.get_node_merkle_all_versions::<NoProof>(key)?;
+        let (root, _) = self.get_node_merkle_all_versions::<NO_PROOF>(key)?;
 
         Ok(root)
     }
@@ -473,14 +478,14 @@ impl State {
         let key = StorageKey::new_storage_root_key(&address.address)
             .with_space(address.space);
 
-        self.get_node_merkle_all_versions::<WithProof>(key)
+        self.get_node_merkle_all_versions::<WITH_PROOF>(key)
             .map_err(Into::into)
     }
 
     /// Compute the merkle of the node under `access_key` in all tries.
     /// Node merkle is computed on the value and children hashes, ignoring the
     /// compressed path.
-    pub fn get_node_merkle_all_versions<WithProof: StaticBool>(
+    pub fn get_node_merkle_all_versions<const WITH_PROOF: bool>(
         &self, access_key: StorageKeyWithSpace,
     ) -> Result<(NodeMerkleTriplet, NodeMerkleProof)> {
         self.check_freshly_synced_snapshot("proof")?;
@@ -505,7 +510,7 @@ impl State {
 
                 let delta = visitor.get_merkle_hash_wo_compressed_path(&key)?;
 
-                let maybe_proof = match WithProof::value() {
+                let maybe_proof = match WITH_PROOF {
                     false => None,
                     true => Some(
                         SubTrieVisitor::new(
@@ -558,7 +563,7 @@ impl State {
                 let intermediate =
                     visitor.get_merkle_hash_wo_compressed_path(&key)?;
 
-                let maybe_proof = match WithProof::value() {
+                let maybe_proof = match WITH_PROOF {
                     false => None,
                     true => Some(
                         SubTrieVisitor::new(
@@ -602,7 +607,7 @@ impl State {
                 ),
                 _ => None,
             };
-        let maybe_proof = match WithProof::value() {
+        let maybe_proof = match WITH_PROOF {
             false => None,
             true => Some(cursor.to_proof()),
         };
@@ -1172,8 +1177,8 @@ use cfx_internal_common::StateRootWithAuxInfo;
 use cfx_types::AddressWithSpace;
 use fallible_iterator::FallibleIterator;
 use primitives::{
-    EpochId, MerkleHash, MptValue, NodeMerkleTriplet, StateRoot, StaticBool,
-    StorageKey, StorageKeyWithSpace, StorageRoot, MERKLE_NULL_NODE, NULL_EPOCH,
+    EpochId, MerkleHash, MptValue, NodeMerkleTriplet, StateRoot, StorageKey,
+    StorageKeyWithSpace, StorageRoot, MERKLE_NULL_NODE, NULL_EPOCH,
 };
 use rustc_hex::ToHex;
 use std::{

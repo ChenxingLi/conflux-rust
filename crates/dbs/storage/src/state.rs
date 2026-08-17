@@ -11,8 +11,11 @@
 /// state manager. State is supposed to be owned by single user.
 pub use super::impls::state::State;
 
-pub type WithProof = primitives::static_bool::Yes;
-pub type NoProof = primitives::static_bool::No;
+/// The two values of the flag the read paths take, which decides whether a
+/// proof is built alongside the value. Two constants rather than bare `true`
+/// and `false`, so that a call site reads as the question it answers.
+pub const WITH_PROOF: bool = true;
+pub const NO_PROOF: bool = false;
 
 /// A read-only handle on one version of the state. This is the interface the
 /// execution engine and the transaction pool need: a point read and a prefix
@@ -59,21 +62,6 @@ pub struct CommitMeta {
     pub height: u64,
 }
 
-/// Walk a changeset in key order and hand each entry to `apply`, which writes
-/// the value under the key or deletes the key. Shared by the two writable
-/// state objects so that both write the same bytes in the same order.
-pub(crate) fn replay_changeset(
-    changeset: &Changeset,
-    mut apply: impl FnMut(StorageKeyWithSpace, Option<Box<[u8]>>) -> Result<()>,
-) -> Result<()> {
-    for (key_bytes, value) in changeset {
-        let access_key =
-            StorageKeyWithSpace::from_key_bytes::<SkipInputCheck>(key_bytes);
-        apply(access_key, value.clone())?;
-    }
-    Ok(())
-}
-
 use super::{impls::errors::*, MptKeyValue};
-use primitives::{EpochId, SkipInputCheck, StorageKeyWithSpace};
+use primitives::{EpochId, StorageKeyWithSpace};
 use std::collections::BTreeMap;

@@ -1,6 +1,6 @@
 use crate::{
     impls::{errors::*, single_mpt_state::SingleMptState, state::State},
-    state::{replay_changeset, Changeset, CommitMeta, StorageView},
+    state::{Changeset, CommitMeta, StorageView},
     MptKeyValue,
 };
 use cfx_internal_common::StateRootWithAuxInfo;
@@ -342,10 +342,15 @@ impl WritableState {
 
     /// Apply a whole changeset, in key order.
     fn apply_changeset(&mut self, changeset: &Changeset) -> Result<()> {
-        replay_changeset(changeset, |access_key, value| match value {
-            Some(value) => self.set(access_key, value),
-            None => self.delete(access_key),
-        })
+        for (key_bytes, value) in changeset {
+            let access_key =
+                StorageKeyWithSpace::from_key_bytes_unchecked(key_bytes);
+            match value {
+                Some(value) => self.set(access_key, value.clone())?,
+                None => self.delete(access_key)?,
+            }
+        }
+        Ok(())
     }
 
     /// The commit entry point: one changeset plus the meta of the epoch it

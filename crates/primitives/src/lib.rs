@@ -22,7 +22,6 @@ pub mod log_entry;
 pub mod pos;
 pub mod receipt;
 pub mod state_root;
-pub mod static_bool;
 pub mod storage;
 pub mod storage_key;
 pub mod transaction;
@@ -41,7 +40,6 @@ pub use crate::{
     log_entry::LogEntry,
     receipt::{BlockReceipts, Receipt, TransactionStatus},
     state_root::*,
-    static_bool::StaticBool,
     storage::{
         MptValue, NodeMerkleTriplet, StorageLayout, StorageRoot, StorageValue,
     },

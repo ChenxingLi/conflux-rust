@@ -373,7 +373,7 @@ mod impls {
             let kv_pairs = self.read_all(storage_prefix, debug_record)?;
             for (key, value) in kv_pairs {
                 let storage_key_with_space =
-                    StorageKeyWithSpace::from_key_bytes::<SkipInputCheck>(&key);
+                    StorageKeyWithSpace::from_key_bytes_unchecked(&key);
                 if let StorageKey::StorageKey {
                     address_bytes: _,
                     storage_key,
@@ -527,7 +527,7 @@ mod impls {
                 }
 
                 let storage_key =
-                    StorageKeyWithSpace::from_key_bytes::<SkipInputCheck>(k);
+                    StorageKeyWithSpace::from_key_bytes_unchecked(k);
 
                 match &storage_key.key {
                     StorageKey::StorageKey { address_bytes, .. } => {
@@ -731,8 +731,7 @@ mod impls {
     use hashbrown::HashMap;
     use parking_lot::RwLock;
     use primitives::{
-        EpochId, SkipInputCheck, StateRoot, StorageKey, StorageKeyWithSpace,
-        StorageLayout,
+        EpochId, StateRoot, StorageKey, StorageKeyWithSpace, StorageLayout,
     };
     use std::{
         collections::{

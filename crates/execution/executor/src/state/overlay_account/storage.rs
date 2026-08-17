@@ -10,8 +10,7 @@ use cfx_statedb::{Result as DbResult, StateDbExt, StateDbGeneric};
 use cfx_types::{Address, Space, U256};
 
 use primitives::{
-    storage::WriteCacheItem, SkipInputCheck, StorageKey, StorageKeyWithSpace,
-    StorageValue,
+    storage::WriteCacheItem, StorageKey, StorageKeyWithSpace, StorageValue,
 };
 use std::collections::{hash_map::Entry::*, HashSet};
 
@@ -338,7 +337,7 @@ fn decode_storage_key(key: &Vec<u8>) -> Option<Vec<u8>> {
     if let StorageKeyWithSpace {
         key: StorageKey::StorageKey { storage_key, .. },
         ..
-    } = StorageKeyWithSpace::from_key_bytes::<SkipInputCheck>(&key[..])
+    } = StorageKeyWithSpace::from_key_bytes_unchecked(&key[..])
     {
         Some(storage_key.to_vec())
     } else {

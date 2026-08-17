@@ -2,11 +2,6 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use crate::static_bool::{self, StaticBool};
-
-pub type CheckInput = static_bool::Yes;
-pub type SkipInputCheck = static_bool::No;
-
 /// `cfg!` is evaluated per crate, so the storage engine cannot test this
 /// crate's feature; it reads this constant instead.
 pub const NO_ACCOUNT_LENGTH_CHECK: bool =
@@ -15,39 +10,6 @@ pub const NO_ACCOUNT_LENGTH_CHECK: bool =
 /// Width of the account key part of a delta MPT key, used here only to locate
 /// the space flag byte.
 pub const DELTA_MPT_ACCOUNT_KEYPART_BYTES: usize = 32;
-
-pub trait ConditionalReturnValue<'a> {
-    type Output;
-
-    fn from_key(k: StorageKeyWithSpace<'a>) -> Self::Output;
-    fn from_result(r: Result<StorageKeyWithSpace<'a>, String>) -> Self::Output;
-}
-
-pub struct FromKeyBytesResult<ShouldCheckInput: StaticBool> {
-    phantom: std::marker::PhantomData<ShouldCheckInput>,
-}
-
-impl<'a> ConditionalReturnValue<'a> for FromKeyBytesResult<SkipInputCheck> {
-    type Output = StorageKeyWithSpace<'a>;
-
-    fn from_key(k: StorageKeyWithSpace<'a>) -> Self::Output { k }
-
-    fn from_result(
-        _r: Result<StorageKeyWithSpace<'a>, String>,
-    ) -> Self::Output {
-        unreachable!()
-    }
-}
-
-impl<'a> ConditionalReturnValue<'a> for FromKeyBytesResult<CheckInput> {
-    type Output = Result<StorageKeyWithSpace<'a>, String>;
-
-    fn from_key(k: StorageKeyWithSpace<'a>) -> Self::Output { Ok(k) }
-
-    fn from_result(r: Result<StorageKeyWithSpace<'a>, String>) -> Self::Output {
-        r
-    }
-}
 
 // The original StorageKeys unprocessed, in contrary to StorageKey which is
 // processed to use in DeltaMpt.
@@ -249,13 +211,23 @@ impl<'a> StorageKeyWithSpace<'a> {
         }
     }
 
-    // from_key_bytes::<CheckInput>(...) returns Result<StorageKey, String>
-    // from_key_bytes::<SkipInputCheck>(...) returns StorageKey, crashes on
-    // error
-    pub fn from_key_bytes<ShouldCheckInput: StaticBool>(
+    /// Read a key written by this node, whose space flag byte cannot be
+    /// wrong; a wrong one crashes.
+    pub fn from_key_bytes_unchecked(bytes: &'a [u8]) -> Self {
+        Self::from_key_bytes::<false>(bytes).unwrap()
+    }
+
+    /// Read a key that arrived from elsewhere, answering with an error
+    /// instead of crashing when its space flag byte is wrong.
+    pub fn from_key_bytes_checked(bytes: &'a [u8]) -> Result<Self, String> {
+        Self::from_key_bytes::<true>(bytes)
+    }
+
+    /// The flag decides both the checking and the return type, see
+    /// `FromKeyBytesResult`. The two wrappers above name the two values.
+    fn from_key_bytes<const CHECK_INPUT: bool>(
         bytes: &'a [u8],
-    ) -> <FromKeyBytesResult<ShouldCheckInput> as ConditionalReturnValue<'a>>::Output
-    where FromKeyBytesResult<ShouldCheckInput>: ConditionalReturnValue<'a>{
+    ) -> Result<Self, String> {
         let key = if bytes.len() <= Self::ACCOUNT_BYTES {
             StorageKey::AccountKey(bytes).with_native_space()
         } else if bytes.len() == Self::ACCOUNT_BYTES + 1 {
@@ -267,12 +239,13 @@ impl<'a> StorageKeyWithSpace<'a> {
             let extension_bit: bool = bytes[Self::ACCOUNT_BYTES] & 0x80 != 0;
             let bytes = if extension_bit {
                 // check for incorrect extension byte
-                if ShouldCheckInput::value() == CheckInput::value()
+                if CHECK_INPUT
                     && bytes[Self::ACCOUNT_BYTES] != Self::EVM_SPACE_TYPE[0]
                 {
-                    return <FromKeyBytesResult<ShouldCheckInput> as ConditionalReturnValue<'a>>::from_result(
-                        Err(format!("Unexpected extension byte: {:?}", bytes[Self::ACCOUNT_BYTES]))
-                    );
+                    return Err(format!(
+                        "Unexpected extension byte: {:?}",
+                        bytes[Self::ACCOUNT_BYTES]
+                    ));
                 }
 
                 // with `SkipInputCheck`, crash on incorrect extension byte
@@ -282,45 +255,45 @@ impl<'a> StorageKeyWithSpace<'a> {
                 &bytes[Self::ACCOUNT_BYTES..]
             };
 
-            let storage_key_no_space = if bytes
-                .starts_with(Self::STORAGE_PREFIX)
-            {
-                let bytes = &bytes[Self::STORAGE_PREFIX_LEN..];
-                if !bytes.is_empty() {
-                    StorageKey::StorageKey {
-                        address_bytes,
-                        storage_key: bytes,
+            let storage_key_no_space =
+                if bytes.starts_with(Self::STORAGE_PREFIX) {
+                    let bytes = &bytes[Self::STORAGE_PREFIX_LEN..];
+                    if !bytes.is_empty() {
+                        StorageKey::StorageKey {
+                            address_bytes,
+                            storage_key: bytes,
+                        }
+                    } else {
+                        StorageKey::StorageRootKey(address_bytes)
                     }
-                } else {
-                    StorageKey::StorageRootKey(address_bytes)
-                }
-            } else if bytes.starts_with(Self::CODE_HASH_PREFIX) {
-                let bytes = &bytes[Self::CODE_HASH_PREFIX_LEN..];
-                if !bytes.is_empty() {
-                    StorageKey::CodeKey {
-                        address_bytes,
-                        code_hash_bytes: bytes,
+                } else if bytes.starts_with(Self::CODE_HASH_PREFIX) {
+                    let bytes = &bytes[Self::CODE_HASH_PREFIX_LEN..];
+                    if !bytes.is_empty() {
+                        StorageKey::CodeKey {
+                            address_bytes,
+                            code_hash_bytes: bytes,
+                        }
+                    } else {
+                        StorageKey::CodeRootKey(address_bytes)
                     }
-                } else {
-                    StorageKey::CodeRootKey(address_bytes)
+                } else if bytes.starts_with(Self::DEPOSIT_LIST_PREFIX) {
+                    StorageKey::DepositListKey(address_bytes)
+                } else if bytes.starts_with(Self::VOTE_LIST_PREFIX) {
+                    StorageKey::VoteListKey(address_bytes)
                 }
-            } else if bytes.starts_with(Self::DEPOSIT_LIST_PREFIX) {
-                StorageKey::DepositListKey(address_bytes)
-            } else if bytes.starts_with(Self::VOTE_LIST_PREFIX) {
-                StorageKey::VoteListKey(address_bytes)
-            }
-            // unknown key format => we report an error or crash
-            // depending on the generic parameter
-            else if ShouldCheckInput::value() == CheckInput::value() {
-                return <FromKeyBytesResult<ShouldCheckInput> as ConditionalReturnValue<'a>>::from_result(
-                    Err(format!("Unable to parse storage key: {:?} - {:?}", address_bytes, bytes))
-                );
-            } else {
-                unreachable!(
-                    "Invalid key format. Unrecognized: {:?}, account: {:?}",
-                    bytes, address_bytes
-                );
-            };
+                // unknown key format => we report an error or crash
+                // depending on the generic parameter
+                else if CHECK_INPUT {
+                    return Err(format!(
+                        "Unable to parse storage key: {:?} - {:?}",
+                        address_bytes, bytes
+                    ));
+                } else {
+                    unreachable!(
+                        "Invalid key format. Unrecognized: {:?}, account: {:?}",
+                        bytes, address_bytes
+                    );
+                };
 
             let space = if extension_bit {
                 Space::Ethereum
@@ -331,7 +304,7 @@ impl<'a> StorageKeyWithSpace<'a> {
             storage_key_no_space.with_space(space)
         };
 
-        <FromKeyBytesResult<ShouldCheckInput> as ConditionalReturnValue<'a>>::from_key(key)
+        Ok(key)
     }
 }
 

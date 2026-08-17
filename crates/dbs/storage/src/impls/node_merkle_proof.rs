@@ -43,7 +43,7 @@ impl NodeMerkleProof {
         let snapshot_root = &state_root.snapshot_root;
 
         let storage_key =
-            match StorageKeyWithSpace::from_key_bytes::<CheckInput>(&key) {
+            match StorageKeyWithSpace::from_key_bytes_checked(&key) {
                 Ok(k) => k,
                 Err(e) => {
                     warn!("Checking proof with invalid key: {:?}", e);
@@ -147,7 +147,6 @@ use crate::delta_mpt_key::{
     delta_mpt_padding, to_delta_mpt_key_bytes, DeltaMptKeyPadding,
 };
 use primitives::{
-    CheckInput, MptValue, StateRoot, StorageKeyWithSpace, StorageRoot,
-    MERKLE_NULL_NODE,
+    MptValue, StateRoot, StorageKeyWithSpace, StorageRoot, MERKLE_NULL_NODE,
 };
 use rlp_derive::{RlpDecodable, RlpEncodable};

@@ -10,8 +10,7 @@ use chrono::Utc;
 use keccak_hash::{keccak, KECCAK_EMPTY};
 use parking_lot::{Condvar, Mutex};
 use primitives::{
-    Account, CodeInfo, SkipInputCheck, StorageKey, StorageKeyWithSpace,
-    StorageValue,
+    Account, CodeInfo, StorageKey, StorageKeyWithSpace, StorageValue,
 };
 use rlp::Rlp;
 use std::{
@@ -164,7 +163,7 @@ fn export_space_accounts(
 
     for (key, value) in kv_pairs {
         let storage_key_with_space =
-            StorageKeyWithSpace::from_key_bytes::<SkipInputCheck>(&key);
+            StorageKeyWithSpace::from_key_bytes_unchecked(&key);
         if storage_key_with_space.space != space {
             continue;
         }
@@ -284,7 +283,7 @@ pub fn export_space_accounts_with_callback<F: Fn(AccountState)>(
             }
 
             let storage_key_with_space =
-                StorageKeyWithSpace::from_key_bytes::<SkipInputCheck>(&key);
+                StorageKeyWithSpace::from_key_bytes_unchecked(&key);
             if storage_key_with_space.space != space {
                 core_space_key_count += 1;
                 return;
@@ -380,7 +379,7 @@ fn get_contract_storage(
 
     let mut inner_callback = |(key, value): (Vec<u8>, Box<[u8]>)| {
         let storage_key_with_space =
-            StorageKeyWithSpace::from_key_bytes::<SkipInputCheck>(&key);
+            StorageKeyWithSpace::from_key_bytes_unchecked(&key);
         if storage_key_with_space.space != space {
             return;
         }

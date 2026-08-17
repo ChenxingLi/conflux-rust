@@ -35,8 +35,7 @@ impl RecordingStorage<State> {
         let mut proof_merger = self.proof_merger.lock();
 
         for (k, _) in kvs {
-            let access_key =
-                StorageKeyWithSpace::from_key_bytes::<CheckInput>(k)?;
+            let access_key = StorageKeyWithSpace::from_key_bytes_checked(k)?;
             let (_, proof) = self.storage.get_with_proof(access_key)?;
             proof_merger.merge(proof);
         }
@@ -73,4 +72,4 @@ use crate::{
     StateProofMerger,
 };
 use parking_lot::Mutex;
-use primitives::{CheckInput, StorageKeyWithSpace};
+use primitives::StorageKeyWithSpace;

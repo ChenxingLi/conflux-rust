@@ -449,7 +449,7 @@ fn test_valid_node_merkle_proof_for_existing_key() {
 
     for key in keys {
         let (triplet, proof) = state
-            .get_node_merkle_all_versions::<WithProof>(
+            .get_node_merkle_all_versions::<WITH_PROOF>(
                 StorageKey::AccountKey(&key).with_native_space(),
             )
             .expect("node merkle lookup should succeed");
@@ -486,7 +486,7 @@ fn test_valid_node_merkle_proof_for_nonexistent_key() {
 
     for key in keys {
         let (triplet, proof) = state
-            .get_node_merkle_all_versions::<WithProof>(
+            .get_node_merkle_all_versions::<WITH_PROOF>(
                 StorageKey::AccountKey(&key).with_native_space(),
             )
             .expect("node merkle lookup should succeed");
@@ -520,7 +520,7 @@ fn test_invalid_node_merkle_proof() {
 
     for key in keys {
         let (triplet, proof) = state
-            .get_node_merkle_all_versions::<WithProof>(
+            .get_node_merkle_all_versions::<WITH_PROOF>(
                 StorageKey::AccountKey(&key).with_native_space(),
             )
             .expect("node merkle lookup should succeed");

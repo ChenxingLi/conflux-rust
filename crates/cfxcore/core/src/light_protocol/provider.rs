@@ -58,8 +58,8 @@ use network::{
 };
 use parking_lot::RwLock;
 use primitives::{
-    CheckInput, SignedTransaction, StorageKeyWithSpace, StorageRoot,
-    TransactionIndex, TransactionWithSignature,
+    SignedTransaction, StorageKeyWithSpace, StorageRoot, TransactionIndex,
+    TransactionWithSignature,
 };
 use rand::prelude::SliceRandom;
 use rlp::Rlp;
@@ -176,7 +176,7 @@ impl Provider {
     ) -> Result<(Option<Vec<u8>>, StateProof)> {
         let state = self.state_of(epoch)?;
 
-        let key = StorageKeyWithSpace::from_key_bytes::<CheckInput>(&key)?;
+        let key = StorageKeyWithSpace::from_key_bytes_checked(&key)?;
 
         let (value, proof) = state.get_with_proof(key)?;
 
