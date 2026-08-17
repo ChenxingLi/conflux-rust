@@ -142,6 +142,19 @@ pub struct StorageManager {
     /// the storage dir it lives in. `State::commit` writes entries into it,
     /// and nothing resolves an epoch's coordinates out of it yet.
     state_index_db: Arc<StateIndexDb>,
+
+    /// The lowest height on disk from which execution can run continuously
+    /// upwards, which is the engine's share of what
+    /// `StateAvailabilityBoundary::lower_bound` mixes together today. It lives
+    /// next to the index because snapshot garbage collection, which advances
+    /// it, runs here, and the in memory value and the record inside the index
+    /// have to move together. Loaded from the index at construction, derived
+    /// from the snapshot registry on the boot which finds no record.
+    ///
+    /// Its only reader is the monotonicity guard of its own writer: garbage
+    /// collection compares the height it reached against this value and writes
+    /// only when that height is higher. Nothing else acts on the number.
+    physical_openable_lower_bound: RwLock<u64>,
 }
 
 impl MallocSizeOf for StorageManager {
@@ -228,6 +241,11 @@ impl StorageManager {
                 .path_storage_dir
                 .join(&*storage_dir::STATE_INDEX_DB_PATH),
         )?);
+        // The persisted bound wins whenever it exists. Deriving it from the
+        // registry happens only on the boot which finds no record, and
+        // `StateManager` does that right after this constructor returns.
+        let physical_openable_lower_bound =
+            RwLock::new(state_index_db.load_lower_bound()?.unwrap_or(0));
 
         let (_, snapshot_info_db) = KvdbSqlite::open_or_create(
             &storage_conf.path_snapshot_info_db,
@@ -287,6 +305,7 @@ impl StorageManager {
             intermediate_trie_root_merkle: RwLock::new(None),
             persist_state_from_initialization: RwLock::new(None),
             state_index_db,
+            physical_openable_lower_bound,
         }));
 
         let storage_manager_arc =
@@ -424,6 +443,23 @@ impl StorageManager {
     /// handle for the commit write port.
     pub(crate) fn state_index_db(&self) -> Arc<StateIndexDb> {
         self.state_index_db.clone()
+    }
+
+    /// Write only for now. It exists so that the value garbage collection and
+    /// the first boot derivation produce is not lost; nothing consults it yet.
+    #[allow(dead_code)]
+    pub(crate) fn physical_openable_lower_bound(&self) -> u64 {
+        *self.physical_openable_lower_bound.read()
+    }
+
+    /// Records a new physical openable lower bound, in memory and in the
+    /// index, in that order. The caller decides monotonicity; this only
+    /// stores what it is given.
+    pub(crate) fn set_physical_openable_lower_bound(
+        &self, height: u64,
+    ) -> Result<()> {
+        *self.physical_openable_lower_bound.write() = height;
+        self.state_index_db.store_lower_bound(height)
     }
 
     /// A snapshot of the whole snapshot registry, keyed by snapshot epoch id.
@@ -1252,6 +1288,24 @@ impl StorageManager {
         if !non_pivot_snapshots_to_remove.is_empty()
             || !old_pivot_snapshots_to_remove.is_empty()
         {
+            // The engine's own record of the physical openable lower bound
+            // follows garbage collection: the first boot derivation only
+            // seeds it, from here on every advance is written through. It is
+            // written before the snapshots are actually removed just below,
+            // so a crash in between leaves a bound which claims less than
+            // what is on disk, never more.
+            //
+            // The block below pushes the same advance into
+            // `StateAvailabilityBoundary`. This is a second, independent
+            // record of it, on the engine's own side.
+            if first_available_state_height
+                > self.physical_openable_lower_bound()
+            {
+                self.set_physical_openable_lower_bound(
+                    first_available_state_height,
+                )?;
+            }
+
             {
                 // TODO: Archive node may do something different.
                 let state_boundary = &mut *state_availability_boundary.write();

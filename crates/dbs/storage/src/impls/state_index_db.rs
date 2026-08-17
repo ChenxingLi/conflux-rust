@@ -158,11 +158,52 @@ impl StateIndexDb {
         self.db.put(MIGRATION_MARK_KEY, &[1u8])?;
         Ok(())
     }
+
+    /// The physical openable lower bound: the lowest height from which the
+    /// disk content is continuously executable. Produced by garbage
+    /// collection, so it has to survive a restart instead of being re-derived
+    /// every time.
+    ///
+    /// `None` means no record, and a record whose length is not the eight
+    /// bytes `store_lower_bound` writes reports the same thing: any other
+    /// length is disk corruption or a format this build does not know, and
+    /// neither can be turned into a height. The caller starts from zero in
+    /// that case, which costs one round of redundant collection work and is
+    /// undone by the next collection that writes the bound again, so the
+    /// case is logged rather than made fatal.
+    pub fn load_lower_bound(&self) -> Result<Option<u64>> {
+        match self.db.get(LOWER_BOUND_KEY)? {
+            None => Ok(None),
+            Some(bytes) => {
+                let mut buf = [0u8; 8];
+                if bytes.len() != buf.len() {
+                    warn!(
+                        "Corrupted physical openable lower bound record: \
+                         {} bytes instead of {}. Treating it as absent and \
+                         starting from height 0; the next garbage collection \
+                         writes the bound again.",
+                        bytes.len(),
+                        buf.len(),
+                    );
+                    return Ok(None);
+                }
+                buf.copy_from_slice(&bytes);
+                Ok(Some(u64::from_be_bytes(buf)))
+            }
+        }
+    }
+
+    pub fn store_lower_bound(&self, height: u64) -> Result<()> {
+        self.db.put(LOWER_BOUND_KEY, &height.to_be_bytes())?;
+        Ok(())
+    }
 }
 
 /// Marks the index as migrated. Its length differs from the 32 bytes of an
 /// epoch id, so it cannot collide with an entry.
 const MIGRATION_MARK_KEY: &[u8] = b"__state_index_migrated__";
+
+const LOWER_BOUND_KEY: &[u8] = b"__physical_openable_lower_bound__";
 
 #[cfg(test)]
 mod tests {

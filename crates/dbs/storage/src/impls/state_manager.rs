@@ -138,8 +138,8 @@ impl StateManager {
         &self, state_root_of_epoch: &dyn Fn(&EpochId) -> Option<StateRoot>,
     ) -> Result<()> {
         // Reaching here with the mark set is a caller error, not a state to
-        // repair: the rebuild is one shot by construction and a rerun would
-        // work from a disk garbage collection has moved on from since.
+        // repair: a rerun would republish a bound derived from a disk that
+        // garbage collection has moved on from since.
         if self.state_index_db.migrated()? {
             return Err(Error::Msg(
                 "the state index was already rebuilt on an earlier boot; \
@@ -163,6 +163,15 @@ impl StateManager {
             .collect::<Vec<_>>();
         executable_snapshots.sort_by_key(|info| info.height);
 
+        // One half of the published bound, from the snapshots alone and
+        // before a single entry is written.
+        let snapshot_lower_bound = physical_openable_lower_bound_of(
+            &executable_snapshots,
+            snapshot_epoch_count,
+        );
+
+        // The other half, filled in by the loop below.
+        let mut lowest_entry_height: Option<u64> = None;
         let mut written = 0usize;
         let mut skipped_periods = 0usize;
         let mut skipped_heights = 0usize;
@@ -342,6 +351,10 @@ impl StateManager {
                 };
                 self.state_index_db.put(&epoch_id, &entry)?;
                 written += 1;
+                lowest_entry_height = Some(
+                    lowest_entry_height
+                        .map_or(height, |lowest| lowest.min(height)),
+                );
             }
         }
 
@@ -395,8 +408,21 @@ impl StateManager {
             };
             self.state_index_db.put(&epoch_id, &entry)?;
             written += 1;
+            lowest_entry_height = Some(
+                lowest_entry_height.map_or(period_snapshot.height, |lowest| {
+                    lowest.min(period_snapshot.height)
+                }),
+            );
         }
 
+        // With no entry at all there is no second half to take. Publishing
+        // the snapshot half then claims heights no entry can open, but a
+        // rebuild that wrote nothing has left every height in that state, and
+        // each of them is refused at the index lookup.
+        let lower_bound = match lowest_entry_height {
+            Some(height) => snapshot_lower_bound.max(height),
+            None => snapshot_lower_bound,
+        };
         // The mark is what keeps the rebuild from running a second time, and
         // it is also the only boot on which the rebuild can still happen. A
         // run which wrote no entry at all, on a disk whose registry holds a
@@ -416,11 +442,26 @@ impl StateManager {
                 skipped_heights,
             )));
         }
+        // Seeding only. From here on the bound is maintained by garbage
+        // collection inside `StorageManager`, on the snapshot half of the
+        // formula alone: every height above this bound has an entry.
+        storage_manager.set_physical_openable_lower_bound(lower_bound)?;
         self.state_index_db.set_migrated()?;
+        let lowest_entry_height_text = match lowest_entry_height {
+            Some(height) => height.to_string(),
+            None => "none, no entry was written".into(),
+        };
         info!(
-            "state index rebuild: {} entries written; {} periods and {} \
-             single heights left out.",
-            written, skipped_periods, skipped_heights,
+            "state index rebuild: {} entries written, physical openable \
+             lower bound {}; {} periods and {} single heights left out. The \
+             bound is the higher of the lower end the snapshots give, {}, and \
+             the lowest height an entry was written for, {}.",
+            written,
+            lower_bound,
+            skipped_periods,
+            skipped_heights,
+            snapshot_lower_bound,
+            lowest_entry_height_text,
         );
         Ok(())
     }
@@ -1069,6 +1110,48 @@ impl StateManager {
     pub fn config(&self) -> &StorageConfiguration {
         &self.storage_manager.storage_conf
     }
+}
+
+/// The physical openable lower bound implied by a set of snapshots: the lowest
+/// height whose state can still be opened.
+///
+/// `executable_snapshots_by_height` must be sorted by ascending height and
+/// must already have the archive snapshots kept only to serve sync removed.
+/// Those sit far below the retention window with nothing between them and it,
+/// so counting them would put the bound below a stretch of heights that cannot
+/// be opened at all.
+///
+/// The run is walked down from the newest snapshot and stops at the first gap,
+/// a pair of neighbours more than one period apart. The bound is the height of
+/// the lowest snapshot in that run.
+///
+/// That height is included rather than skipped, because the snapshot holds
+/// the whole state of its own epoch and the rebuild writes that epoch an
+/// entry saying so. Garbage collection publishes the height above the
+/// snapshot it keeps instead, and is right to: the entry `commit` left for
+/// that epoch names layers two periods further down, which collection has
+/// removed. Both are lower bounds, so the one that includes a height an open
+/// may still refuse costs a refusal at the open and nothing else.
+fn physical_openable_lower_bound_of(
+    executable_snapshots_by_height: &[SnapshotInfo], snapshot_epoch_count: u32,
+) -> u64 {
+    let mut continuous_from = 0usize;
+    for i in (1..executable_snapshots_by_height.len()).rev() {
+        if executable_snapshots_by_height[i - 1].height
+            + snapshot_epoch_count as u64
+            == executable_snapshots_by_height[i].height
+        {
+            continuous_from = i - 1;
+        } else {
+            continuous_from = i;
+            break;
+        }
+    }
+    let lowest_continuous_snapshot_height = executable_snapshots_by_height
+        .get(continuous_from)
+        .map(|info| info.height)
+        .unwrap_or(0);
+    lowest_continuous_snapshot_height
 }
 
 impl StateManager {
