@@ -54,7 +54,7 @@ use cfx_statedb::{
     },
     StateDbExt,
 };
-use cfx_storage::state::StateDbGetOriginalMethods;
+use cfx_storage::{state::StateDbGetOriginalMethods, OpenOptions};
 use cfx_types::{
     Address, AddressSpaceUtil, BigEndianHash, Space, H160, H256, H520, U128,
     U256, U64,
@@ -860,9 +860,28 @@ impl CfxRpcServer for CfxHandler {
             "RPC Request: cfx_getStorageRoot address={:?} epoch={:?}",
             address, epoch_num
         );
-        let root = self
-            .consensus
-            .get_storage_state_by_epoch_number(epoch_num, "epoch_num")?
+        let epoch_hash = self
+            .consensus_graph()
+            .get_state_epoch_hash_by_epoch_number(epoch_num, "epoch_num")?;
+        // The storage root is answered per layer, which the engine's own
+        // entry point serves and the interface does not. Consensus answers
+        // where to look; the state is opened here.
+        let state = self
+            .data_man
+            .storage_manager
+            .open_layered_state(
+                &epoch_hash,
+                OpenOptions::read_only().with_try_open(true),
+                /* open_mpt_snapshot = */ true,
+            )
+            .map_err(into_rpc_err)?
+            .ok_or_else(|| {
+                into_rpc_err(CoreError::Msg(format!(
+                    "State for epoch {:?} does not exist",
+                    epoch_hash
+                )))
+            })?;
+        let root = state
             .get_original_storage_root(&address.hex_address.with_native_space())
             .map_err(into_rpc_err)?;
         Ok(Some(root))
