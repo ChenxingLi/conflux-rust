@@ -232,11 +232,18 @@ pub fn initialize_common_modules(
     let ledger_db = db::open_database(db_path.to_str().unwrap(), &db_config)
         .map_err(|e| format!("Failed to open database {:?}", e))?;
 
+    // Built here rather than further down: the first boot rebuild of the
+    // state state index, which the next commit adds, needs it at this point.
+    // It only reads configuration.
+    let pow_config = conf.pow_config();
+    let pow = Arc::new(PowComputer::new(pow_config.use_octopus()));
+
     let secret_store = Arc::new(SecretStore::new());
     let storage_manager = Arc::new(
         StorageManager::new(conf.storage_config(&node_type))
             .expect("Failed to initialize storage."),
     );
+
     {
         let storage_manager_log_weak_ptr = Arc::downgrade(&storage_manager);
         let exit_clone = exit.clone();
@@ -341,9 +348,6 @@ pub fn initialize_common_modules(
     if conf.raw_conf.pos_genesis_pivot_decision.is_none() {
         conf.raw_conf.pos_genesis_pivot_decision = Some(genesis_block.hash());
     }
-
-    let pow_config = conf.pow_config();
-    let pow = Arc::new(PowComputer::new(pow_config.use_octopus()));
 
     let data_man = Arc::new(BlockDataManager::new(
         cache_config,

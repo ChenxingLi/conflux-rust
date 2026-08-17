@@ -2,7 +2,7 @@ use crate::{
     block_data_manager::{
         db_decode_list, db_encode_list, BlamedHeaderVerifiedRoots,
         BlockExecutionResultWithEpoch, BlockRewardResult, BlockTracesWithEpoch,
-        CheckpointHashes, DataVersionTuple, EpochExecutionContext,
+        CheckpointHashes, DataVersionTuple, DbType, EpochExecutionContext,
         LocalBlockInfo, PosRewardInfo,
     },
     db::{
@@ -84,7 +84,24 @@ pub struct DBManager {
     pow: Arc<PowComputer>,
 }
 
+const SQLITE_DB_PATH: &str = "./sqlite_db";
+
 impl DBManager {
+    /// Open the ledger tables out of the backend the configuration names.
+    /// `BlockDataManager` owns the long lived one; the startup routine opens a
+    /// second, short lived one to read commitment rows for the storage
+    /// engine's index rebuild, before `BlockDataManager` exists.
+    pub fn new(
+        db: Arc<SystemDB>, pow: Arc<PowComputer>, db_type: DbType,
+    ) -> Self {
+        match db_type {
+            DbType::Rocksdb => Self::new_from_rocksdb(db, pow),
+            DbType::Sqlite => {
+                Self::new_from_sqlite(Path::new(SQLITE_DB_PATH), pow)
+            }
+        }
+    }
+
     pub fn new_from_rocksdb(db: Arc<SystemDB>, pow: Arc<PowComputer>) -> Self {
         let mut table_db = HashMap::new();
 

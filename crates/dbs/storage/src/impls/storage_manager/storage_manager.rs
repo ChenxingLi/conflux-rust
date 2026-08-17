@@ -426,6 +426,14 @@ impl StorageManager {
         self.state_index_db.clone()
     }
 
+    /// A snapshot of the whole snapshot registry, keyed by snapshot epoch id.
+    /// The first boot index migration walks it for the heights it has to cover
+    /// and for the layer coordinates of each period; the three merkle roots of
+    /// an entry come from the commitment row of its epoch instead.
+    pub fn all_snapshot_infos(&self) -> HashMap<EpochId, SnapshotInfo> {
+        self.snapshot_info_map_by_epoch.read().get_map().clone()
+    }
+
     pub fn get_snapshot_info_at_epoch(
         &self, snapshot_epoch_id: &EpochId,
     ) -> Option<SnapshotInfo> {
