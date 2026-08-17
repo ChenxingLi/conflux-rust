@@ -146,7 +146,23 @@ impl StateIndexDb {
         self.db.delete(epoch.as_ref())?;
         Ok(())
     }
+
+    /// The first boot migration runs once and leaves a mark. There is no lazy
+    /// backfill: after the mark is set the index is maintained by the write
+    /// ports only.
+    pub fn migrated(&self) -> Result<bool> {
+        Ok(self.db.get(MIGRATION_MARK_KEY)?.is_some())
+    }
+
+    pub fn set_migrated(&self) -> Result<()> {
+        self.db.put(MIGRATION_MARK_KEY, &[1u8])?;
+        Ok(())
+    }
 }
+
+/// Marks the index as migrated. Its length differs from the 32 bytes of an
+/// epoch id, so it cannot collide with an entry.
+const MIGRATION_MARK_KEY: &[u8] = b"__state_index_migrated__";
 
 #[cfg(test)]
 mod tests {

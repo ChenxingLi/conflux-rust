@@ -86,6 +86,345 @@ impl StateManager {
         &self.state_index_db
     }
 
+    /// Has the private index still to be rebuilt from what is on disk? The
+    /// answer is the migration mark, which means "the index has been rebuilt
+    /// once already". It is absent on the first boot of a binary carrying the
+    /// index, and on any boot following a crash in the middle of the rebuild.
+    ///
+    /// Kept separate from `migrate_state_index` so that "this happens only on
+    /// the first boot after the upgrade" is visible at the call site rather
+    /// than buried in the engine.
+    pub fn needs_state_index_migration(&self) -> Result<bool> {
+        Ok(!self.state_index_db.migrated()?)
+    }
+
+    /// Rebuild the private index from what is on disk, and seed the physical
+    /// openable lower bound from the same enumeration. Runs once, behind
+    /// `needs_state_index_migration`.
+    ///
+    /// The layer coordinates of an entry come from the engine's own snapshot
+    /// registry; the merkle roots come from the commitment row of the epoch,
+    /// fetched through `state_root_of_epoch`. The engine never reaches the
+    /// ledger db itself, because the column and the key layout are consensus
+    /// schema and the row may not even live in a rocksdb.
+    ///
+    /// Entries have two sources. A height inside a period takes its snapshot
+    /// layer and its intermediate layer from the two snapshots below that
+    /// period, and is written only while at least one of the two is still on
+    /// disk, since those are the two the open path can read through. A
+    /// snapshot's own epoch takes the snapshot itself as that layer, and
+    /// only where the first source produced nothing for it: at the bottom of
+    /// what is on disk, where both layers below have gone, and on a disk which
+    /// arrived by snapshot sync, where they were never downloaded. The merged
+    /// image is the whole state of that epoch either way.
+    ///
+    /// An epoch whose row cannot be read gets no entry at all: not an empty
+    /// root and not a default padding. An empty root is a legal value that
+    /// derives a legal looking key padding, so an entry carrying it would read
+    /// stale data rather than fail. The height is logged and skipped, and the
+    /// epoch is re-executed like any other epoch without an entry.
+    ///
+    /// A height is openable only if this rebuild wrote it an entry and the
+    /// layers that entry names are on disk, and neither implies the other. The
+    /// published bound is therefore the higher of the two lower ends: the one
+    /// the snapshots give, and the lowest height an entry was written for.
+    /// Entries below the published bound are written all the same; they simply
+    /// have no reader.
+    ///
+    /// Known gap: the current delta segment above the newest snapshot is not
+    /// covered. It cannot be enumerated, and the replay this startup runs
+    /// re-registers those epochs anyway.
+    pub fn migrate_state_index(
+        &self, state_root_of_epoch: &dyn Fn(&EpochId) -> Option<StateRoot>,
+    ) -> Result<()> {
+        // Reaching here with the mark set is a caller error, not a state to
+        // repair: the rebuild is one shot by construction and a rerun would
+        // work from a disk garbage collection has moved on from since.
+        if self.state_index_db.migrated()? {
+            return Err(Error::Msg(
+                "the state index was already rebuilt on an earlier boot; \
+                 the rebuild is one shot and belongs behind \
+                 needs_state_index_migration()"
+                    .into(),
+            ));
+        }
+
+        let storage_manager = &self.storage_manager;
+        let snapshot_epoch_count = storage_manager.get_snapshot_epoch_count();
+        let all_snapshots = storage_manager.all_snapshot_infos();
+
+        let mut executable_snapshots = all_snapshots
+            .values()
+            .filter(|info| {
+                info.snapshot_info_kept_to_provide_sync
+                    == SnapshotKeptToProvideSyncStatus::No
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        executable_snapshots.sort_by_key(|info| info.height);
+
+        let mut written = 0usize;
+        let mut skipped_periods = 0usize;
+        let mut skipped_heights = 0usize;
+
+        for period_snapshot in executable_snapshots.iter() {
+            let period_end = period_snapshot.height;
+            let period_begin = period_snapshot.parent_snapshot_height;
+            if period_end == 0 || period_end <= period_begin {
+                // The genesis snapshot names no period.
+                continue;
+            }
+
+            let intermediate_epoch_id =
+                period_snapshot.parent_snapshot_epoch_id;
+            let snapshot_epoch_id =
+                match all_snapshots.get(&intermediate_epoch_id) {
+                    Some(one_below) => one_below.parent_snapshot_epoch_id,
+                    None => {
+                        warn!(
+                            "state index rebuild: the period ending at \
+                             height {} names {:?} one period below, which the \
+                             snapshot registry no longer holds, so the \
+                             snapshot layer of the period cannot be \
+                             resolved. \
+                             Writing no entry for heights {}..={}.",
+                            period_end,
+                            intermediate_epoch_id,
+                            period_begin + 1,
+                            period_end,
+                        );
+                        skipped_periods += 1;
+                        continue;
+                    }
+                };
+            // The registry's own merkle root for the snapshot layer, which the
+            // entries below are checked against. A layer the registry no
+            // longer holds has no data either, so those entries are opened
+            // through the intermediate layer and never name that file; the
+            // check is then one which cannot be made, not a reason to leave
+            // the heights uncovered.
+            let maybe_registered_snapshot_merkle_root = all_snapshots
+                .get(&snapshot_epoch_id)
+                .map(|info| info.merkle_root);
+            // Naming the two layers is not having them. The open path reads
+            // the snapshot layer, and falls back to the snapshot at the
+            // intermediate epoch when the first one is not on disk, so a
+            // period with neither cannot be opened through any entry written
+            // here. Its own snapshot is on disk all the same and gets an entry
+            // below, from itself.
+            let layer_data_on_disk = |epoch: &EpochId| {
+                all_snapshots.get(epoch).map_or(false, |info| {
+                    info.snapshot_info_kept_to_provide_sync
+                        != SnapshotKeptToProvideSyncStatus::InfoOnly
+                })
+            };
+            if !layer_data_on_disk(&snapshot_epoch_id)
+                && !layer_data_on_disk(&intermediate_epoch_id)
+            {
+                warn!(
+                    "state index rebuild: the period ending at height {} \
+                     sits on snapshot {:?} over intermediate {:?}, and the \
+                     registry says neither is still on disk. Writing no entry \
+                     for heights {}..={}.",
+                    period_end,
+                    snapshot_epoch_id,
+                    intermediate_epoch_id,
+                    period_begin + 1,
+                    period_end,
+                );
+                skipped_periods += 1;
+                continue;
+            }
+
+            let maybe_intermediate_mpt_key_padding = if intermediate_epoch_id
+                == NULL_EPOCH
+            {
+                // The layer below is the empty snapshot registered at genesis,
+                // which is also this period's snapshot layer. There is no
+                // intermediate MPT between the two, and `None` is what tells
+                // the open path to read through to the snapshot instead of
+                // looking a key up.
+                None
+            } else {
+                match state_root_of_epoch(&intermediate_epoch_id) {
+                    Some(roots) => {
+                        Some(StorageKeyWithSpace::delta_mpt_padding(
+                            &roots.snapshot_root,
+                            &roots.intermediate_delta_root,
+                        ))
+                    }
+                    None => {
+                        warn!(
+                            "state index rebuild: no commitment row for \
+                             {:?}, the epoch one period below the period \
+                             ending at height {}, so the intermediate key \
+                             padding of that period is unknown. Writing no \
+                             entry for heights {}..={}.",
+                            intermediate_epoch_id,
+                            period_end,
+                            period_begin + 1,
+                            period_end,
+                        );
+                        skipped_periods += 1;
+                        continue;
+                    }
+                }
+            };
+
+            for height in (period_begin + 1)..=period_end {
+                let epoch_id =
+                    match period_snapshot.get_epoch_id_at_height(height) {
+                        Some(id) => *id,
+                        None => {
+                            warn!(
+                                "state index rebuild: the registry entry of \
+                                 the snapshot at height {} names no epoch at \
+                                 height {}. Writing no entry for it.",
+                                period_end, height,
+                            );
+                            skipped_heights += 1;
+                            continue;
+                        }
+                    };
+                let Some(roots) = state_root_of_epoch(&epoch_id) else {
+                    warn!(
+                        "state index rebuild: no commitment row for epoch \
+                         {:?} at height {}, so its state roots are unknown. \
+                         Writing no entry for it; consensus re-executes the \
+                         height.",
+                        epoch_id, height,
+                    );
+                    skipped_heights += 1;
+                    continue;
+                };
+                // The registry names the snapshot layer, the row carries its
+                // merkle root. Disagreement means the two halves of the entry
+                // describe different states, and the key paddings derived from
+                // the row would address the wrong keys of the delta MPT.
+                if maybe_registered_snapshot_merkle_root
+                    .is_some_and(|registered| roots.snapshot_root != registered)
+                {
+                    warn!(
+                        "state index rebuild: the commitment row of epoch \
+                         {:?} at height {} carries snapshot root {:?}, while \
+                         the snapshot layer the registry names for it, {:?}, \
+                         has merkle root {:?}. Writing no entry for it.",
+                        epoch_id,
+                        height,
+                        roots.snapshot_root,
+                        snapshot_epoch_id,
+                        maybe_registered_snapshot_merkle_root,
+                    );
+                    skipped_heights += 1;
+                    continue;
+                }
+
+                let entry = StateIndexEntry {
+                    snapshot_epoch_id,
+                    snapshot_merkle_root: roots.snapshot_root,
+                    intermediate_epoch_id,
+                    intermediate_delta_root: roots.intermediate_delta_root,
+                    maybe_intermediate_mpt_key_padding:
+                        maybe_intermediate_mpt_key_padding.clone(),
+                    delta_mpt_key_padding:
+                        StorageKeyWithSpace::delta_mpt_padding(
+                            &roots.snapshot_root,
+                            &roots.intermediate_delta_root,
+                        ),
+                    delta_root: roots.delta_root,
+                    maybe_height: Some(height),
+                    maybe_delta_trie_height: Some(
+                        StateIndex::height_to_delta_height(
+                            height,
+                            snapshot_epoch_count,
+                        ),
+                    ),
+                };
+                self.state_index_db.put(&epoch_id, &entry)?;
+                written += 1;
+            }
+        }
+
+        // A period the loop could not name leaves its own snapshot's epoch
+        // without an entry, and on a disk which arrived by snapshot sync that
+        // epoch is the one execution restarts from. Such a disk holds the
+        // merged image and nothing below it, so the two snapshots the loop
+        // walks down to were never there to be walked to.
+        //
+        // A snapshot holds the whole state of its own epoch, so
+        // that epoch is its own snapshot layer here, and the entry is the one
+        // `register_synced_snapshot_state` writes for a landing the new code
+        // syncs itself. It goes out only where the loop wrote nothing: where
+        // the loop did write, the layers below are on disk and the layered
+        // entry is what `commit` would have left, which this shape is not.
+        for period_snapshot in executable_snapshots.iter() {
+            let epoch_id = *period_snapshot.get_snapshot_epoch_id();
+            if period_snapshot.height == 0
+                || self.state_index_db.get(&epoch_id)?.is_some()
+            {
+                continue;
+            }
+            let Some(roots) = state_root_of_epoch(&epoch_id) else {
+                warn!(
+                    "state index rebuild: no commitment row for epoch {:?}, \
+                     whose state the snapshot at height {} holds, so its \
+                     state roots are unknown. Writing no entry for it.",
+                    epoch_id, period_snapshot.height,
+                );
+                skipped_heights += 1;
+                continue;
+            };
+            let entry = StateIndexEntry {
+                snapshot_epoch_id: epoch_id,
+                snapshot_merkle_root: roots.snapshot_root,
+                intermediate_epoch_id: period_snapshot.parent_snapshot_epoch_id,
+                intermediate_delta_root: roots.intermediate_delta_root,
+                maybe_intermediate_mpt_key_padding: None,
+                delta_mpt_key_padding: StorageKeyWithSpace::delta_mpt_padding(
+                    &roots.snapshot_root,
+                    &roots.intermediate_delta_root,
+                ),
+                delta_root: roots.delta_root,
+                maybe_height: Some(period_snapshot.height),
+                maybe_delta_trie_height: Some(
+                    StateIndex::height_to_delta_height(
+                        period_snapshot.height,
+                        snapshot_epoch_count,
+                    ),
+                ),
+            };
+            self.state_index_db.put(&epoch_id, &entry)?;
+            written += 1;
+        }
+
+        // The mark is what keeps the rebuild from running a second time, and
+        // it is also the only boot on which the rebuild can still happen. A
+        // run which wrote no entry at all, on a disk whose registry holds a
+        // snapshot to write one for, has not rebuilt anything; marking it done
+        // would spend that one boot and leave the node with an index it can
+        // never fill. It stays unmarked and this startup fails instead.
+        if written == 0
+            && executable_snapshots.iter().any(|info| info.height > 0)
+        {
+            return Err(Error::Msg(format!(
+                "the snapshot registry holds {} executable snapshots and not \
+                 one entry could be written, {} periods and {} single heights \
+                 left out; the rebuild stays unmarked so that a later boot \
+                 can run it again",
+                executable_snapshots.len(),
+                skipped_periods,
+                skipped_heights,
+            )));
+        }
+        self.state_index_db.set_migrated()?;
+        info!(
+            "state index rebuild: {} entries written; {} periods and {} \
+             single heights left out.",
+            written, skipped_periods, skipped_heights,
+        );
+        Ok(())
+    }
+
     pub fn log_usage(&self) {
         self.storage_manager.log_usage();
         debug!(
@@ -870,7 +1209,7 @@ use crate::{
         delta_mpt::*,
         errors::*,
         replicated_state::ReplicatedState,
-        state_index_db::StateIndexDb,
+        state_index_db::{StateIndexDb, StateIndexEntry},
         storage_db::{
             delta_db_manager_rocksdb::DeltaDbManagerRocksdb,
             snapshot_db_manager_sqlite::SnapshotDbManagerSqlite,
@@ -889,7 +1228,7 @@ use crate::{
 use cfx_types::Space;
 use malloc_size_of_derive::MallocSizeOf as MallocSizeOfDerive;
 use primitives::{
-    DeltaMptKeyPadding, EpochId, MerkleHash, StorageKeyWithSpace,
+    DeltaMptKeyPadding, EpochId, MerkleHash, StateRoot, StorageKeyWithSpace,
     GENESIS_DELTA_MPT_KEY_PADDING, MERKLE_NULL_NODE, NULL_EPOCH,
 };
 use std::sync::{
