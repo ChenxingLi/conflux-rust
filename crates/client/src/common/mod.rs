@@ -233,8 +233,6 @@ pub fn initialize_common_modules(
     let ledger_db = db::open_database(db_path.to_str().unwrap(), &db_config)
         .map_err(|e| format!("Failed to open database {:?}", e))?;
 
-    // The state index migration below needs a `PowComputer`, so it is built
-    // here. It only reads configuration.
     let pow_config = conf.pow_config();
     let pow = Arc::new(PowComputer::new(pow_config.use_octopus()));
 
@@ -244,15 +242,10 @@ pub fn initialize_common_modules(
             .expect("Failed to initialize storage."),
     );
 
-    // Rebuild the engine's index of state versions once, on the first boot of
-    // a binary which has that index. The engine enumerates the versions itself
-    // out of its snapshot registry, but each version's state root lives in the
-    // commitment rows of the ledger db, which are consensus schema and are not
-    // even in this rocksdb when the ledger backend is configured to sqlite; so
-    // the lookup is passed in from here.
-    //
-    // Must run before the genesis commit below, which is the first write into
-    // the index.
+    // Rebuild the storage engine's state index once, on the first boot of a
+    // binary which has that index. The state roots live in the ledger db,
+    // which is consensus schema, so the lookup is passed in from here.
+    // Must run before the genesis commit, which is the first index write.
     if storage_manager
         .needs_state_index_migration()
         .map_err(|e| format!("Failed to read the state index: {}", e))?

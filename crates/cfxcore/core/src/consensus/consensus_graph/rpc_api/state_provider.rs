@@ -9,13 +9,9 @@ use primitives::EpochNumber;
 use super::super::ConsensusGraph;
 
 impl ConsensusGraph {
-    /// The pivot hash of the epoch a state query names, for a caller which
-    /// opens the state itself. The epoch number is validated, turned into a
-    /// height and then into the hash, and the state at that height is checked
-    /// against the availability boundary, which is the whole of what consensus
-    /// knows about the question. Answering with the hash instead of with a
-    /// state object keeps the engine out of consensus for the queries which
-    /// need a concrete engine, `cfx_getStorageRoot` among them.
+    /// Returns the pivot hash of the epoch a state query names, not a state
+    /// object, so that a caller which needs the concrete storage engine type
+    /// can open the state itself.
     pub fn get_state_epoch_hash_by_epoch_number(
         &self, epoch_number: EpochNumber, rpc_param_name: &str,
     ) -> CoreResult<H256> {

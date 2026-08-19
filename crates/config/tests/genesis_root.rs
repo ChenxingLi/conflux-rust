@@ -4,14 +4,6 @@
 //! running this file in a checkout of master. A failure means the refactor
 //! moved a live network's genesis, which forks that network: it needs a human
 //! decision, not a new expected value.
-//!
-//! The cases are the configurations which produce different genesis blocks.
-//! Test or dev mode and whether the genesis transactions are executed are the
-//! two inputs that move the state root, and they move it independently, so all
-//! four combinations appear; `chain_id` moves the block hash alone. The test
-//! goes through `Configuration` rather than calling `genesis_block` directly
-//! because it is that step which decides the internal contracts and the CIPs
-//! the genesis state is built with.
 
 use std::{fs, path::PathBuf, sync::Arc};
 
@@ -70,12 +62,8 @@ fn dev() -> Configuration {
 
 /// The integration test suite, transcribed from `small_local_test_conf` in
 /// `tests/conflux/config.py`, keeping only the keys that reach the genesis
-/// construction.
-///
-/// `pos_reference_enable_height = 0` means the real suite hands
-/// `genesis_block` a set of PoS initial nodes; this case passes none. The
-/// documentation of `build` says why a genesis carrying initial nodes cannot
-/// be pinned by value at all.
+/// construction. `pos_reference_enable_height = 0` means the real suite hands
+/// `genesis_block` a set of PoS initial nodes; this case passes none.
 fn local_test() -> Configuration {
     let mut conf = Configuration::default();
     conf.raw_conf.mode = Some("test".into());
@@ -152,16 +140,9 @@ fn cases() -> Vec<Case> {
 }
 
 /// Construct the genesis block of one configuration and answer with its hash
-/// and its deferred state root.
-///
-/// The PoS initial nodes are always absent. They are the one genesis input
-/// that cannot be pinned: `genesis_block` executes each node's registration
-/// transaction, and `register_transaction` builds that transaction's calldata
-/// around a sigma protocol proof drawn from `OsRng`, so the transaction, and
-/// with it the resulting state, differs on every construction. Three
-/// constructions from one fixed key set were measured to give three different
-/// genesis roots. The integration suite generates its PoS keys per run, so its
-/// genesis hash is not a constant either.
+/// and its deferred state root. The PoS initial nodes are always absent:
+/// `register_transaction` draws from `OsRng`, so the resulting state differs
+/// on every construction.
 fn build(case: &Case) -> (H256, H256) {
     let dir = scratch_dir(case.name);
     let mut conf = case.conf.clone();

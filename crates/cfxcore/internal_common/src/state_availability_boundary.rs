@@ -14,14 +14,8 @@ pub struct StateAvailabilityBoundary {
     /// This field is not used if `full_state_start_height` is `None`.
     pub full_state_space: Option<Space>,
 
-    /// This is the lower boundary height of available state where we can
-    /// execute new epochs based on it.
-    ///
-    /// It starts where era and checkpoint policy puts it, at the stable height
-    /// of the current era or at the height a snapshot was synced at, and from
-    /// there it follows snapshot garbage collection upwards. The storage
-    /// engine owns that watermark and reports it; this field only mirrors what
-    /// `adjust_lower_bound` is told.
+    /// The lowest height whose state is available for execution. Mirrors
+    /// the watermark the storage engine reports via `adjust_lower_bound`.
     pub lower_bound: u64,
     /// This is the upper boundary height of available state.
     pub upper_bound: u64,
@@ -114,13 +108,8 @@ impl StateAvailabilityBoundary {
     /// Caller should also make sure the new lower boundary height should be
     /// less than or equal to current upper boundary height.
     ///
-    /// The new lower boundary is where snapshot garbage collection has
-    /// reached, as reported by the storage engine and passed on by
-    /// `ConsensusNewBlockHandler::adjust_state_availability_lower_bound`.
-    ///
-    /// `pivot_chain` is indexed from `lower_bound`, so the prefix it drops and
-    /// the new origin have to be decided in one step; that is why the drop
-    /// lives here and not at the caller.
+    /// `pivot_chain` is indexed from `lower_bound`, so the prefix drop and
+    /// the origin update must happen in one step.
     pub fn adjust_lower_bound(&mut self, new_lower_bound: u64) {
         // If we are going to call this function, `upper_bound` will not be 0
         // unless it is a full node and is in header phase. And we should do

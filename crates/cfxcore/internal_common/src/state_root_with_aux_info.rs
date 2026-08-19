@@ -13,10 +13,6 @@
 pub const AUX_INFO_PLACEHOLDER_BYTES: usize = 32;
 
 /// One placeholder slot of `StateRootAuxInfo`: a run of bytes with no meaning.
-///
-/// Nothing interprets the content. It is written as zeroes and, when a row
-/// written by an older node is decoded, whatever bytes that row carried are
-/// kept as raw bytes and handed to nobody.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuxInfoPlaceholder([u8; AUX_INFO_PLACEHOLDER_BYTES]);
 
@@ -40,31 +36,20 @@ impl Decodable for AuxInfoPlaceholder {
 
 /// What the commitment row carries next to the state root triplet.
 ///
-/// Four of the five fields used to be the coordinates of the state version:
-/// the snapshot epoch id, the intermediate epoch id and the two delta MPT key
-/// prefixes. The engine holds the coordinates in its own index now, so those
-/// four fields carry nothing and are written as zeroes; they survive only as
-/// byte slots, because the row shape is frozen by the decoder of an older node.
-/// The slot numbers below are RLP item positions and are the only thing left of
-/// the old field order.
-///
-/// The fifth field is not a coordinate and keeps its meaning: it is the merged
-/// hash of the state root triplet in the same row, and consensus both writes
-/// and reads it, for the blame vector and the block reward computation.
+/// Four of the five fields used to be the coordinates of the state version;
+/// the storage engine now holds those in its own index, so they are zeroed
+/// placeholder slots whose shape is frozen by the decoder of an older node.
+/// The fifth field, `state_root_hash`, keeps its meaning: consensus reads it
+/// for the blame vector and the block reward computation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StateRootAuxInfo {
-    /// Slot 0, which used to hold the snapshot epoch id.
     pub placeholder_slot_0: AuxInfoPlaceholder,
-    /// Slot 1, which used to hold the intermediate epoch id.
     pub placeholder_slot_1: AuxInfoPlaceholder,
-    /// Slot 2, which used to hold the optional intermediate key prefix. The
-    /// `Option` is part of the frozen shape, not of any remaining meaning: RLP
-    /// encodes it as a list of zero or one item, and both forms are what an
-    /// old decoder of this slot accepts. It is written as `Some`, so that the
-    /// slot keeps the width the old row gave it.
+    /// The `Option` is part of the frozen shape: RLP encodes it as a list of
+    /// zero or one item. It is written as `Some`, so that the slot keeps the
+    /// width the old row gave it.
     pub placeholder_slot_2: Option<AuxInfoPlaceholder>,
-    /// Slot 3, which used to hold the delta key prefix.
     pub placeholder_slot_3: AuxInfoPlaceholder,
 
     /// The merged hash of the state root triplet in the same row.
@@ -72,8 +57,8 @@ pub struct StateRootAuxInfo {
 }
 
 impl StateRootAuxInfo {
-    /// The only way to build one. The four coordinate slots are zero filled;
-    /// there is no longer anything a caller could put in them.
+    /// The four coordinate slots are zero filled; there is nothing left a
+    /// caller could put in them.
     pub fn new(state_root_hash: MerkleHash) -> Self {
         Self {
             placeholder_slot_0: Default::default(),
@@ -101,8 +86,6 @@ pub struct StateRootWithAuxInfo {
 }
 
 impl StateRootWithAuxInfo {
-    /// The commitment row of an epoch: the triplet the commit answered with,
-    /// and the merged hash which is a pure function of it.
     pub fn from_state_root(state_root: StateRoot) -> Self {
         let state_root_hash = state_root.compute_state_root_hash();
         Self {
@@ -188,12 +171,9 @@ use serde_derive::{Deserialize, Serialize};
 mod tests {
     use super::*;
 
-    /// The row `master` writes for the genesis epoch, byte for byte, with a
-    /// genesis root of 32 `0x77` bytes. Produced by running the encoder of
-    /// `master` (`StateRootWithAuxInfo::genesis`), not by the encoder under
-    /// test. Its `Option` slot is empty, and its slot 3 carries the real
-    /// `GENESIS_DELTA_MPT_KEY_PADDING`, i.e. a genuine key prefix and not a
-    /// value invented for the test.
+    /// The genesis row `master` writes, byte for byte, produced by running
+    /// the encoder of `master` rather than the encoder under test. Its
+    /// `Option` slot is empty.
     const MASTER_GENESIS_ROW: &str = "f8ec\
         f863\
         a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470\
@@ -206,20 +186,14 @@ mod tests {
         a09c6b2c1b0d0b25a008e6c882cc7b415f309965c72ad2b944ac0931048ca31cd5\
         a0431c960cc8074e37b1e7ae919fabf244efb7a05c83f25ac15b746ab0140b59fb";
 
-    /// The merged hash inside `MASTER_GENESIS_ROW`.
     const MASTER_GENESIS_STATE_ROOT_HASH: &str =
         "431c960cc8074e37b1e7ae919fabf244efb7a05c83f25ac15b746ab0140b59fb";
 
-    /// The delta key padding inside `MASTER_GENESIS_ROW`, i.e. what
-    /// `GENESIS_DELTA_MPT_KEY_PADDING` was on `master`.
     const MASTER_GENESIS_DELTA_PADDING: &str =
         "9c6b2c1b0d0b25a008e6c882cc7b415f309965c72ad2b944ac0931048ca31cd5";
 
-    /// A steady state row of `master`, byte for byte: all four coordinate
-    /// slots filled and the `Option` slot present, which is the shape of
-    /// every row a running node writes after genesis. Produced by the encoder
-    /// of `master` from the triplet `(0x01.., 0x02.., 0x03..)`, the epoch ids
-    /// `0xaa..` and `0xbb..`, and the key prefixes `0xcc..` and `0xdd..`.
+    /// A steady state row of `master`, byte for byte, with all four
+    /// coordinate slots filled and the `Option` slot present.
     const MASTER_STEADY_ROW: &str = "f9010d\
         f863\
         a00101010101010101010101010101010101010101010101010101010101010101\
@@ -232,7 +206,6 @@ mod tests {
         a0dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\
         a00918b65016ec47e1613e6629a797fb3685353e3b8101d0e5250ab52e53f27b88";
 
-    /// The merged hash inside `MASTER_STEADY_ROW`.
     const MASTER_STEADY_STATE_ROOT_HASH: &str =
         "0918b65016ec47e1613e6629a797fb3685353e3b8101d0e5250ab52e53f27b88";
 
@@ -329,8 +302,8 @@ mod tests {
 
     #[test]
     fn old_row_with_an_empty_option_slot_decodes_to_none() {
-        // The shape an old node wrote for genesis and for every epoch whose
-        // snapshot db was the one of its own intermediate epoch id.
+        // The shape an old node wrote for genesis, with an empty `Option`
+        // slot.
         let state_root = StateRoot::genesis(&hash(0x77));
         let state_root_hash = state_root.compute_state_root_hash();
         let aux = old_aux_row(
@@ -351,12 +324,8 @@ mod tests {
 
     // ---- 2. a row written here decodes on an old node ------------------
 
-    /// The old type is gone from the tree, so "an old decoder reads it" is
-    /// asserted on the shape instead: the old decoder read slots 0, 1 and 4
-    /// as `H256`, slot 2 as `Option<DeltaMptKeyPadding>` and slot 3 as
-    /// `DeltaMptKeyPadding`, and both padding types demanded exactly 32
-    /// bytes. A row which satisfies every one of those demands is a row that
-    /// decoder accepts.
+    /// The old type is gone, so we assert on shape: every slot matches the
+    /// width and kind the old decoder demanded.
     #[test]
     fn new_row_has_the_shape_the_old_decoder_demands() {
         let state_root = triplet(0x01, 0x02, 0x03);
@@ -432,8 +401,7 @@ mod tests {
         );
         // The empty `Option` slot of the real genesis row.
         assert!(decoded.aux_info.placeholder_slot_2.is_none());
-        // Slot 3 of that row carried the real genesis key prefix; it comes
-        // back as the same raw bytes and nothing interprets them.
+        // Slot 3 comes back as the same raw bytes; nothing interprets them.
         assert_eq!(
             &decoded.aux_info.placeholder_slot_3.0[..],
             &unhex(MASTER_GENESIS_DELTA_PADDING)[..]
@@ -459,10 +427,7 @@ mod tests {
         assert_eq!(decoded.aux_info.placeholder_slot_3.0, [0xdd; 32]);
     }
 
-    /// The frozen width, read straight off the bytes of a `master` row: every
-    /// slot of that row is `AUX_INFO_PLACEHOLDER_BYTES` wide. Should the
-    /// engine ever change the width of a key prefix and drag this constant
-    /// along, this test fails, which is what it is here for.
+    /// Guards that `AUX_INFO_PLACEHOLDER_BYTES` matches the actual master row.
     #[test]
     fn placeholder_width_is_the_width_of_the_master_row() {
         let bytes = unhex(MASTER_STEADY_ROW);
@@ -481,9 +446,7 @@ mod tests {
         );
     }
 
-    /// Same width, seen from the other side: a row written here occupies as
-    /// many bytes as the `master` row of the same triplet. Both write the
-    /// `Option` slot as `Some`, so the two rows differ only in slot content.
+    /// A row we write is the same width as the master row of the same triplet.
     #[test]
     fn new_row_is_as_wide_as_the_master_row() {
         let master = unhex(MASTER_STEADY_ROW);

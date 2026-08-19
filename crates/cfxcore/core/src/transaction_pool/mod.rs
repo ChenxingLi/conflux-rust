@@ -174,7 +174,6 @@ pub struct TransactionPool {
     inner: RwLock<TransactionPoolInner>,
     to_propagate_trans: Arc<RwLock<HashMap<H256, Arc<SignedTransaction>>>>,
     pub data_man: Arc<BlockDataManager>,
-    /// The state engine the pool reads the best executed state from.
     storage: Arc<dyn StorageEngine>,
     best_executed_state: Mutex<Arc<State>>,
     consensus_best_info: Mutex<Arc<BestInformation>>,
@@ -1183,11 +1182,6 @@ impl TransactionPool {
                 StorageVersion::Epoch(best_executed_epoch),
                 OpenOptions::new(),
             )?
-            // Safe because the state is guaranteed to be available. The only
-            // callers are the genesis setup and
-            // `ConsensusExecutor::notify_txpool`, which gates the call on
-            // `StateAvailabilityBoundary::check_availability`, so a missing
-            // version here means the boundary and the disk disagree.
             .unwrap();
         let state_db = StateDb::new_readonly(storage);
         let state = State::new(state_db)?;

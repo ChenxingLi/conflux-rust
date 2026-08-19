@@ -114,16 +114,9 @@ impl Restorer {
             &mut snapshot_info_map_locked,
         )?;
 
-        // Register the synced state in the engine's own state index. It has
-        // to come after the two `register_new_snapshot` calls above: the entry
-        // describes a version whose snapshot layer is the snapshot just
-        // registered, and the empty delta root written along with it goes into
-        // that snapshot's delta MPT, which only exists once the snapshot is in
-        // the registry.
-        //
-        // This is the only index write a synced epoch ever gets, since
-        // `State::commit` never runs for one. The next epoch's shift also
-        // takes its intermediate root from the `delta_root` of this entry.
+        // Must come after register_new_snapshot: the index entry refers to
+        // the snapshot just registered. This is the only index write a synced
+        // epoch gets, since State::commit never runs for one.
         storage_manager.register_synced_snapshot_state(
             &self.snapshot_epoch_id,
             &snapshot_info,

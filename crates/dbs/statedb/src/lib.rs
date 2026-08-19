@@ -39,25 +39,17 @@ mod impls {
     // see `delete_all`
     type AccessedEntries = BTreeMap<Key, EntryValue>;
 
-    /// What a commit capable `StateDb` needs to hand its changeset to the
-    /// engine. The parent version and the height come in through the
-    /// construction; the engine opens the writable state of the next epoch
-    /// itself when the changeset arrives.
+    /// What a commit capable `StateDb` hands the storage engine at commit
+    /// time, besides the changeset itself.
     struct CommitContext {
         manager: Arc<dyn StorageEngine>,
         parent: StorageVersion,
-        /// Height of the epoch this instance commits, i.e. the parent's height
-        /// plus one.
         height: u64,
     }
 
     /// How one `StateDb` reads, and whether it can commit.
     enum Storage {
-        /// Read only instance. Committing on it is an error.
         ReadOnly(Box<dyn StorageView>),
-
-        /// Commit capable instance: a read only view of the parent version to
-        /// read through, plus what the engine needs to commit on top of it.
         Commit {
             view: Box<dyn StorageView>,
             ctx: CommitContext,
@@ -79,13 +71,10 @@ mod impls {
         /// modified key values.
         accessed_entries: RwLock<AccessedEntries>,
 
-        /// Where the reads go and where the changeset goes. The underlying
-        /// storage is updated only upon fn commit().
         storage: Storage,
     }
 
     impl StateDb {
-        /// A read only instance. `commit` on it returns an error.
         pub fn new_readonly(view: Box<dyn StorageView>) -> Self {
             StateDb {
                 accessed_entries: Default::default(),
@@ -93,10 +82,9 @@ mod impls {
             }
         }
 
-        /// A commit capable instance on top of the epoch `parent` identifies.
-        /// The read handle of that version is opened here and held until the
-        /// commit; the writable state of the epoch being executed is opened by
-        /// the engine when the changeset arrives.
+        /// The read handle of the parent is opened here and held until the
+        /// commit; the storage engine opens the writable state itself when
+        /// the changeset arrives.
         pub fn new_for_commit(
             manager: Arc<dyn StorageEngine>, parent: EpochId, height: u64,
         ) -> Result<Self> {
@@ -122,10 +110,8 @@ mod impls {
             })
         }
 
-        /// The commit capable instance of the genesis epoch. Its parent is
-        /// the empty base, which has no epoch id of its own, so it cannot go
-        /// through `new_for_commit`. The height is 0, the genesis epoch's own
-        /// height on the convention the open path uses.
+        /// Genesis commits on the empty base, which has no epoch id to
+        /// name, so it cannot go through `new_for_commit`.
         pub fn new_for_genesis(
             manager: Arc<dyn StorageEngine>,
         ) -> Result<Self> {
@@ -148,10 +134,9 @@ mod impls {
             })
         }
 
-        /// A commit capable instance on the in memory engine's empty base.
-        /// The engine is the one shared by every unit test on this thread, so
-        /// an epoch committed here can be opened again by
-        /// `new_for_unit_test_with_epoch`.
+        /// A commit capable instance on the empty base of the in-memory
+        /// storage engine, which is thread-local: an epoch committed here
+        /// can be reopened by `new_for_unit_test_with_epoch`.
         #[cfg(any(test, feature = "testonly_code"))]
         pub fn new_for_unit_test() -> Self {
             use super::inmemory_manager::InmemoryManager;
@@ -160,9 +145,6 @@ mod impls {
                 .expect("the empty base is always open")
         }
 
-        /// A commit capable instance on top of an epoch some earlier unit test
-        /// step committed into the in memory engine of this thread. It panics
-        /// on an epoch that was never committed.
         #[cfg(any(test, feature = "testonly_code"))]
         pub fn new_for_unit_test_with_epoch(epoch_id: &EpochId) -> Self {
             use super::inmemory_manager::InmemoryManager;
@@ -466,15 +448,9 @@ mod impls {
             )
         }
 
-        /// storage_layout is special, because it must always present if there
-        /// is any storage value changed. The entry goes into
-        /// `accessed_entries` at the end of the cache building, so that it
-        /// reaches the engine in the same changeset as everything else.
-        ///
-        /// The entry is marked `force_write` because the layout key must reach
-        /// the underlying storage even when its value is unchanged, which is
-        /// the common case: the layout is rewritten for every account whose
-        /// storage changed, and most of them never touch the layout itself.
+        /// The entry is marked `force_write`: the layout must reach the
+        /// underlying storage even when its value is unchanged, because the
+        /// MPT requires it whenever any storage under the account changed.
         fn insert_storage_layout_entry(
             &mut self, address: &[u8], space: Space, layout: &StorageLayout,
             debug_record: Option<&mut ComputeEpochDebugRecord>,
@@ -493,9 +469,8 @@ mod impls {
             let value: Value = Some(value.into());
             match self.accessed_entries.get_mut().entry(key_bytes) {
                 Occupied(mut o) => {
-                    // The later write overrides the earlier one: whatever the
-                    // execution left under this key, the layout value is the
-                    // one replayed.
+                    // The later write overrides whatever the execution left
+                    // under this key: the replayed layout wins.
                     let entry = o.get_mut();
                     entry.current_value = value;
                     entry.force_write = true;
@@ -510,11 +485,8 @@ mod impls {
             }
         }
 
-        /// Collect the storage layouts which have to be rewritten because of
-        /// the modifications recorded in `accessed_entries`. This pass only
-        /// reads: the layouts it loads from the underlying storage are under
-        /// keys absent from `accessed_entries`, hence keys which the replay
-        /// never writes.
+        /// A read-only pass: the layouts it loads live under keys absent
+        /// from `accessed_entries`, which the replay therefore never writes.
         fn collect_storage_layouts_to_rewrite(
             &self,
         ) -> Result<HashMap<(Vec<u8>, Space), StorageLayout>> {
@@ -582,20 +554,16 @@ mod impls {
             Ok(storage_layouts_to_rewrite)
         }
 
-        /// Turn the whole cache into the changeset handed to the engine.
-        ///
-        /// This method does NOT clear the cache: `preview_genesis_root`
-        /// computes a root without persisting anything, so the commit which
-        /// follows it has to be able to build the changeset again. Clearing is
-        /// the job of whoever actually persisted the changeset.
+        /// Turn the whole cache into the changeset handed to the storage
+        /// engine. It does NOT clear the cache: `preview_genesis_root` needs
+        /// the same changeset to be buildable a second time for the commit
+        /// that follows.
         fn build_changeset(
             &mut self, mut debug_record: Option<&mut ComputeEpochDebugRecord>,
         ) -> Result<Changeset> {
             let storage_layouts_to_rewrite =
                 self.collect_storage_layouts_to_rewrite()?;
-            // Set storage layout for contracts with storage modification or
-            // contracts with storage_layout initialization or modification.
-            // The entries go into the cache, they are not written to the
+            // The entries go into the cache; nothing is written to the
             // underlying storage here.
             for ((address, space), layout) in &storage_layouts_to_rewrite {
                 self.insert_storage_layout_entry(
@@ -621,25 +589,18 @@ mod impls {
             Ok(changeset)
         }
 
-        /// The first phase of the genesis commit: the state root this
-        /// instance's changeset would produce, computed before the epoch has
-        /// an id, without persisting anything. The genesis construction needs
-        /// the root to build the block header whose hash *is* the epoch id, so
-        /// it cannot call `commit` yet.
-        ///
-        /// This deliberately leaves `accessed_entries` alone. Nothing was
-        /// persisted, so the `commit` which follows has to be able to build
-        /// the very same changeset a second time — clearing here would leave
-        /// it with an empty one.
+        /// Genesis needs the root to build the block header whose hash is
+        /// the epoch id, so it cannot call `commit` yet. The cache is left
+        /// intact, so the commit that follows can rebuild the same changeset.
         pub fn preview_genesis_root(
             &mut self, debug_record: Option<&mut ComputeEpochDebugRecord>,
         ) -> Result<StateRoot> {
             let changeset = self.build_changeset(debug_record)?;
             match &self.storage {
                 Storage::Commit { ctx, .. } => {
-                    // The engine previews on the empty base without looking at
-                    // the parent, so any other parent would silently get back
-                    // a root computed on the wrong base.
+                    // The storage engine previews on the empty base only;
+                    // any other parent would get back a root computed on the
+                    // wrong base.
                     if ctx.parent != StorageVersion::Empty {
                         return Err(Error::Msg(format!(
                             "preview_genesis_root needs the empty base as the \
@@ -656,9 +617,6 @@ mod impls {
             }
         }
 
-        /// Hand the whole changeset to the engine and let it apply, hash and
-        /// persist it under `epoch_id`. The answer is the consensus
-        /// commitment, the state root triplet alone.
         pub fn commit(
             &mut self, epoch_id: EpochId,
             debug_record: Option<&mut ComputeEpochDebugRecord>,
@@ -684,10 +642,9 @@ mod impls {
     struct EntryValue {
         original_value: Value,
         current_value: Value,
-        /// Write this entry to the underlying storage even when the current
-        /// value equals the original one. Only set for the storage layout
-        /// entries, which the MPT structure requires to be written whenever
-        /// any storage under the same account changes.
+        /// Write this entry to the underlying storage even when its value is
+        /// unchanged. The MPT requires the storage layout to be written
+        /// whenever any key under the same account changes.
         force_write: bool,
     }
 

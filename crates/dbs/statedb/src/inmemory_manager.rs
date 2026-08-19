@@ -2,14 +2,8 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-//! The in memory engine the unit tests read and write state through. It is
-//! the second implementation of `StorageEngine`, next to the real engine, so a
-//! test names a parent version and lets the engine hand out the read view and
-//! take the changeset, which is the path the production callers take.
-//!
-//! A version is the whole key value map of one epoch. Committing clones the
-//! parent's map, applies the changeset and files the result under the new
-//! epoch id.
+//! The in-memory `StorageEngine` implementation the unit tests read and
+//! write state through.
 
 use std::{
     cell::RefCell,
@@ -28,8 +22,7 @@ use parking_lot::RwLock;
 use primitives::{EpochId, StateRoot, StorageKeyWithSpace};
 use tiny_keccak::{Hasher, Keccak};
 
-/// The contents of one version, keyed by the raw storage key bytes, which is
-/// the key type a `Changeset` carries.
+/// The contents of one version, keyed by the raw storage key bytes.
 type Version = BTreeMap<Vec<u8>, Box<[u8]>>;
 
 thread_local! {
@@ -48,25 +41,17 @@ impl InmemoryManager {
         })
     }
 
-    /// One instance per thread. A test that commits an epoch and then opens it
-    /// again needs both calls to reach the same instance, and the test harness
-    /// gives each test case a thread of its own, so a thread local instance
-    /// isolates the cases from one another.
+    /// One instance per thread: a test that commits an epoch and reopens it
+    /// needs both calls on the same instance, and the test harness runs each
+    /// test case on a thread of its own.
     pub fn for_current_thread() -> Arc<Self> {
         THREAD_MANAGER.with(|slot| {
             slot.borrow_mut().get_or_insert_with(Self::new).clone()
         })
     }
 
-    /// The epoch id of the empty version every instance starts with. It stands
-    /// in for the empty base a test writes its first epoch on top of.
-    ///
-    /// The id is reserved: `commit` refuses to write under it, so no test can
-    /// give the empty base contents and change what the next test on the same
-    /// thread starts from. The value is out of the range of the small hashes
-    /// the tests name their epochs by.
-    /// File `contents` as the version of `epoch_id`, so that a test can start
-    /// from a state that is not empty without writing an epoch first.
+    /// File `contents` as the version of `epoch_id`, so that a test can
+    /// start from a non-empty state without committing an epoch first.
     pub fn seed(&self, epoch_id: EpochId, contents: Version) {
         self.versions.write().insert(epoch_id, contents);
     }
@@ -133,8 +118,6 @@ impl StorageEngine for InmemoryManager {
         Ok(state_root)
     }
 
-    /// The empty base of this engine is an empty map, so that is where the
-    /// preview starts.
     fn preview_genesis_root(
         self: Arc<Self>, changeset: &Changeset,
     ) -> Result<StateRoot> {
@@ -155,8 +138,8 @@ impl StorageEngine for InmemoryManager {
         }
     }
 
-    /// Nothing is ever collected here, so every version this engine has ever
-    /// been given is still openable and the bound stays at zero.
+    /// Nothing is ever collected here, so every version stays openable and
+    /// the bound stays at zero.
     fn notify_state_confirmed(&self, _view: &dyn StateConfirmedView) -> u64 {
         0
     }

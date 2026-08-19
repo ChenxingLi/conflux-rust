@@ -7,7 +7,6 @@ use cfx_types::AddressWithSpace;
 use primitives::{Account, EpochId, StateRoot, StorageKey};
 
 pub struct StateCommitResult {
-    /// The consensus commitment of the epoch just committed.
     pub state_root: StateRoot,
     pub accounts_for_txpool: Vec<Account>,
 }
@@ -29,13 +28,8 @@ impl State {
         })
     }
 
-    /// The first phase of the genesis commit: flush the execution into the
-    /// statedb and ask for the state root the resulting changeset would
-    /// produce, without persisting it. The caller needs the root to build the
-    /// genesis block header, whose hash is the epoch id `commit` is then
-    /// called with.
-    ///
-    /// The changeset stays in the statedb, so `commit` sees the whole of it.
+    /// Preview the state root without persisting: the genesis header needs
+    /// the root, and its hash becomes the epoch id for the real commit.
     pub fn preview_state_root_for_genesis(
         &mut self, mut debug_record: Option<&mut ComputeEpochDebugRecord>,
     ) -> DbResult<StateRoot> {

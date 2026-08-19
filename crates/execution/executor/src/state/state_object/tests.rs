@@ -21,10 +21,8 @@ pub fn get_state_by_epoch_id(epoch_id: &EpochId) -> State {
     State::new(StateDb::new_for_unit_test_with_epoch(epoch_id)).unwrap()
 }
 
-/// A state to write the epoch after genesis on. The genesis epoch is
-/// committed here, and the state handed back is opened on it, because a
-/// `State` is spent by its commit: it reads through the view of its parent
-/// version, which the commit leaves alone.
+/// Commits the genesis epoch and hands back a state opened on it, because a
+/// `State` is consumed by its commit.
 #[cfg(test)]
 pub fn get_state_for_genesis_write() -> State {
     let mut state = State::new(StateDb::new_for_unit_test())

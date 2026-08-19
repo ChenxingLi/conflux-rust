@@ -12,12 +12,10 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-/// The writable state of one epoch: the layered state the engine executes on,
-/// plus the single MPT replica when this node keeps one.
-///
-/// Every writable state the engine hands out is one of these. With
-/// `replication` at `None` every method here is a plain forward to the layered
-/// state.
+/// The writable state of one epoch: the layered state the engine executes
+/// on, plus the single MPT replica when this node keeps one. With
+/// `replication` at `None` every method here is a plain forward to the
+/// layered state.
 pub(crate) struct WritableState {
     state: State,
     replication: Option<ReplicationHandler>,
@@ -32,7 +30,6 @@ impl StateFilter for Space {
 }
 
 impl WritableState {
-    /// A writable state that writes to the layered state alone.
     pub(crate) fn plain(state: State) -> Self {
         Self {
             state,
@@ -40,8 +37,6 @@ impl WritableState {
         }
     }
 
-    /// A writable state that also mirrors every write into `replica`, keeping
-    /// the keys `filter` accepts.
     pub(crate) fn replicated(
         state: State, replica: SingleMptState,
         filter: Option<Box<dyn StateFilter>>,
@@ -340,7 +335,6 @@ impl WritableState {
         r
     }
 
-    /// Apply a whole changeset, in key order.
     fn apply_changeset(&mut self, changeset: &Changeset) -> Result<()> {
         for (key_bytes, value) in changeset {
             let access_key =
@@ -353,15 +347,9 @@ impl WritableState {
         Ok(())
     }
 
-    /// The commit entry point: one changeset plus the meta of the epoch it
-    /// belongs to, in a single call. Apply, compute the root, persist.
-    ///
-    /// The root is read back rather than recomputed when it is already there.
-    /// Normally the delta nodes are still dirty, `get_state_root` fails on
-    /// them, and the root is computed here.
-    ///
-    /// The answer is the consensus commitment, the state root triplet alone.
-    /// The physical coordinates stay with the engine's own index.
+    /// The commit entry point: apply the changeset, compute the root,
+    /// persist. Returns the state root triplet only; the physical
+    /// coordinates stay in the engine's own index.
     pub(crate) fn commit_changeset(
         &mut self, changeset: Changeset, meta: CommitMeta,
     ) -> Result<StateRoot> {

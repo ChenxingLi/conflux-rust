@@ -2,19 +2,9 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-//! The engine's own persistent state index.
-//!
-//! It maps an epoch id to the physical coordinates of the state version at
-//! that epoch, plus the state root triplet and the height. This is the only
-//! persisted copy of those coordinates: the open path resolves from here and
-//! snapshot maintenance reads the period boundary from here.
-//!
-//! One field cannot be recomputed and therefore must be stored: the
-//! intermediate layer key padding. It is carried along the chain -- on a
-//! snapshot shift it becomes the parent version's delta key padding, otherwise
-//! it is inherited unchanged -- so it is not a function of the epoch's own
-//! merkle roots. Everything else is either a chain fact or derivable, and is
-//! stored anyway to keep the entry self contained.
+//! The engine's own persistent state index: epoch id to physical coordinates,
+//! state root triplet and height. The open path and snapshot maintenance both
+//! resolve from here.
 
 use crate::{
     impls::{errors::*, storage_db::kvdb_rocksdb::KvdbRocksdb},
@@ -25,43 +15,38 @@ use primitives::EpochId;
 use rlp::{Decodable, Encodable, Rlp};
 use std::{path::Path, sync::Arc};
 
-/// The entry lives in a module of its own so that the RLP derive expands
-/// against `std::result::Result`; this file's `Result` is the engine's own
-/// one argument alias.
+/// The entry lives in a module of its own, so that the RLP derive resolves
+/// `Result` to `std::result::Result` instead of this file's alias.
 mod entry {
     use crate::delta_mpt_key::DeltaMptKeyPadding;
     use primitives::{EpochId, MerkleHash, StateRoot};
     use rlp_derive::{RlpDecodable, RlpEncodable};
 
-    /// The value stored for one epoch. The key is the epoch id itself.
+    /// The value stored for one epoch; the key is the epoch id itself.
     #[derive(Clone, Debug, RlpEncodable, RlpDecodable)]
     pub struct StateIndexEntry {
-        /// Snapshot layer: which snapshot the version sits on.
         pub snapshot_epoch_id: EpochId,
         pub snapshot_merkle_root: MerkleHash,
-        /// Intermediate layer: which epoch's delta root freezes as the
-        /// intermediate root for this version.
         pub intermediate_epoch_id: EpochId,
         pub intermediate_delta_root: MerkleHash,
-        /// The intermediate layer key prefix. This is THE field which forces
-        /// the index to exist: it is chained, not derivable from this
-        /// epoch's roots. `None` means the special case where the
-        /// snapshot db in use is the one of `intermediate_epoch_id`,
-        /// i.e. there is no intermediate layer to look up.
+        /// The intermediate layer key prefix. It is chained rather than
+        /// derivable from this epoch's roots, which is what forces the index
+        /// to exist. `None` means there is no intermediate layer to look up:
+        /// either the snapshot db in use is the one of
+        /// `intermediate_epoch_id`, or the state arrived whole by snapshot
+        /// sync.
         pub maybe_intermediate_mpt_key_padding: Option<DeltaMptKeyPadding>,
-        /// The delta layer key prefix. Derivable from the two merkle roots
-        /// above, stored to avoid recomputing a keccak on every open.
+        /// The delta layer key prefix, derivable from the two merkle roots
+        /// above but stored to skip a keccak on every open.
         pub delta_mpt_key_padding: DeltaMptKeyPadding,
-        /// This epoch's own delta root, the third element of the triplet.
         pub delta_root: MerkleHash,
-        /// The epoch height. `None` only on the test only paths which open a
-        /// state without a height.
+        /// `None` only on the test-only paths which open a state without a
+        /// height.
         pub maybe_height: Option<u64>,
-        /// The number of epochs already in the delta MPT including this one.
-        /// It decides whether the next epoch shifts to a new snapshot.
-        /// It is a pure function of `maybe_height` and the snapshot
-        /// period, but is stored so that the shift decision does not
-        /// depend on that equivalence.
+        /// The number of epochs already in the delta MPT including this one,
+        /// which decides whether the next epoch shifts to a new snapshot.
+        /// Derivable from `maybe_height`, stored so the shift decision does
+        /// not depend on that formula.
         pub maybe_delta_trie_height: Option<u32>,
     }
 
@@ -79,25 +64,19 @@ mod entry {
 
 pub use entry::StateIndexEntry;
 
-/// The index is a private key space of the engine. It is a rocksdb of its own
-/// under the storage dir, so no existing table is touched. Point reads only,
-/// one per state open, so it is on the hot read path and is left without a
-/// lock of its own: rocksdb serves concurrent readers itself.
+/// The engine's private state index db, a rocksdb of its own under the
+/// storage dir. It carries no lock of its own: reads are one point lookup
+/// per state open, and rocksdb serves concurrent readers itself.
 pub struct StateIndexDb {
     db: KvdbRocksdb,
 }
 
 impl StateIndexDb {
-    /// The directory is created here if it is not there, but its parent, the
-    /// storage dir, must exist already. The only caller is
-    /// `StorageManager::new_arc`, right after it creates that dir, so the
-    /// ordering holds by construction.
+    /// The directory is created if it is absent, but its parent, the storage
+    /// dir, must exist already.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        // One row per epoch of a few hundred bytes, written once and read
-        // back by point lookup, so the file budget is small and the size
-        // triggers stay near rocksdb's own defaults. The write ahead log
-        // stays on: the completion mark and the lower bound have to survive
-        // a crash.
+        // The WAL stays on: the migration mark and the lower bound must
+        // survive a crash.
         const CONFIG: DatabaseConfig = DatabaseConfig {
             max_open_files: 64,
             memory_budget: None,
@@ -146,9 +125,9 @@ impl StateIndexDb {
         Ok(())
     }
 
-    /// The first boot migration runs once and leaves a mark. There is no lazy
-    /// backfill: after the mark is set the index is maintained by the write
-    /// ports only.
+    /// Whether the first boot migration has run and left its mark. There is
+    /// no lazy backfill: once the mark is set, the index is maintained by
+    /// the write ports alone.
     pub fn migrated(&self) -> Result<bool> {
         Ok(self.db.get(MIGRATION_MARK_KEY)?.is_some())
     }
@@ -158,18 +137,10 @@ impl StateIndexDb {
         Ok(())
     }
 
-    /// The physical openable lower bound: the lowest height from which the
-    /// disk content is continuously executable. Produced by garbage
-    /// collection, so it has to survive a restart instead of being re-derived
-    /// every time.
-    ///
-    /// `None` means no record, and a record whose length is not the eight
-    /// bytes `store_lower_bound` writes reports the same thing: any other
-    /// length is disk corruption or a format this build does not know, and
-    /// neither can be turned into a height. The caller starts from zero in
-    /// that case, which costs one round of redundant collection work and is
-    /// undone by the next collection that writes the bound again, so the
-    /// case is logged rather than made fatal.
+    /// The persisted physical openable lower bound. A record of the wrong
+    /// length reads as `None`, logged rather than made fatal; the caller
+    /// then starts from zero and the next garbage collection writes the
+    /// bound again.
     pub fn load_lower_bound(&self) -> Result<Option<u64>> {
         match self.db.get(LOWER_BOUND_KEY)? {
             None => Ok(None),
@@ -212,9 +183,6 @@ mod tests {
     use rand::random;
     use std::fs;
 
-    /// An index on a directory of its own, removed when the test ends. The
-    /// parent directory has to exist before the index is opened, the same
-    /// ordering `StorageManager::new_arc` establishes.
     struct TempIndex {
         dir: std::path::PathBuf,
         index: Option<StateIndexDb>,
@@ -232,8 +200,6 @@ mod tests {
             }
         }
 
-        /// Closes the handle and opens the same path again, which is what a
-        /// restart does to the index.
         fn reopen(&mut self) {
             self.index = None;
             self.index = Some(
@@ -259,8 +225,6 @@ mod tests {
 
     fn epoch(byte: u8) -> EpochId { EpochId::from([byte; 32]) }
 
-    /// An entry with every optional field present, i.e. what a commit in the
-    /// middle of a snapshot period writes.
     fn full_entry() -> StateIndexEntry {
         StateIndexEntry {
             snapshot_epoch_id: epoch(0x11),
@@ -310,9 +274,9 @@ mod tests {
         assert_eq!(decoded.state_root().delta_root, entry.delta_root);
     }
 
-    /// The lowest surviving period has no previous period to take the
-    /// intermediate padding from, and the test only open paths carry no
-    /// height, so both `None` shapes are shapes the index really stores.
+    /// Both `None` shapes are shapes the index really stores: the lowest
+    /// surviving period has no intermediate padding to record, and the
+    /// test-only open paths carry no height.
     #[test]
     fn entry_round_trips_with_the_empty_shapes() {
         let entry = StateIndexEntry {
@@ -380,8 +344,6 @@ mod tests {
     #[test]
     fn lower_bound_round_trips_and_survives_a_reopen() {
         let mut temp = TempIndex::new();
-        // No record on a fresh index: this is the one boot which derives the
-        // bound from the registry instead of reading it.
         assert_eq!(temp.index().load_lower_bound().unwrap(), None);
 
         temp.index().store_lower_bound(0).unwrap();
@@ -393,7 +355,6 @@ mod tests {
         temp.reopen();
         assert_eq!(temp.index().load_lower_bound().unwrap(), Some(123_456));
 
-        // The store keeps no monotonicity of its own; the caller decides it.
         temp.index().store_lower_bound(7).unwrap();
         assert_eq!(temp.index().load_lower_bound().unwrap(), Some(7));
 
@@ -414,8 +375,6 @@ mod tests {
         assert!(temp.index().migrated().unwrap());
     }
 
-    /// The degradation branch of `load_lower_bound`: a record whose byte
-    /// length is not 8 is reported as "no record at all".
     #[test]
     fn a_lower_bound_record_of_the_wrong_length_reads_as_no_record() {
         let temp = TempIndex::new();
@@ -431,9 +390,6 @@ mod tests {
             );
         }
 
-        // A corrupt entry value, in contrast, is an error rather than an
-        // absence: the two records of this index disagree on how to treat a
-        // record they cannot make sense of.
         let id = epoch(0xc3);
         temp.index()
             .db
@@ -447,32 +403,24 @@ mod tests {
     #[test]
     fn migration_mark_is_absent_until_set_and_then_survives_a_reopen() {
         let mut temp = TempIndex::new();
-        // Nothing set: the boot which runs the migration.
         assert!(!temp.index().migrated().unwrap());
 
         temp.index().set_migrated().unwrap();
         assert!(temp.index().migrated().unwrap());
 
-        // Once the record exists the derivation must not run again, and a
-        // restart is exactly where that would happen.
         temp.reopen();
         assert!(temp.index().migrated().unwrap());
 
-        // Setting it twice is the same state, so a migration which reruns
-        // before crashing leaves nothing inconsistent behind.
         temp.index().set_migrated().unwrap();
         assert!(temp.index().migrated().unwrap());
     }
 
-    /// The mark is keyed on something an epoch id cannot be, so no entry can
-    /// set it and no entry is shadowed by it.
     #[test]
     fn migration_mark_key_cannot_be_an_epoch_id() {
         assert_ne!(MIGRATION_MARK_KEY.len(), EpochId::len_bytes());
         assert_ne!(LOWER_BOUND_KEY.len(), EpochId::len_bytes());
         assert_ne!(MIGRATION_MARK_KEY, LOWER_BOUND_KEY);
 
-        // And the mark is not readable as an entry, nor an entry as the mark.
         let temp = TempIndex::new();
         temp.index().put(&epoch(0xd4), &full_entry()).unwrap();
         assert!(!temp.index().migrated().unwrap());

@@ -12,9 +12,8 @@ type RawStorage = BTreeMap<Vec<u8>, StorageValue>;
 
 type StateDbTest = StateDbGeneric;
 
-/// The epoch these tests read their fixture out of. It is the parent of the
-/// epoch they commit, and it exists because the in memory engine was seeded
-/// with it, not because anything committed it.
+/// The epoch these tests read their fixture out of; it was seeded into the
+/// in-memory storage engine, never committed.
 fn base_epoch() -> EpochId { EpochId::from_low_u64_be(1) }
 
 // convert `key` to storage interface format

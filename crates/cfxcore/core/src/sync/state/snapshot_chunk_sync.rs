@@ -232,12 +232,9 @@ impl SnapshotChunkSync {
                     manifest_manager.chunk_boundary_proofs.clone(),
                     manifest_manager.active_peers.clone(),
                     self.config.chunk_config(),
-                    // The delta root of this triplet is the
-                    // intermediate_delta_root of the new snapshot, and it
-                    // will be used to fill new state_root in
-                    // get_state_trees_for_next_epoch. The whole triplet is
-                    // what the engine's state index records for the synced
-                    // epoch.
+                    // This triplet becomes the synced epoch's state index
+                    // entry; its delta root is the next snapshot's
+                    // intermediate_delta_root.
                     related_data
                         .true_state_root_by_blame_info
                         .state_root

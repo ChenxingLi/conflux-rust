@@ -100,9 +100,9 @@ pub struct Provider {
     // shared transaction pool
     tx_pool: Arc<TransactionPool>,
 
-    /// The state engine as the concrete type rather than the interface:
-    /// serving a light client means producing merkle proofs, which are bound
-    /// to this engine's database format and are not part of the interface.
+    /// The storage engine as the concrete type rather than the interface,
+    /// because merkle proof generation is specific to the concrete storage
+    /// engine.
     #[ignore_malloc_size_of = "the storage engine is measured through the handle the client keeps"]
     storage: Arc<StorageManager>,
 
@@ -133,7 +133,6 @@ impl Provider {
         }
     }
 
-    /// Get the state trie corresponding to the execution of `epoch`.
     #[inline]
     fn state_of(&self, epoch: u64) -> Result<State> {
         let pivot = self.ledger.pivot_hash_of(epoch)?;
@@ -155,7 +154,6 @@ impl Provider {
         }
     }
 
-    /// Get the state trie roots corresponding to the execution of `epoch`.
     #[inline]
     fn state_root_of(&self, epoch: u64) -> Result<StateRootWithAuxInfo> {
         match self.state_of(epoch)?.get_state_root() {
@@ -169,7 +167,6 @@ impl Provider {
         }
     }
 
-    /// Get the state trie entry under `key` at `epoch`.
     #[inline]
     fn state_entry_at(
         &self, epoch: u64, key: &Vec<u8>,
@@ -184,7 +181,6 @@ impl Provider {
         Ok((value, proof))
     }
 
-    /// Get the storage root of contract `address` at `epoch`.
     #[inline]
     fn storage_root_of(
         &self, epoch: u64, address: &Address,

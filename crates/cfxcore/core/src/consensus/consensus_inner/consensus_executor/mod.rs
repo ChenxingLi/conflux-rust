@@ -729,13 +729,10 @@ impl ConsensusExecutor {
         // do it again
         debug!("compute_state_for_block {:?}", block_hash);
         {
-            // Computed means both halves are there: the state itself, and the
-            // commitment row consensus writes after it. The two writes are not
-            // one, so an interrupted run can leave the state without the row.
-            // The caller reads the row as soon as this returns, so answering
-            // "computed" off the state alone hands it a row which is not
-            // there; a missing row falls through and the epoch is computed
-            // again, which writes it.
+            // "Computed" means both halves are present: the state and the
+            // commitment row. An interrupted run can leave the state without
+            // the row; check the row, not the state, because the caller
+            // reads the row immediately after.
             let executed = self
                 .handler
                 .data_man
@@ -840,7 +837,6 @@ impl ConsensusExecutor {
 pub struct ConsensusExecutionHandler {
     tx_pool: SharedTransactionPool,
     data_man: Arc<BlockDataManager>,
-    /// The state engine this node executes on.
     storage: Arc<dyn StorageEngine>,
     config: ConsensusExecutionConfiguration,
     verification_config: VerificationConfig,

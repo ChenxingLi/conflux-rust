@@ -137,8 +137,6 @@ pub struct BlockDataManager {
 
     /// This is the original genesis block.
     pub true_genesis: Arc<Block>,
-    /// The number of epochs in a snapshot period, a construction time
-    /// configuration of the state engine.
     snapshot_epoch_count: u32,
     cache_man: Arc<Mutex<CacheManager<CacheId>>>,
     pub target_difficulty_manager: TargetDifficultyManager,
@@ -168,10 +166,8 @@ pub struct BlockDataManager {
 }
 
 impl BlockDataManager {
-    /// `true_genesis_state_root` is only consulted on a fresh database, where
-    /// the true genesis commitment row is written for the first time. It is a
-    /// closure because on any other start the true genesis state may already
-    /// have been reclaimed, and opening it would fail.
+    /// `true_genesis_state_root` is a closure because the true genesis state
+    /// may already have been reclaimed on a non-fresh start.
     pub fn new(
         cache_conf: CacheConfig, true_genesis: Arc<Block>, db: Arc<SystemDB>,
         snapshot_epoch_count: u32,

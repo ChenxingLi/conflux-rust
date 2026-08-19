@@ -111,9 +111,8 @@ struct BlockExecInfo {
 pub struct CfxHandler {
     pub config: RpcImplConfiguration,
     pub consensus: SharedConsensusGraph,
-    /// The concrete engine, for `cfx_getStorageRoot`: the storage root is
-    /// answered per layer, which the engine's own entry point serves and the
-    /// interface does not.
+    /// The storage engine as the concrete type: `cfx_getStorageRoot` answers
+    /// per layer, which only the concrete storage engine serves.
     pub storage_engine: Arc<StorageManager>,
     pub sync: SharedSynchronizationService,
     pub tx_pool: SharedTransactionPool,
@@ -869,9 +868,6 @@ impl CfxRpcServer for CfxHandler {
         let epoch_hash = self
             .consensus_graph()
             .get_state_epoch_hash_by_epoch_number(epoch_num, "epoch_num")?;
-        // The storage root is answered per layer, which the engine's own
-        // entry point serves and the interface does not. Consensus answers
-        // where to look; the state is opened here.
         let state = self
             .storage_engine
             .open_layered_state(

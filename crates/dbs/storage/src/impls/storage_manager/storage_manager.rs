@@ -3,9 +3,8 @@
 // See http://www.gnu.org/licenses/
 
 /// What `slice_snapshot_for_manifest` gives back to the snapshot sync
-/// adapter: the boundaries of the chunks the snapshot was cut into, one proof
-/// per boundary, the snapshot's merkle root, and whether the cut stopped at
-/// `max_chunks` with more of the snapshot left.
+/// adapter: the chunk boundaries, one proof per boundary, the snapshot's
+/// merkle root, and whether the cut stopped at `max_chunks`.
 pub struct SnapshotManifestSlice {
     pub merkle_root: MerkleHash,
     pub chunk_boundaries: Vec<Vec<u8>>,
@@ -13,9 +12,9 @@ pub struct SnapshotManifestSlice {
     pub has_next: bool,
 }
 
-/// What `load_snapshot_kv_range` gives back to the snapshot sync adapter: the
-/// key value entries of one chunk, plus whether the read stopped early
-/// because the range does not fit in the size limit the caller gave.
+/// What `load_snapshot_kv_range` gives back to the snapshot sync adapter:
+/// one chunk's key value entries, plus whether the read stopped early on the
+/// size limit.
 pub struct SnapshotKvChunk {
     pub keys: Vec<Vec<u8>>,
     pub values: Vec<Box<[u8]>>,
@@ -108,18 +107,14 @@ impl PersistedSnapshotInfoMap {
 }
 
 /// What the engine remembers between the recovery handshake and the end of
-/// the restart replay. The per commit rebuild decision is worked out from
-/// these two numbers.
+/// the restart replay.
 struct RecoveryMode {
-    /// The highest height whose snapshot still has a usable MPT, as the
-    /// startup self check found it. `None` means no such height is known, in
-    /// which case every epoch of the replay rebuilds its MPT.
+    /// The highest height whose snapshot still has a usable MPT. `None`
+    /// means no such height is known, and every replay epoch rebuilds its
+    /// MPT.
     max_height_has_mpt: Option<u64>,
-
-    /// The last height consensus replays in this window. The commit at this
-    /// height is the one which clears the recovery mode, because the engine
-    /// cannot tell the last commit of the replay from the first commit of
-    /// normal execution by looking at the commits alone.
+    /// The commit at this height clears recovery mode; the engine cannot
+    /// distinguish the last replay commit from normal execution otherwise.
     replay_last_height: u64,
 }
 
@@ -169,29 +164,20 @@ pub struct StorageManager {
     pub storage_conf: StorageConfiguration,
 
     /// What the startup self check found on disk, consumed by the recovery
-    /// handshake. The sync landing overwrites it through
-    /// `note_synced_snapshot`, because the self check runs before the sync
-    /// and therefore cannot have seen the snapshot the sync brings in.
+    /// handshake and overwritten by `note_synced_snapshot` when a sync lands
+    /// after the check.
     persist_state_from_initialization:
         RwLock<Option<(Option<EpochId>, HashSet<EpochId>, u64, Option<u64>)>>,
 
-    /// Set by `plan_recovery` while the restart replay still has commits to
-    /// come, cleared by the commit which ends the replay window. `None` means
-    /// the engine is not in recovery mode, the state of every normally running
-    /// node.
+    /// `Some` only while the restart replay still has commits to come;
+    /// cleared by the commit which ends the replay window.
     recovery_mode: RwLock<Option<RecoveryMode>>,
 
-    /// The engine's own state index. Owned here because `new_arc` creates
-    /// the storage dir it lives in, and because the maintenance which advances
-    /// the physical openable lower bound runs inside this struct.
     state_index_db: Arc<StateIndexDb>,
 
     /// The lowest height on disk from which execution can run continuously
-    /// upwards. It lives next to the index because snapshot garbage
-    /// collection, which advances it, runs here, and the in memory value and
-    /// the record inside the index have to move together. Loaded from the
-    /// index at construction, derived from the snapshot registry on the boot
-    /// which finds no record.
+    /// upwards. The in-memory value and the record inside the index must
+    /// move together.
     physical_openable_lower_bound: RwLock<u64>,
 }
 
@@ -270,18 +256,13 @@ impl StorageManager {
             fs::create_dir_all(storage_dir)?;
         }
 
-        // Opened right after the storage dir it sits in has been created just
-        // above, so that "the index directory is created under a parent
-        // that exists" holds by construction. Moving this earlier fails on a
-        // fresh data dir and takes the whole engine construction down.
+        // Must come after the `create_dir_all` above: on a fresh data dir
+        // the storage dir, the index db's parent, does not exist yet.
         let state_index_db = Arc::new(StateIndexDb::open(
             storage_conf
                 .path_storage_dir
                 .join(&*storage_dir::STATE_INDEX_DB_PATH),
         )?);
-        // The persisted bound wins whenever it exists. Deriving it from the
-        // registry happens only on the boot which finds no record, and
-        // `StateManager` does that right after this constructor returns.
         let physical_openable_lower_bound =
             RwLock::new(state_index_db.load_lower_bound()?.unwrap_or(0));
 
@@ -473,25 +454,17 @@ impl StorageManager {
         &*self.snapshot_manager
     }
 
-    /// The concrete snapshot db manager, handed to the snapshot sync adapter
-    /// so that it can build a `FullSyncVerifier` on it. The snapshot db traits
-    /// are engine private, so a caller outside the engine can only pass this
-    /// handle along, not call through it.
     pub fn get_snapshot_db_manager(&self) -> &SnapshotDbManager {
         self.get_snapshot_manager().get_snapshot_db_manager()
     }
 
-    /// Engine entry for the snapshot sync adapter: drop a snapshot whose
-    /// content disagrees with the one being restored.
     pub fn destroy_snapshot(&self, snapshot_epoch_id: &EpochId) -> Result<()> {
         self.get_snapshot_db_manager()
             .destroy_snapshot(snapshot_epoch_id)
     }
 
-    /// Engine entry for the snapshot sync adapter: turn the temporary snapshot
-    /// written by the restoration into the real one. The returned guard is the
-    /// one `register_new_snapshot` wants, so the caller has to keep holding
-    /// the snapshot info map across both calls.
+    /// The caller must keep holding the returned guard through the
+    /// `register_new_snapshot` call that follows.
     pub fn finalize_full_sync_snapshot(
         &self, snapshot_epoch_id: &EpochId, merkle_root: &MerkleHash,
     ) -> Result<RwLockWriteGuard<'_, PersistedSnapshotInfoMap>> {
@@ -502,10 +475,6 @@ impl StorageManager {
         )
     }
 
-    /// Engine entry for the snapshot sync adapter: cut the snapshot MPT into
-    /// chunk boundaries for a manifest. The cursor that walks the MPT borrows
-    /// from the opened snapshot db, and both are engine private, so the whole
-    /// walk happens here and only its result leaves the engine.
     pub fn slice_snapshot_for_manifest(
         &self, snapshot_epoch_id: &EpochId, start_key: Option<&[u8]>,
         chunk_size: u64, max_chunks: usize,
@@ -530,9 +499,6 @@ impl StorageManager {
         let mut chunk_boundary_proofs = vec![];
         let mut has_next = true;
 
-        // The slicer advances monotonically through the trie, so the
-        // boundaries come out strictly increasing -- the invariant the
-        // receiver enforces in `validate`.
         for i in 0..max_chunks {
             trace!("cut chunks for manifest, loop = {}", i);
             slicer.advance(chunk_size)?;
@@ -556,11 +522,6 @@ impl StorageManager {
         }))
     }
 
-    /// Engine entry for the snapshot sync adapter: read one key range out of a
-    /// snapshot's key value table. The read stops as soon as the accumulated
-    /// RLP size exceeds `max_rlp_size`, and says so in
-    /// `exceeded_max_rlp_size`; the caller decides what an over-long range
-    /// means, because that decision is about the peer that asked for it.
     pub fn load_snapshot_kv_range(
         &self, snapshot_epoch_id: &EpochId, lower_bound_incl: &[u8],
         upper_bound_excl: Option<&[u8]>, max_rlp_size: u64,
@@ -602,9 +563,6 @@ impl StorageManager {
         }))
     }
 
-    /// Engine entry for the snapshot merge test tool: read a list of keys out
-    /// of one snapshot's key value table. The snapshot db is opened once for
-    /// the whole list.
     pub fn read_snapshot_values(
         &self, snapshot_epoch_id: &EpochId, keys: &[Vec<u8>],
     ) -> Result<Option<Vec<Option<Box<[u8]>>>>> {
@@ -624,10 +582,6 @@ impl StorageManager {
         Ok(Some(values))
     }
 
-    /// Engine entry for the snapshot merge test tool: merge one delta MPT into
-    /// the parent snapshot and produce the next snapshot. The engine drives
-    /// this itself in `check_make_snapshot`; the tool drives it directly so
-    /// that it can compare two ways of reaching the same snapshot.
     pub fn new_snapshot_by_merging(
         &self, old_snapshot_epoch_id: &EpochId, snapshot_epoch_id: EpochId,
         delta_mpt: DeltaMptIterator, in_progress_snapshot_info: SnapshotInfo,
@@ -649,20 +603,14 @@ impl StorageManager {
         self.storage_conf.consensus_param.snapshot_epoch_count
     }
 
-    /// The engine's own state index. `StateManager` holds a clone of this
-    /// handle for the commit write port.
     pub(crate) fn state_index_db(&self) -> Arc<StateIndexDb> {
         self.state_index_db.clone()
     }
 
-    /// The engine's answer to "how far has garbage collection advanced".
     pub(crate) fn physical_openable_lower_bound(&self) -> u64 {
         *self.physical_openable_lower_bound.read()
     }
 
-    /// Records a new physical openable lower bound, in memory and in the
-    /// index, in that order. The caller decides monotonicity; this only
-    /// stores what it is given.
     pub(crate) fn set_physical_openable_lower_bound(
         &self, height: u64,
     ) -> Result<()> {
@@ -670,31 +618,15 @@ impl StorageManager {
         self.state_index_db.store_lower_bound(height)
     }
 
-    /// The sync write port of the private index. The sync adaptation module
-    /// calls it once, after the snapshot itself and its parent have been
-    /// registered, for the one epoch whose state the snapshot holds.
+    /// The sync write port of the private index: the one entry a synced
+    /// state gets, since `State::commit` never runs for one.
     ///
-    /// A synced state never goes through `State::commit`, and the first boot
-    /// migration cannot reach it either, since that migration derives a
-    /// period's coordinates from the two snapshots below it and a freshly
-    /// synced node has neither. Without this port the epoch has no entry.
-    ///
-    /// `intermediate_epoch_id` must be the parent snapshot's epoch id, not the
-    /// null epoch. The next epoch necessarily shifts and takes its new
-    /// snapshot layer from this field; left empty it resolves to the empty
-    /// snapshot registered at genesis, the shift succeeds without an error and
-    /// the next epoch executes on an empty state. Filled with the parent
-    /// snapshot's id it lands in the "parent snapshot missing locally, fall
-    /// back to the snapshot of the synced epoch" branch instead.
-    ///
+    /// `intermediate_epoch_id` must be the parent snapshot's epoch id, not
+    /// null: left empty, the next epoch's shift resolves to the genesis
+    /// snapshot and silently executes on empty state.
     /// `maybe_intermediate_mpt_key_padding` is `None`: there is no
     /// intermediate MPT locally, and `None` is what makes the open path read
     /// through to the merged snapshot instead of looking a key up.
-    ///
-    /// The entry is the whole registration. Nothing is written into the delta
-    /// MPT of the synced snapshot, because an epoch which is its own snapshot
-    /// layer has an empty delta layer by construction and the open path
-    /// recognizes that from the entry alone.
     pub fn register_synced_snapshot_state(
         self: &Arc<Self>, snapshot_epoch_id: &EpochId,
         snapshot_info: &SnapshotInfo, synced_state_root: &StateRoot,
@@ -722,33 +654,22 @@ impl StorageManager {
         );
         self.state_index_db.put(snapshot_epoch_id, &entry)?;
 
-        // A synced snapshot is a new floor: nothing below the synced height can
-        // be executed upwards, because nothing below it was ever executed
-        // here. Raise only -- a record already above the synced height claims
-        // less is openable than what is on disk, which is the safe direction,
-        // while lowering it back would claim more.
+        // The bound is only raised. A record already above the synced height
+        // claims less openable than what is on disk, which is the safe
+        // direction; lowering it back would claim more.
         if snapshot_info.height > self.physical_openable_lower_bound() {
             self.set_physical_openable_lower_bound(snapshot_info.height)?;
         }
         Ok(())
     }
 
-    /// A snapshot landed by the sync at `snapshot_height`. The startup self
-    /// check ran before the sync, so its report describes a disk which did not
-    /// yet hold this snapshot, and the recovery handshake would act on it by
-    /// rebuilding an MPT the sync has just delivered. This replaces the report
-    /// with what the disk holds now: nothing removed but the genesis
-    /// placeholder, the newest snapshot at the synced height, and no snapshot
-    /// carrying a usable MPT.
+    /// Replaces the startup self-check report, which predates the sync and
+    /// would cause the recovery handshake to rebuild what the sync delivered.
     pub fn note_synced_snapshot(&self, snapshot_height: u64) {
         *self.persist_state_from_initialization.write() =
             Some((None, HashSet::from([NULL_EPOCH]), snapshot_height, None));
     }
 
-    /// A snapshot of the whole snapshot registry, keyed by snapshot epoch id.
-    /// The first boot index migration walks it for the heights it has to cover
-    /// and for the layer coordinates of each period; the three merkle roots of
-    /// an entry come from the commitment row of its epoch instead.
     pub fn all_snapshot_infos(&self) -> HashMap<EpochId, SnapshotInfo> {
         self.snapshot_info_map_by_epoch.read().get_map().clone()
     }
@@ -1199,14 +1120,10 @@ impl StorageManager {
         Ok(())
     }
 
-    /// Reclaim what the confirmation reported by `view` has made unnecessary,
-    /// and report the physical openable lower bound as it stands once the
-    /// round is over.
-    ///
-    /// The reported bound is the engine's own record as it stands when the
-    /// round ends, never a value computed for the caller. A round which
-    /// removes nothing, and a round which returns early, report the value the
-    /// record already held.
+    /// Reclaim what the confirmation reported by `view` has made
+    /// unnecessary. Returns the physical openable lower bound as the
+    /// persisted record stands when the round ends, not a value computed for
+    /// the caller.
     pub fn maintain_state_confirmed(
         &self, view: &dyn StateConfirmedView,
     ) -> Result<u64> {
@@ -1222,9 +1139,6 @@ impl StorageManager {
             } else {
                 0
             };
-        // "Has garbage collection already passed this height" is a question
-        // about what is on disk, so the engine's own record of the physical
-        // openable lower bound is what answers it.
         if maintained_state_height_lower_bound
             <= self.physical_openable_lower_bound()
         {
@@ -1233,8 +1147,6 @@ impl StorageManager {
         let maintained_epoch_id = view
             .pivot_hash_at_height(maintained_state_height_lower_bound)
             .map_err(Error::Msg)?;
-        // The index lookup at the top of the call below makes the round a no
-        // op when the epoch has no entry.
         self.maintain_snapshots_pivot_chain_confirmed(
             maintained_state_height_lower_bound,
             &maintained_epoch_id,
@@ -1252,13 +1164,6 @@ impl StorageManager {
         Ok(self.physical_openable_lower_bound())
     }
 
-    /// Put the snapshot pipeline back into a state execution can restart
-    /// from, and say where it should restart. Reached through
-    /// `StateManager::plan_recovery`.
-    ///
-    /// Consensus supplies chain facts through `view` and takes back a restart
-    /// height. No transaction is executed here; the replay is driven by the
-    /// consensus loop, and the engine only sees the commits it produces.
     pub fn plan_recovery(
         &self, view: &dyn ConsensusRecoveryView,
     ) -> RecoveryPlan {
@@ -1278,14 +1183,9 @@ impl StorageManager {
         }
     }
 
-    /// Arm the recovery mode for the replay which is about to run, or, when
-    /// the replay has no epoch to execute, finish it right away.
-    ///
-    /// The replay commits the epochs at heights
-    /// `[max(window_start + 1, recompute_start), window_end)`, the range the
-    /// consensus loop walks. An empty range means no commit will ever arrive
-    /// to clear the mode, so the mode is not armed at all and the snapshot id
-    /// recorded during the handshake is released right away.
+    /// Arm the recovery mode for the replay about to run. An empty replay
+    /// range is finished right away instead: no commit would ever arrive to
+    /// clear the mode.
     fn enter_recovery_mode(
         &self, view: &dyn ConsensusRecoveryView, recompute_start_height: u64,
         max_height_has_mpt: Option<u64>,
@@ -1305,8 +1205,8 @@ impl StorageManager {
         }
     }
 
-    /// Drop the recovery mode and release the snapshot which the handshake
-    /// hid while its MPT was being rebuilt.
+    /// Drop the recovery mode and release the snapshot the handshake hid
+    /// while its MPT was being rebuilt.
     fn leave_recovery_mode(&self) {
         let left = self.recovery_mode.write().take();
         if let Some(mode) = left {
@@ -1320,17 +1220,9 @@ impl StorageManager {
             .clean_snapshot_epoch_id_before_recovered();
     }
 
-    /// Whether the snapshot generated while the epoch at `height` is committed
-    /// has to rebuild its MPT from scratch.
-    ///
-    /// The inputs are the commit's own height, the highest height whose
-    /// snapshot has a usable MPT, and the snapshot period. The one thing the
-    /// engine cannot see for itself is where the replay ends, which comes in
-    /// through the handshake.
-    ///
-    /// Called on every commit, including the ones which make no snapshot,
-    /// because the commit which ends the replay window is also the one which
-    /// clears the recovery mode.
+    /// Whether the snapshot generated by the commit at `maybe_height` has to
+    /// rebuild its MPT from scratch. Called on every commit: the one which
+    /// ends the replay window also clears the recovery mode.
     pub fn recover_mpt_for_commit(&self, maybe_height: Option<u64>) -> bool {
         let Some(height) = maybe_height else {
             return false;
@@ -1358,16 +1250,9 @@ impl StorageManager {
         recover
     }
 
-    /// The snapshot half of `plan_recovery`, moved here from consensus
-    /// unchanged except that pivot chain indices became heights: consensus
-    /// worked in indices into its pivot chain array, which the engine has no
-    /// business knowing about, and the two are the same quantity shifted by the
-    /// era genesis height.
-    ///
-    /// `start_compute_epoch_height` comes in as the height consensus proposed
-    /// and is only ever moved down. The returned height is the highest one
-    /// whose snapshot has a usable MPT; the replay window end stands for "none
-    /// of the epochs in this window needs a rebuild".
+    /// `start_compute_epoch_height` is only ever moved down. Returns the
+    /// highest height whose snapshot has a usable MPT; the replay window end
+    /// height stands for "no epoch in this window needs a rebuild".
     fn recover_latest_mpt_snapshot_if_needed(
         &self, view: &dyn ConsensusRecoveryView,
         start_compute_epoch_height: &mut u64,
@@ -1380,8 +1265,6 @@ impl StorageManager {
             return Some(end_height);
         }
 
-        // What the startup self check found, and what the sync landing
-        // overwrote it with when a snapshot arrived after the check.
         let (
             temp_snapshot_db_existing,
             removed_snapshots,
@@ -1593,18 +1476,11 @@ impl StorageManager {
     /// The behavior of old pivot snapshot deletion can be different between
     /// Archive Node and Full Node.
     ///
-    /// The period boundary is decided by two coordinates of the maintained
-    /// epoch, its snapshot layer and its intermediate layer, both read from
-    /// the engine's own index.
-    ///
-    /// An epoch with no entry makes the whole round a no op. Do not substitute
-    /// anything for the missing pair: that decides the boundary from a value
-    /// which was never that epoch's, and the failure is silent -- snapshots
-    /// get removed, kept or merged against the wrong period and only a much
-    /// later state root mismatch shows it. Skipping mutates nothing before the
-    /// return, `last_confirmed_snapshottable_epoch_id` in particular, so the
-    /// next confirmation redoes the round; the cost is deferred garbage
-    /// collection, not a wrong decision.
+    /// An epoch with no index entry makes the round a no-op. Do not
+    /// substitute a default: the wrong boundary silently removes or merges
+    /// snapshots against the wrong period, and only a later state root
+    /// mismatch reveals it. Skipping defers garbage collection; a wrong
+    /// decision corrupts state.
     pub fn maintain_snapshots_pivot_chain_confirmed(
         &self, maintained_state_height_lower_bound: u64,
         maintained_epoch_id: &EpochId,
@@ -1626,9 +1502,6 @@ impl StorageManager {
                 }
             };
 
-        // Skip remaining actions when the confirmed snapshot-able epoch id
-        // doesn't change. The marker itself is advanced at the end of the
-        // round, not here.
         {
             let last_confirmed_snapshottable_id_locked =
                 self.last_confirmed_snapshottable_epoch_id.lock();
@@ -1918,11 +1791,9 @@ impl StorageManager {
         if !non_pivot_snapshots_to_remove.is_empty()
             || !old_pivot_snapshots_to_remove.is_empty()
         {
-            // Written before the snapshots below are actually removed, so a
-            // crash in between leaves a bound which claims less than what is
-            // on disk, never more. This is the only record of the advance;
-            // consensus reads it back as the return value of
-            // `maintain_state_confirmed`.
+            // The bound is written before the snapshots below are removed:
+            // a crash in between leaves it claiming less than what is on
+            // disk, never more.
             if first_available_state_height
                 > self.physical_openable_lower_bound()
             {
@@ -1953,11 +1824,9 @@ impl StorageManager {
         }
         */
 
-        // The marker moves once the round is through, because it is what makes
-        // the next confirmation in this snapshot period a no op. Moving it at
-        // the top made a round which failed part way permanent: the error is
-        // reported and the retry returns at the check above, so whatever the
-        // round had left to do would never be done.
+        // The marker moves only once the round is through: moved at the top,
+        // a partially failed round would become permanent, because the retry
+        // returns at the early check above.
         *self.last_confirmed_snapshottable_epoch_id.lock() =
             Some(maintained_intermediate_epoch_id);
 

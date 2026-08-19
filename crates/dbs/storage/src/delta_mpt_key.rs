@@ -2,14 +2,12 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-//! The delta MPT key layout: the padding type, its derivation from the
-//! snapshot root and the intermediate delta root, and the encoding of a
-//! storage key into a delta MPT key.
+//! The delta MPT key layout: the padding type, its derivation, and the
+//! encoding of a storage key into a delta MPT key.
 //!
-//! The padding is a coordinate the engine recomputes on every commit and on
-//! every open, so it lives with the engine rather than in `primitives`. It is
-//! not engine-private, though: the light protocol recomputes the same padding
-//! when it verifies a proof locally, so the derivation stays exported.
+//! The light protocol recomputes the padding when it verifies a proof locally,
+//! so the derivation stays exported even though the padding itself is an
+//! engine coordinate.
 
 use cfx_types::Space;
 use keccak_hash::keccak;

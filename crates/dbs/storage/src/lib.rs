@@ -12,9 +12,6 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-// The modules are private. Everything this crate exports is named one by one
-// in the `pub use` block at the bottom of this file. `utils` and `tests` are
-// still public because assets that do not belong to the engine live in them.
 #[macro_use]
 pub mod utils;
 
@@ -34,8 +31,6 @@ pub mod storage_dir {
     lazy_static! {
         pub static ref DELTA_MPTS_DIR: PathBuf =
             ["storage_db", "delta_mpts"].iter().collect::<PathBuf>();
-        /// The engine's own state index, relative to `path_storage_dir`,
-        /// i.e. sitting next to the other storage dbs.
         pub static ref STATE_INDEX_DB_PATH: PathBuf = "state_index_db".into();
         pub static ref SNAPSHOT_DIR: PathBuf =
             ["storage_db", "snapshot"].iter().collect::<PathBuf>();
@@ -206,8 +201,8 @@ impl StorageConfiguration {
     }
 }
 
-// The export surface. Everything below is named deliberately; anything not
-// listed here stays inside the crate.
+// The export surface. The modules above are private; everything this crate
+// exports is named one by one in the `pub use` items below.
 //
 // The public entry point, the state handle and the commit vocabulary:
 pub use self::{
@@ -218,10 +213,7 @@ pub use self::{
         StorageEngine, StorageVersion,
     },
 };
-// The construction configuration. `StorageConfiguration`, `ConsensusParam`,
-// `ProvideExtraSnapshotSyncConfig` and `storage_dir` are defined in this file;
-// `defaults` holds the default of every field the node configuration leaves
-// unset.
+// Construction configuration:
 pub use self::impls::defaults;
 
 // Proof data types, needed by the light protocol and by the RPC layer.
@@ -252,10 +244,7 @@ pub use self::delta_mpt_key::{delta_mpt_padding, DeltaMptKeyPadding};
 
 // The engine's own error type is exported as `Error` and `Result` above.
 
-// Not part of the surface above: the ledger key value library, `MptKeyValue`
-// and the MPT node building blocks. Each disappears with a migration that is
-// already planned; until then `dev-support/check_storage_exports.py` reports
-// every use of them.
+// Legacy exports, tracked by `dev-support/check_storage_exports.py`:
 pub use self::{
     impls::{
         merkle_patricia_trie::{

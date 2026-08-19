@@ -37,8 +37,6 @@ pub struct ConsensusNewBlockHandler {
     conf: ConsensusConfig,
     txpool: SharedTransactionPool,
     data_man: Arc<BlockDataManager>,
-    /// The state engine this handler drives the restart recovery and the
-    /// maintenance events with.
     storage: Arc<dyn StorageEngine>,
     executor: Arc<ConsensusExecutor>,
     pos_verifier: Arc<PosVerifier>,
@@ -1106,19 +1104,12 @@ impl ConsensusNewBlockHandler {
         block_status
     }
 
-    /// Move `StateAvailabilityBoundary::lower_bound` up to where the storage
-    /// engine reports its physical openable lower bound, which drops the same
-    /// prefix of the pivot hash mirror kept in that struct.
+    /// Move `StateAvailabilityBoundary::lower_bound` up to the physical
+    /// openable lower bound the storage engine reports.
     ///
-    /// The first guard keeps `lower_bound`, the index origin of the mirror,
-    /// from moving down. The second one carries the restart window: the engine
-    /// persists its bound across restarts, while this struct is rebuilt as
-    /// `[cur_era_stable_height, cur_era_stable_height]` in
-    /// `CatchUpFillBlockBodyPhase::start`, so the reported bound can sit far
-    /// above `upper_bound` until the replay has filled the mirror back up to
-    /// it. Skipping such a report costs a late trim, not a wrong one: the
-    /// engine keeps its record and the next confirmation reports the same
-    /// number again.
+    /// After a restart the storage engine's persisted bound can sit above
+    /// `upper_bound` until the replay fills the mirror back up; the second
+    /// guard skips such a report, which costs a late trim, not a wrong one.
     fn adjust_state_availability_lower_bound(
         &self, physical_openable_lower_bound: u64,
     ) {
@@ -2039,11 +2030,7 @@ impl ConsensusNewBlockHandler {
             }
         }
 
-        // The engine gets the snapshot pipeline ready and answers where the
-        // replay should start; what consensus supplies is chain facts, through
-        // the view below. The engine only ever lowers the proposed start
-        // height, so the force recompute rules can be applied before the
-        // handshake rather than after.
+        // The storage engine only ever lowers the proposed start height.
         let recovery_plan = {
             let view = ConsensusRecoveryFacts {
                 inner,
@@ -2286,15 +2273,10 @@ impl ConsensusNewBlockHandler {
     }
 }
 
-/// The chain facts the engine is given at a maintenance trigger point. It is
-/// built at the trigger point and dropped when `notify_state_confirmed`
-/// returns.
-///
-/// It holds `BlockDataManager`, the block and epoch database handle, and never
-/// the consensus graph: both trigger points hold the graph exclusively while
-/// the engine runs the maintenance round, so reaching for it here would
-/// deadlock. `pivot_hash_at_height` is therefore answered off the persisted
-/// epoch set table alone.
+/// The chain facts handed to the storage engine at a maintenance trigger
+/// point. It must not reach for the consensus graph: both trigger points
+/// hold the graph exclusively, so `pivot_hash_at_height` is answered off the
+/// persisted epoch set table alone.
 struct StateConfirmedFacts<'a> {
     data_man: &'a BlockDataManager,
     confirmed_height: u64,
@@ -2333,12 +2315,9 @@ impl<'a> StateConfirmedView for StateConfirmedFacts<'a> {
     }
 }
 
-/// The chain facts the engine is allowed to ask for while it plans a restart
-/// recovery. It is built inside `construct_pivot_state` and dropped when
-/// `plan_recovery` returns, so the engine never holds the consensus graph.
-///
-/// Heights are the only coordinate crossing this boundary;
-/// `pivot_index_to_height` and `height_to_pivot_index` translate here.
+/// The chain facts the storage engine reads while it plans a restart
+/// recovery. Unlike `StateConfirmedFacts`, this one may reach the consensus
+/// graph.
 struct ConsensusRecoveryFacts<'a> {
     inner: &'a ConsensusGraphInner,
     era_epoch_count: u64,
@@ -2354,10 +2333,7 @@ impl<'a> ConsensusRecoveryView for ConsensusRecoveryFacts<'a> {
 
     fn era_epoch_count(&self) -> u64 { self.era_epoch_count }
 
-    /// Answered by the consensus graph, with its own fallback to the executed
-    /// epoch set table for heights below the current era genesis. The engine
-    /// asks about era boundaries, which can sit below that genesis, and about
-    /// heights up to the replay window end, which is close to the pivot tip.
+    /// Falls back to the epoch set table for heights below the era genesis.
     fn pivot_hash_at_height(&self, height: u64) -> Option<EpochId> {
         self.inner.get_pivot_hash_from_epoch_number(height).ok()
     }

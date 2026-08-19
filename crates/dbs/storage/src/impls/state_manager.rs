@@ -38,9 +38,8 @@ pub struct StateManager {
     storage_manager: Arc<StorageManager>,
     single_mpt_storage_manager: Option<Arc<SingleMptStorageManager>>,
     pub number_committed_nodes: AtomicUsize,
-    /// A clone of the handle owned by `storage_manager`. `commit` writes into
-    /// it and the open path resolves coordinates out of it, see
-    /// `resolve_coordinates`.
+    /// A clone of the handle owned by `storage_manager`; `commit` writes
+    /// into it and the open path resolves coordinates out of it.
     #[ignore_malloc_size_of = "rocksdb handle owned by StorageManager"]
     state_index_db: Arc<StateIndexDb>,
 }
@@ -80,59 +79,29 @@ impl StateManager {
         })
     }
 
-    /// The engine's own state index.
     pub(crate) fn state_index_db(&self) -> &StateIndexDb {
         &self.state_index_db
     }
 
-    /// Has the private index still to be rebuilt from what is on disk? The
-    /// answer is the migration mark, which means "the index has been rebuilt
-    /// once already". It is absent on the first boot of a binary carrying the
-    /// index, and on any boot following a crash in the middle of the rebuild.
-    ///
-    /// Kept separate from `migrate_state_index` so that "this happens only on
-    /// the first boot after the upgrade" is visible at the call site rather
-    /// than buried in the engine.
+    /// Whether the private index still has to be rebuilt from disk. The
+    /// migration mark is absent on the first boot after the upgrade and on
+    /// any boot after a crash mid-rebuild.
     pub fn needs_state_index_migration(&self) -> Result<bool> {
         Ok(!self.state_index_db.migrated()?)
     }
 
-    /// Rebuild the private index from what is on disk, and seed the physical
-    /// openable lower bound from the same enumeration. Runs once, behind
+    /// Rebuild the private index from what is on disk. Runs once, behind
     /// `needs_state_index_migration`.
     ///
-    /// The layer coordinates of an entry come from the engine's own snapshot
-    /// registry; the merkle roots come from the commitment row of the epoch,
-    /// fetched through `state_root_of_epoch`. The engine never reaches the
-    /// ledger db itself, because the column and the key layout are consensus
-    /// schema and the row may not even live in a rocksdb.
+    /// An epoch whose commitment row cannot be read gets no entry — not an
+    /// empty root, because an empty root derives a legal key padding and the
+    /// open would answer with stale data instead of failing.
     ///
-    /// Entries have two sources. A height inside a period takes its snapshot
-    /// layer and its intermediate layer from the two snapshots below that
-    /// period, and is written only while at least one of the two is still on
-    /// disk, since those are the two the open path can read through. A
-    /// snapshot's own epoch takes the snapshot itself as that layer, and
-    /// only where the first source produced nothing for it: at the bottom of
-    /// what is on disk, where both layers below have gone, and on a disk which
-    /// arrived by snapshot sync, where they were never downloaded. The merged
-    /// image is the whole state of that epoch either way.
-    ///
-    /// An epoch whose row cannot be read gets no entry at all: not an empty
-    /// root and not a default padding. An empty root is a legal value that
-    /// derives a legal looking key padding, so an entry carrying it would read
-    /// stale data rather than fail. The height is logged and skipped, and the
-    /// epoch is re-executed like any other epoch without an entry.
-    ///
-    /// A height is openable only if this rebuild wrote it an entry and the
-    /// layers that entry names are on disk, and neither implies the other. The
-    /// published bound is therefore the higher of the two lower ends: the one
-    /// the snapshots give, and the lowest height an entry was written for.
-    /// Entries below the published bound are written all the same; they simply
-    /// have no reader.
+    /// The published lower bound is the higher of two lower ends: the one the
+    /// snapshots give, and the lowest height an entry was written for.
     ///
     /// Known gap: the current delta segment above the newest snapshot is not
-    /// covered. It cannot be enumerated, and the replay this startup runs
-    /// re-registers those epochs anyway.
+    /// covered; the replay this startup runs re-registers those epochs.
     pub fn migrate_state_index(
         &self, state_root_of_epoch: &dyn Fn(&EpochId) -> Option<StateRoot>,
     ) -> Result<()> {
@@ -205,21 +174,13 @@ impl StateManager {
                         continue;
                     }
                 };
-            // The registry's own merkle root for the snapshot layer, which the
-            // entries below are checked against. A layer the registry no
-            // longer holds has no data either, so those entries are opened
-            // through the intermediate layer and never name that file; the
-            // check is then one which cannot be made, not a reason to leave
-            // the heights uncovered.
+            // A missing registry entry means the layer is gone; heights in
+            // that period are still covered (opened via intermediate layer).
             let maybe_registered_snapshot_merkle_root = all_snapshots
                 .get(&snapshot_epoch_id)
                 .map(|info| info.merkle_root);
-            // Naming the two layers is not having them. The open path reads
-            // the snapshot layer, and falls back to the snapshot at the
-            // intermediate epoch when the first one is not on disk, so a
-            // period with neither cannot be opened through any entry written
-            // here. Its own snapshot is on disk all the same and gets an entry
-            // below, from itself.
+            // A period with neither layer on disk can't be opened; its own
+            // snapshot still gets an entry from the second pass below.
             let layer_data_on_disk = |epoch: &EpochId| {
                 all_snapshots.get(epoch).map_or(false, |info| {
                     info.snapshot_info_kept_to_provide_sync
@@ -354,18 +315,9 @@ impl StateManager {
             }
         }
 
-        // A period the loop could not name leaves its own snapshot's epoch
-        // without an entry, and on a disk which arrived by snapshot sync that
-        // epoch is the one execution restarts from. Such a disk holds the
-        // merged image and nothing below it, so the two snapshots the loop
-        // walks down to were never there to be walked to.
-        //
-        // A snapshot holds the whole state of its own epoch, so
-        // that epoch is its own snapshot layer here, and the entry is the one
-        // `register_synced_snapshot_state` writes for a landing the new code
-        // syncs itself. It goes out only where the loop wrote nothing: where
-        // the loop did write, the layers below are on disk and the layered
-        // entry is what `commit` would have left, which this shape is not.
+        // The second pass covers snapshot-sync arrivals, whose layers below
+        // were never downloaded. It only fills in where the first pass wrote
+        // nothing.
         for period_snapshot in executable_snapshots.iter() {
             let epoch_id = *period_snapshot.get_snapshot_epoch_id();
             if period_snapshot.height == 0
@@ -419,12 +371,8 @@ impl StateManager {
             Some(height) => snapshot_lower_bound.max(height),
             None => snapshot_lower_bound,
         };
-        // The mark is what keeps the rebuild from running a second time, and
-        // it is also the only boot on which the rebuild can still happen. A
-        // run which wrote no entry at all, on a disk whose registry holds a
-        // snapshot to write one for, has not rebuilt anything; marking it done
-        // would spend that one boot and leave the node with an index it can
-        // never fill. It stays unmarked and this startup fails instead.
+        // Marking an empty rebuild as done would spend the one-shot boot and
+        // leave the node with an unfillable index.
         if written == 0
             && executable_snapshots.iter().any(|info| info.height > 0)
         {
@@ -479,15 +427,11 @@ impl StateManager {
     }
 
     /// The physical coordinates of one epoch, read out of the engine's own
-    /// index. Only the epoch id comes from the caller; every other field of
-    /// the returned `StateIndex` is the entry's.
+    /// index.
     ///
-    /// `Ok(None)` when the epoch has no entry, which every caller treats as
-    /// "this version is not available". Epochs without an entry exist by
-    /// design: the first boot migration leaves the current delta segment above
-    /// the newest snapshot uncovered, and a crash between a db commit and its
-    /// index write leaves the same kind of hole. Both heal by re-executing
-    /// that segment.
+    /// `Ok(None)` when the epoch has no entry: the migration leaves the delta
+    /// segment above the newest snapshot uncovered, and a crash between commit
+    /// and index write leaves the same kind of hole. Both heal by re-execution.
     fn resolve_coordinates(
         &self, epoch_id: &EpochId,
     ) -> Result<Option<StateIndex>> {
@@ -513,16 +457,9 @@ impl StateManager {
         }))
     }
 
-    /// Snapshot H is normally produced here, by merging snapshot H-1, the
-    /// previous one a period below, with the intermediate MPT of the epochs
-    /// between them. An entry saying otherwise says snapshot H arrived whole
-    /// instead, so epoch H has no layers of its own: one image holds the
-    /// state, there is no intermediate layer, and the delta layer is empty.
-    /// The values read back the same; the three layers do not, so the layered
-    /// open refuses the epoch.
-    ///
-    /// An epoch with no entry answers false, and the open itself reports the
-    /// version as unavailable.
+    /// An epoch whose snapshot arrived whole by snapshot sync has no layered
+    /// decomposition: one image holds the state. The values read the same,
+    /// but the per-layer answers do not, so the layered open refuses it.
     fn is_unlayered(&self, epoch_id: &EpochId) -> Result<bool> {
         Ok(match self.state_index_db.get(epoch_id)? {
             Some(entry) => entry.snapshot_epoch_id == *epoch_id,
@@ -1088,25 +1025,18 @@ impl StateManager {
         )
     }
 
-    /// Open one version of the layered state: `open_state` without the single
-    /// MPT half. The proof paths and the engine specific queries need the
-    /// concrete `State`, which a `SingleMptState` cannot stand in for.
-    ///
+    /// `open_state` without the single MPT half: the proof paths and the
+    /// per-layer merkle queries need the concrete `State`.
     /// `open_mpt_snapshot` opens the snapshot's MPT table alongside its key
-    /// value table. Only the callers of this entry point ever ask for it,
-    /// because only proofs and per layer node merkle values read that table,
-    /// so it is a parameter here instead of a field of `OpenOptions`.
+    /// value table; only proofs read it, so it is a parameter here rather
+    /// than a field of `OpenOptions`.
     pub fn open_layered_state(
         self: &Arc<Self>, epoch_id: &EpochId, opts: OpenOptions,
         open_mpt_snapshot: bool,
     ) -> Result<Option<State>> {
-        // The read only half of this entry point refuses an unlayered epoch.
-        // The concrete state object answers per layer, and an epoch which
-        // arrived as one merged snapshot image does not decompose the way its
-        // block header commits to. Opening it as the execution base of its
-        // child is a different question and is allowed: that goes through
-        // `open_next_epoch_base`, where the child only reads values, which the
-        // merged image answers correctly.
+        // An unlayered epoch, which arrived by snapshot sync, cannot give
+        // per-layer answers. Opening it as the execution base of its child
+        // stays allowed, because the child only reads values.
         if self.is_unlayered(epoch_id)? {
             return Ok(None);
         }
@@ -1118,9 +1048,6 @@ impl StateManager {
         )
     }
 
-    /// The body of the layered open. The mode is an argument instead of a
-    /// field of `OpenOptions` because only the engine ever asks for the
-    /// `NextEpochBase` one, on its way to a writable state.
     fn open_layered_state_in_mode(
         self: &Arc<Self>, epoch_id: &EpochId, mode: OpenMode,
         opts: OpenOptions, open_mpt_snapshot: bool,
@@ -1180,14 +1107,9 @@ impl StateManager {
         )
     }
 
-    /// `view` is read only and is not kept past this call. It carries the
-    /// confirmed height, the retention parameters the engine's own rules are
-    /// stated in, and the lookup from a height to its pivot chain epoch, which
-    /// is the one thing the engine cannot answer for itself.
-    ///
-    /// On a failed round the bound is still reported, straight off the record,
-    /// because a failed round leaves the record describing the disk just as a
-    /// successful one does.
+    /// On a failed round the reported bound still comes straight off the
+    /// engine's record, which a failed round leaves describing the disk
+    /// just as a successful one does.
     pub fn notify_state_confirmed(&self, view: &dyn StateConfirmedView) -> u64 {
         match self.storage_manager.maintain_state_confirmed(view) {
             Ok(physical_openable_lower_bound) => physical_openable_lower_bound,
@@ -1203,9 +1125,6 @@ impl StateManager {
         }
     }
 
-    /// `view` is read only and is not kept past this call. No transaction is
-    /// executed here; the replay itself is a run of ordinary commits driven by
-    /// consensus.
     pub fn plan_recovery(
         &self, view: &dyn ConsensusRecoveryView,
     ) -> RecoveryPlan {
@@ -1223,26 +1142,19 @@ impl StateManager {
     }
 }
 
-/// The physical openable lower bound implied by a set of snapshots: the lowest
-/// height whose state can still be opened.
+/// The lowest height whose state can still be opened, given the snapshots on
+/// disk. The run is walked down from the newest snapshot and stops at the
+/// first gap, a pair of neighbours more than one period apart.
 ///
-/// `executable_snapshots_by_height` must be sorted by ascending height and
-/// must already have the archive snapshots kept only to serve sync removed.
-/// Those sit far below the retention window with nothing between them and it,
-/// so counting them would put the bound below a stretch of heights that cannot
-/// be opened at all.
+/// The input must be sorted ascending and must not include archive-only
+/// snapshots kept for sync — those sit below the retention window with nothing
+/// between them.
 ///
-/// The run is walked down from the newest snapshot and stops at the first gap,
-/// a pair of neighbours more than one period apart. The bound is the height of
-/// the lowest snapshot in that run.
-///
-/// That height is included rather than skipped, because the snapshot holds
-/// the whole state of its own epoch and the rebuild writes that epoch an
-/// entry saying so. Garbage collection publishes the height above the
-/// snapshot it keeps instead, and is right to: the entry `commit` left for
-/// that epoch names layers two periods further down, which collection has
-/// removed. Both are lower bounds, so the one that includes a height an open
-/// may still refuse costs a refusal at the open and nothing else.
+/// The result includes the lowest snapshot's own height, while garbage
+/// collection publishes the height above the snapshot it keeps. Both are
+/// valid lower bounds and the difference is deliberate: the entry `commit`
+/// left for that epoch names layers collection has removed, so including the
+/// height costs at most a refusal at the open. Do not unify the two.
 fn physical_openable_lower_bound_of(
     executable_snapshots_by_height: &[SnapshotInfo], snapshot_epoch_count: u32,
 ) -> u64 {
@@ -1265,49 +1177,32 @@ fn physical_openable_lower_bound_of(
     lowest_continuous_snapshot_height
 }
 
-/// What the read only open picked for one epoch. The two variants are the two
-/// live state shapes: the layered state tree, and the single MPT replica used
-/// when the layered tree cannot answer for the epoch and the node keeps a
-/// single MPT covering the requested space.
+/// What the read only open picked for one epoch: the layered state tree, or
+/// the single MPT replica when the layered tree cannot answer.
 enum ReadOnlyState {
     Layered(State),
     SingleMpt(SingleMptState),
 }
 
 impl StateManager {
-    /// Open one version of the state, keyed by its epoch hash alone. The
-    /// coordinates of that version come from the engine's own index; nothing
-    /// about the layout of the state comes from the caller.
-    ///
-    /// Read only. Opening a version as the execution base of its child epoch
-    /// produces a writable state and stays inside the engine, behind `commit`.
-    ///
-    /// `Ok(None)` means the version is not on this node's disk, which the
-    /// caller tells apart from an engine failure by the `Result` around it.
-    /// The internal open paths answer with the same `Option`, so nothing is
-    /// translated at the public surface.
     pub fn open_state(
         self: &Arc<Self>, version: StorageVersion, opts: OpenOptions,
     ) -> Result<Option<Box<dyn StorageView>>> {
-        let epoch_hash = match version {
-            // The empty base is built rather than looked up: nothing has been
-            // committed for it to be found under. Every key is answered out of
-            // the null snapshot and an empty delta trie.
+        match version {
+            // The empty base is built rather than looked up: nothing has
+            // been committed for it to be found under.
             StorageVersion::Empty => {
-                return Ok(Some(Box::new(
-                    self.get_state_for_genesis_write_inner(),
-                )))
+                Ok(Some(Box::new(self.get_state_for_genesis_write_inner())))
             }
-            StorageVersion::Epoch(epoch_hash) => epoch_hash,
-        };
-        self.open_read_only(&epoch_hash, opts)
+            StorageVersion::Epoch(epoch_hash) => {
+                self.open_read_only(&epoch_hash, opts)
+            }
+        }
     }
 
-    /// Asked when the sync path skips epochs it cannot execute and when the
-    /// restart path locates the recompute start.
-    ///
-    /// Answered by the read only open, not by the base open: the two are not
-    /// known to agree on availability in the snapshot sync special case.
+    /// The answer comes from the read-only open, not the base open: the
+    /// two are not known to agree on availability in the snapshot-sync
+    /// special case.
     pub fn usable_as_base(&self, base: &EpochId) -> bool {
         match self.get_state_trees(
             base, /* try_open = */ false,
@@ -1325,10 +1220,8 @@ impl StateManager {
         }
     }
 
-    /// Open one version of the state for an operational export. The export
-    /// needs the callback traversal, which `StorageView` does not offer, so it
-    /// gets a concrete export object rather than going through
-    /// `open_state`.
+    /// Open one version of the state for an operational export, which needs
+    /// the callback traversal that `StorageView` does not offer.
     pub fn open_state_for_export(
         self: &Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
     ) -> Result<Option<StateExport>> {
@@ -1359,8 +1252,6 @@ impl StateManager {
         ))
     }
 
-    /// The body of the read only open, answering with the concrete state it
-    /// picked instead of a boxed trait object.
     fn open_read_only_state(
         self: &Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
     ) -> Result<Option<ReadOnlyState>> {
@@ -1400,8 +1291,7 @@ impl StateManager {
         }
     }
 
-    /// Open a version as the execution base of its child epoch. Engine
-    /// internal: the result is writable, so it never leaves the crate.
+    /// Engine internal: the result is writable, so it never leaves the crate.
     pub(crate) fn open_next_epoch_base(
         self: &Arc<Self>, parent_epoch_hash: &EpochId, opts: OpenOptions,
     ) -> Result<Option<WritableState>> {
@@ -1459,10 +1349,7 @@ impl StateManager {
     }
 
     /// Opening the three layers of the next epoch happens here, inside the
-    /// engine.
-    ///
-    /// `meta.height` is not read. The height the engine acts on comes off the
-    /// state object, where the open path put it, and holds the same value.
+    /// engine. `meta.height` is not read.
     pub fn commit_changeset(
         self: &Arc<Self>, parent: StorageVersion, changeset: Changeset,
         meta: CommitMeta,
@@ -1481,14 +1368,9 @@ impl StateManager {
         state.commit_changeset(changeset, meta)
     }
 
-    /// Compute the state root the genesis changeset would produce on the empty
-    /// base, without persisting any of it. The reason only genesis needs this
-    /// is on `StorageEngine::preview_genesis_root`.
-    ///
-    /// The `commit_changeset` that follows applies the same changeset a second
-    /// time, on a state object opened afresh. The preview runs on the plain
-    /// delta MPT state, never on the replicated wrapper, so the single MPT
-    /// replica sees each write exactly once, in the commit.
+    /// The preview runs on the plain delta MPT state, not the replicated
+    /// wrapper, so the single MPT replica sees each write exactly once in
+    /// the commit that follows.
     pub fn preview_genesis_root(
         self: &Arc<Self>, changeset: &Changeset,
     ) -> Result<StateRoot> {
@@ -1496,10 +1378,6 @@ impl StateManager {
             .preview_root(changeset)
     }
 
-    /// The empty base, i.e. the version the genesis epoch is committed on top
-    /// of. It is spelled as the null epoch, which the genesis state object
-    /// already carries as its parent epoch id and which no real epoch can
-    /// collide with.
     pub(crate) fn get_state_for_genesis_write(
         self: &Arc<Self>,
     ) -> WritableState {

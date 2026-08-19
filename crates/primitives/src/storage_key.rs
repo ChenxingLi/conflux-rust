@@ -211,20 +211,14 @@ impl<'a> StorageKeyWithSpace<'a> {
         }
     }
 
-    /// Read a key written by this node, whose space flag byte cannot be
-    /// wrong; a wrong one crashes.
     pub fn from_key_bytes_unchecked(bytes: &'a [u8]) -> Self {
         Self::from_key_bytes::<false>(bytes).unwrap()
     }
 
-    /// Read a key that arrived from elsewhere, answering with an error
-    /// instead of crashing when its space flag byte is wrong.
     pub fn from_key_bytes_checked(bytes: &'a [u8]) -> Result<Self, String> {
         Self::from_key_bytes::<true>(bytes)
     }
 
-    /// The flag decides both the checking and the return type, see
-    /// `FromKeyBytesResult`. The two wrappers above name the two values.
     fn from_key_bytes<const CHECK_INPUT: bool>(
         bytes: &'a [u8],
     ) -> Result<Self, String> {
