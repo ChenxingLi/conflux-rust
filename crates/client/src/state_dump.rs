@@ -141,7 +141,7 @@ fn prepare_state_export(
     let export = state_manager
         .open_state_for_export(
             &epoch_hash,
-            OpenOptions::read_only()
+            OpenOptions::new()
                 .with_try_open(true)
                 .with_space(Some(Space::Ethereum)),
         )

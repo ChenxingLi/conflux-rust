@@ -2,6 +2,8 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
+#![allow(dead_code)]
+
 // `TrieProofMerger` and `StateProofMerger` allow us to combine multiple proofs
 // into a single proof. Any key that can be verified by any of the original
 // proofs can also be verified by the combined proof. While a single proof is

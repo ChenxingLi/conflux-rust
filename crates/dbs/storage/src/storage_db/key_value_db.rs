@@ -103,6 +103,7 @@ pub trait KeyValueDbTraitSingleWriter: KeyValueDbTraitOwnedRead {
     }
 }
 
+#[allow(dead_code)]
 pub trait KeyValueDbTraitSingleWriterMultiReader:
     KeyValueDbTraitMultiReader + KeyValueDbTraitSingleWriter
 {

@@ -22,9 +22,9 @@
 //!
 //! Basic storing and retrieval.
 //!
-//! ```
-//! use cfx_storage::Slab;
-//! let mut slab: Slab<&str> = Slab::with_capacity(10);
+//! ```ignore
+//! use crate::impls::delta_mpt::slab::Slab;
+//! let slab: Slab<&str> = Slab::with_capacity(10);
 //!
 //! let hello = slab.insert("hello").unwrap();
 //! let world = slab.insert("world").unwrap();
@@ -40,9 +40,9 @@
 //! Sometimes it is useful to be able to associate the key with the value being
 //! inserted in the slab. This can be done with the `vacant_entry` API as such:
 //!
-//! ```
-//! use cfx_storage::Slab;
-//! let mut slab: Slab<(usize, &str)> = Slab::with_capacity(10);
+//! ```ignore
+//! use crate::impls::delta_mpt::slab::Slab;
+//! let slab: Slab<(usize, &str)> = Slab::with_capacity(10);
 //!
 //! let hello = {
 //!     let entry = slab.vacant_entry().unwrap();
@@ -61,9 +61,9 @@
 //! attempting to insert a new value once the existing capacity has been
 //! reached. To avoid this, add a check.
 //!
-//! ```
-//! use cfx_storage::Slab;
-//! let mut slab: Slab<&str> = Slab::with_capacity(1024);
+//! ```ignore
+//! use crate::impls::delta_mpt::slab::Slab;
+//! let slab: Slab<&str> = Slab::with_capacity(1024);
 //!
 //! // ... use the slab
 //!
@@ -321,9 +321,9 @@ impl<'x, T: Clone> WrappedCreateFrom<&'x T, Entry<UnsafeCell<T>>>
 /// assigned to.
 ///
 /// # Examples
-/// ```
-/// # use cfx_storage::Slab;
-/// let mut slab: Slab<(usize, &str)> = Slab::with_capacity(10);
+/// ```ignore
+/// # use crate::impls::delta_mpt::slab::Slab;
+/// let slab: Slab<(usize, &str)> = Slab::with_capacity(10);
 ///
 /// let hello = {
 ///     let entry = slab.vacant_entry().unwrap();
@@ -423,9 +423,8 @@ impl<T, E: EntryTrait<EntryType = T>> Slab<T, E> {
     ///
     /// # Examples
     ///
-    /// # use cfx_storage::Slab;
-    /// ```
-    /// use cfx_storage::Slab;
+    /// ```ignore
+    /// use crate::impls::delta_mpt::slab::Slab;
     /// let slab: Slab<i32> = Slab::with_capacity(10);
     /// assert_eq!(slab.capacity(), 10);
     /// ```
@@ -618,8 +617,8 @@ impl<T, E: EntryTrait<EntryType = T>> Slab<T, E> {
     ///
     /// # Examples
     ///
-    /// ```
-    /// # use cfx_storage::Slab;
+    /// ```ignore
+    /// # use crate::impls::delta_mpt::slab::Slab;
     /// let mut slab: Slab<usize> = Slab::with_capacity(10);
     ///
     /// let key1 = slab.insert(0).unwrap();
@@ -674,8 +673,8 @@ impl<T, E: EntryTrait<EntryType = T>> Slab<T, E> {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use cfx_storage::Slab;
+    /// ```ignore
+    /// use crate::impls::delta_mpt::slab::Slab;
     /// let mut slab: Slab<&str> = Slab::with_capacity(10);
     /// let key = slab.insert("hello").unwrap();
     ///
@@ -721,8 +720,8 @@ impl<T, E: EntryTrait<EntryType = T>> Slab<T, E> {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use cfx_storage::Slab;
+    /// ```ignore
+    /// use crate::impls::delta_mpt::slab::Slab;
     /// let mut slab: Slab<u32> = Slab::with_capacity(10);
     /// let key = slab.insert(2).unwrap();
     ///
@@ -752,9 +751,9 @@ impl<T, E: EntryTrait<EntryType = T>> Slab<T, E> {
     /// Panics if the number of elements in the vector overflows a `usize`.
     ///
     /// # Examples
-    /// ```
-    /// use cfx_storage::Slab;
-    /// let mut slab: Slab<&str> = Slab::with_capacity(10);
+    /// ```ignore
+    /// use crate::impls::delta_mpt::slab::Slab;
+    /// let slab: Slab<&str> = Slab::with_capacity(10);
     /// let key = slab.insert("hello").unwrap();
     /// assert_eq!(slab[key], "hello");
     /// ```
@@ -804,9 +803,9 @@ impl<T, E: EntryTrait<EntryType = T>> Slab<T, E> {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use cfx_storage::Slab;
-    /// let mut slab: Slab<(usize, &str)> = Slab::with_capacity(10);
+    /// ```ignore
+    /// use crate::impls::delta_mpt::slab::Slab;
+    /// let slab: Slab<(usize, &str)> = Slab::with_capacity(10);
     ///
     /// let hello = {
     ///     let entry = slab.vacant_entry().unwrap();
@@ -961,9 +960,9 @@ impl<'a, T, E: EntryTrait<EntryType = T>> VacantEntry<'a, T, E> {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use cfx_storage::Slab;
-    /// let mut slab: Slab<(usize, &str)> = Slab::with_capacity(10);
+    /// ```ignore
+    /// use crate::impls::delta_mpt::slab::Slab;
+    /// let slab: Slab<(usize, &str)> = Slab::with_capacity(10);
     ///
     /// let hello = {
     ///     let entry = slab.vacant_entry().unwrap();
@@ -988,9 +987,9 @@ impl<'a, T, E: EntryTrait<EntryType = T>> VacantEntry<'a, T, E> {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use cfx_storage::Slab;
-    /// let mut slab: Slab<(usize, &str)> = Slab::with_capacity(10);
+    /// ```ignore
+    /// use crate::impls::delta_mpt::slab::Slab;
+    /// let slab: Slab<(usize, &str)> = Slab::with_capacity(10);
     ///
     /// let hello = {
     ///     let entry = slab.vacant_entry().unwrap();
@@ -1048,5 +1047,90 @@ mod tests {
     fn remove_from_empty_slab_is_rejected() {
         let empty: Slab<u32> = Slab::default();
         assert!(matches!(empty.remove(0), Err(Error::SlabKeyError)));
+    }
+
+    // The tests below carry the assertions of the documentation examples
+    // above. `Slab` is not exported, and a doctest compiles as an external
+    // crate, so those examples cannot run as doctests.
+
+    #[test]
+    fn insert_returns_the_key_of_the_stored_value() {
+        let slab: Slab<&str> = Slab::with_capacity(10);
+
+        let hello = slab.insert("hello").unwrap();
+        let world = slab.insert("world").unwrap();
+
+        assert_eq!(slab[hello], "hello");
+        assert_eq!(slab[world], "world");
+    }
+
+    #[test]
+    fn vacant_entry_exposes_the_key_before_the_value_exists() {
+        let slab: Slab<(usize, &str)> = Slab::with_capacity(10);
+
+        let hello = {
+            let entry = slab.vacant_entry().unwrap();
+            let key = entry.key();
+            entry.insert((key, "hello"));
+            key
+        };
+
+        assert_eq!(hello, slab[hello].0);
+        assert_eq!("hello", slab[hello].1);
+    }
+
+    #[test]
+    fn insert_below_capacity_succeeds() {
+        let slab: Slab<&str> = Slab::with_capacity(1024);
+
+        assert!(slab.len() < slab.capacity());
+        assert!(slab.insert("the slab is not at capacity yet").is_ok());
+    }
+
+    #[test]
+    fn capacity_reports_the_reserved_slot_count() {
+        let slab: Slab<i32> = Slab::with_capacity(10);
+        assert_eq!(slab.capacity(), 10);
+    }
+
+    #[test]
+    fn iter_mut_yields_each_key_with_a_mutable_value() {
+        let mut slab: Slab<usize> = Slab::with_capacity(10);
+
+        let key1 = slab.insert(0).unwrap();
+        let key2 = slab.insert(1).unwrap();
+
+        for (key, val) in slab.iter_mut() {
+            if key == key1 {
+                *val += 2;
+            }
+        }
+
+        assert_eq!(slab[key1], 2);
+        assert_eq!(slab[key2], 1);
+    }
+
+    #[test]
+    fn get_mut_overwrites_a_stored_value_and_rejects_an_unused_key() {
+        let mut slab: Slab<&str> = Slab::with_capacity(10);
+        let key = slab.insert("hello").unwrap();
+
+        *slab.get_mut(key).unwrap() = "world";
+
+        assert_eq!(slab[key], "world");
+        assert_eq!(slab.get_mut(123), None);
+    }
+
+    #[test]
+    fn get_unchecked_mut_overwrites_a_stored_value() {
+        let mut slab: Slab<u32> = Slab::with_capacity(10);
+        let key = slab.insert(2).unwrap();
+
+        unsafe {
+            let val = slab.get_unchecked_mut(key);
+            *val = 13;
+        }
+
+        assert_eq!(slab[key], 13);
     }
 }

@@ -748,7 +748,7 @@ impl ConsensusExecutor {
                     .clone()
                     .open_state(
                         StorageVersion::Epoch(*block_hash),
-                        OpenOptions::read_only(),
+                        OpenOptions::new(),
                     )
                     .map_err(|_| "Internal storage error".to_owned())?;
                 if maybe_cached_state.is_some() {
@@ -1722,7 +1722,7 @@ impl ConsensusExecutionHandler {
                 .clone()
                 .open_state(
                     StorageVersion::Epoch(*epoch_id),
-                    OpenOptions::read_only()
+                    OpenOptions::new()
                         .with_try_open(true)
                         .with_space(state_space),
                 )?

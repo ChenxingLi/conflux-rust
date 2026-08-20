@@ -1181,9 +1181,13 @@ impl TransactionPool {
             .clone()
             .open_state(
                 StorageVersion::Epoch(best_executed_epoch),
-                OpenOptions::read_only(),
+                OpenOptions::new(),
             )?
-            // Safe because the state is guaranteed to be available
+            // Safe because the state is guaranteed to be available. The only
+            // callers are the genesis setup and
+            // `ConsensusExecutor::notify_txpool`, which gates the call on
+            // `StateAvailabilityBoundary::check_availability`, so a missing
+            // version here means the boundary and the disk disagree.
             .unwrap();
         let state_db = StateDb::new_readonly(storage);
         let state = State::new(state_db)?;

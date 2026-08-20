@@ -17,10 +17,7 @@ use cfx_parameters::{
     consensus::DEFERRED_STATE_EPOCH_COUNT,
     consensus_internal::REWARD_EPOCH_COUNT,
 };
-use cfx_storage::{
-    storage_db::{SnapshotInfo, SnapshotKeptToProvideSyncStatus},
-    TrieProof,
-};
+use cfx_storage::{SnapshotInfo, SnapshotKeptToProvideSyncStatus, TrieProof};
 use cfx_types::{option_vec_to_hex, H256};
 use network::node_table::NodeId;
 use primitives::{

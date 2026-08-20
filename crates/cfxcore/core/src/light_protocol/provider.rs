@@ -45,9 +45,8 @@ use cfx_parameters::light::{
     MAX_TXS_TO_SEND, MAX_WITNESSES_TO_SEND,
 };
 use cfx_storage::{
-    state::{State, StateDbGetOriginalMethods},
-    OpenOptions, StateProof, StorageManager,
-    StorageRootProof as EngineStorageRootProof,
+    OpenOptions, StateDbGetOriginalMethods, StateProof, StorageManager,
+    StorageRootProof as EngineStorageRootProof, StorageState as State,
 };
 use cfx_types::{Address, AddressSpaceUtil, H256};
 use diem_types::validator_config::{ConsensusPublicKey, ConsensusVRFPublicKey};
@@ -135,17 +134,13 @@ impl Provider {
     }
 
     /// Get the state trie corresponding to the execution of `epoch`.
-    ///
-    /// The three methods below live here rather than on the shared helper
-    /// `LedgerInfo` because serving state proofs is this object's job, and the
-    /// engine handle belongs with the role that needs it.
     #[inline]
     fn state_of(&self, epoch: u64) -> Result<State> {
         let pivot = self.ledger.pivot_hash_of(epoch)?;
 
         let state = self.storage.open_layered_state(
             &pivot,
-            OpenOptions::read_only().with_try_open(true),
+            OpenOptions::new().with_try_open(true),
             /* open_mpt_snapshot = */ true,
         );
 

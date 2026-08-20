@@ -250,6 +250,7 @@ impl<'trie, 'db: 'trie> SubTrieVisitor<'trie, 'db> {
     /// The visitor can only be used once to modify.
     /// Returns (deleted value, is root node replaced, the current root node for
     /// the subtree).
+    #[allow(dead_code)]
     pub fn delete(
         mut self, key: KeyPart,
     ) -> Result<(Option<Box<[u8]>>, bool, Option<NodeRefDeltaMptCompact>)> {
@@ -415,6 +416,7 @@ impl<'trie, 'db: 'trie> SubTrieVisitor<'trie, 'db> {
     /// The visitor can only be used once to modify.
     /// Returns (deleted value, is root node replaced, the current root node for
     /// the subtree).
+    #[allow(dead_code)]
     pub fn delete_all(
         mut self, key: KeyPart, key_remaining: KeyPart,
     ) -> Result<(

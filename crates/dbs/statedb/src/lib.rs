@@ -102,10 +102,7 @@ mod impls {
         ) -> Result<Self> {
             let view = manager
                 .clone()
-                .open_state(
-                    StorageVersion::Epoch(parent),
-                    OpenOptions::read_only(),
-                )?
+                .open_state(StorageVersion::Epoch(parent), OpenOptions::new())?
                 .ok_or_else(|| {
                     Error::Msg(format!(
                         "the parent version {:?} is not available",
@@ -134,7 +131,7 @@ mod impls {
         ) -> Result<Self> {
             let view = manager
                 .clone()
-                .open_state(StorageVersion::Empty, OpenOptions::read_only())?
+                .open_state(StorageVersion::Empty, OpenOptions::new())?
                 .ok_or_else(|| {
                     Error::Msg("the empty base is always open".into())
                 })?;

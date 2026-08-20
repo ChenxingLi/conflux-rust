@@ -1104,14 +1104,28 @@ impl StateManager {
         // The concrete state object answers per layer, and an epoch which
         // arrived as one merged snapshot image does not decompose the way its
         // block header commits to. Opening it as the execution base of its
-        // child epoch is a different question and is not refused: the child
-        // reads values, which the merged image answers correctly.
-        if matches!(opts.mode, OpenMode::ReadOnly)
-            && self.is_unlayered(epoch_id)?
-        {
+        // child is a different question and is allowed: that goes through
+        // `open_next_epoch_base`, where the child only reads values, which the
+        // merged image answers correctly.
+        if self.is_unlayered(epoch_id)? {
             return Ok(None);
         }
-        let maybe_state_trees = match opts.mode {
+        self.open_layered_state_in_mode(
+            epoch_id,
+            OpenMode::ReadOnly,
+            opts,
+            open_mpt_snapshot,
+        )
+    }
+
+    /// The body of the layered open. The mode is an argument instead of a
+    /// field of `OpenOptions` because only the engine ever asks for the
+    /// `NextEpochBase` one, on its way to a writable state.
+    fn open_layered_state_in_mode(
+        self: &Arc<Self>, epoch_id: &EpochId, mode: OpenMode,
+        opts: OpenOptions, open_mpt_snapshot: bool,
+    ) -> Result<Option<State>> {
+        let maybe_state_trees = match mode {
             OpenMode::ReadOnly => self.get_state_trees(
                 epoch_id,
                 opts.try_open,
@@ -1265,12 +1279,13 @@ impl StateManager {
     /// coordinates of that version come from the engine's own index; nothing
     /// about the layout of the state comes from the caller.
     ///
-    /// `opts.mode` picks between reading that epoch and using it as the
-    /// execution base of its child epoch.
+    /// Read only. Opening a version as the execution base of its child epoch
+    /// produces a writable state and stays inside the engine, behind `commit`.
     ///
-    /// `Ok(None)` means the version is not available. A matchable "version not
-    /// found" error variant arrives with the `StorageEngine` trait; until then
-    /// this method keeps the `Option` shape its callers already branch on.
+    /// `Ok(None)` means the version is not on this node's disk, which the
+    /// caller tells apart from an engine failure by the `Result` around it.
+    /// The internal open paths answer with the same `Option`, so nothing is
+    /// translated at the public surface.
     pub fn open_state(
         self: &Arc<Self>, version: StorageVersion, opts: OpenOptions,
     ) -> Result<Option<Box<dyn StorageView>>> {
@@ -1285,13 +1300,7 @@ impl StateManager {
             }
             StorageVersion::Epoch(epoch_hash) => epoch_hash,
         };
-        let maybe_state: Option<Box<dyn StorageView>> = match opts.mode {
-            OpenMode::ReadOnly => self.open_read_only(&epoch_hash, opts)?,
-            OpenMode::NextEpochBase => self
-                .open_next_epoch_base(&epoch_hash, opts)?
-                .map(|state| Box::new(state) as Box<dyn StorageView>),
-        };
-        Ok(maybe_state)
+        self.open_read_only(&epoch_hash, opts)
     }
 
     /// Asked when the sync path skips epochs it cannot execute and when the
@@ -1391,17 +1400,18 @@ impl StateManager {
         }
     }
 
-    /// The `NextEpochBase` half of `open_state`, the shape the deleted
-    /// `get_state_for_next_epoch` had. The one field it used to read off
-    /// the caller's `StateIndex` besides the epoch id is the parent height,
-    /// which decides whether the single MPT covers the parent epoch; it now
-    /// comes from the parent's index entry, which holds the engine's own copy
-    /// of the very number the caller passed, see `resolve_coordinates`.
-    pub fn open_next_epoch_base(
+    /// Open a version as the execution base of its child epoch. Engine
+    /// internal: the result is writable, so it never leaves the crate.
+    pub(crate) fn open_next_epoch_base(
         self: &Arc<Self>, parent_epoch_hash: &EpochId, opts: OpenOptions,
     ) -> Result<Option<WritableState>> {
         let mut parent_epoch = *parent_epoch_hash;
-        let state = self.open_layered_state(parent_epoch_hash, opts, false)?;
+        let state = self.open_layered_state_in_mode(
+            parent_epoch_hash,
+            OpenMode::NextEpochBase,
+            opts,
+            /* open_mpt_snapshot = */ false,
+        )?;
         if state.is_none() {
             return Ok(None);
         }
@@ -1460,7 +1470,7 @@ impl StateManager {
         let mut state = match parent {
             StorageVersion::Empty => self.get_state_for_genesis_write(),
             StorageVersion::Epoch(parent) => self
-                .open_next_epoch_base(&parent, OpenOptions::next_epoch_base())?
+                .open_next_epoch_base(&parent, OpenOptions::new())?
                 .ok_or_else(|| {
                     Error::Msg(format!(
                         "commit: the parent version {:?} is not available",
@@ -1490,7 +1500,9 @@ impl StateManager {
     /// of. It is spelled as the null epoch, which the genesis state object
     /// already carries as its parent epoch id and which no real epoch can
     /// collide with.
-    pub fn get_state_for_genesis_write(self: &Arc<Self>) -> WritableState {
+    pub(crate) fn get_state_for_genesis_write(
+        self: &Arc<Self>,
+    ) -> WritableState {
         let state = self.get_state_for_genesis_write_inner();
         if self.single_mpt_storage_manager.is_none() {
             return WritableState::plain(state);

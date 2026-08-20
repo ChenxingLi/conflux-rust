@@ -2,6 +2,8 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
+#![allow(dead_code)]
+
 // `RecordingStorage` is a wrapper around other storage implementations that
 // tracks all read accesses. It can then be turned into a `StateProof` that is
 // able to prove all key-value accesses.

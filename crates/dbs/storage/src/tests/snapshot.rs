@@ -250,7 +250,7 @@ fn test_mpt_node_path_to_from_db_key() {
     let state = state_manager
         .open_layered_state(
             &epoch_id,
-            OpenOptions::read_only(),
+            OpenOptions::new(),
             /* open_mpt_snapshot = */ true,
         )
         .unwrap()

@@ -98,5 +98,8 @@ fn test_trie_node_encode_decode() {
     assert_eq!(rlp_parsed, x);
 }
 
-use super::super::{node_memory_manager::DeltaMptsCacheAlgoData, *};
+use super::super::{
+    mem_optimized_trie_node::MemOptimizedTrieNode,
+    node_memory_manager::DeltaMptsCacheAlgoData, *,
+};
 use rlp::*;

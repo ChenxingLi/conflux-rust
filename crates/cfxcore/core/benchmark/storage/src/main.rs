@@ -2126,7 +2126,7 @@ fn main() -> errors::Result<()> {
 
 use cfx_statedb::{StateDb, StateDbExt};
 use cfx_storage::{
-    storage_db::key_value_db::{KeyValueDbTrait, KeyValueDbTraitRead},
+    KeyValueDbTrait, KeyValueDbTraitRead,
     KvdbSqlite, KvdbSqliteStatements, StorageConfiguration, StorageManager,
 };
 use cfx_types::{hexstr_to_h256, H256};

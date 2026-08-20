@@ -28,7 +28,6 @@ use std::ops::{Deref, DerefMut};
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeltaMptKeyPadding([u8; KEY_PADDING_BYTES]);
 
-pub use self::KEY_PADDING_BYTES as DELTA_MPT_KEY_PADDING_BYTES;
 lazy_static! {
     pub static ref GENESIS_DELTA_MPT_KEY_PADDING: DeltaMptKeyPadding =
         delta_mpt_padding(&MERKLE_NULL_NODE, &MERKLE_NULL_NODE);

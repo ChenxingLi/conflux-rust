@@ -4,8 +4,8 @@
 
 use crate::sync::state::storage::{Chunk, ChunkKey};
 use cfx_storage::{
-    state_manager::StateManager, storage_db::SnapshotInfo, FullSyncVerifier,
-    Result as StorageResult, SnapshotDbManagerSqlite,
+    FullSyncVerifier, Result as StorageResult, SnapshotDbManagerSqlite,
+    SnapshotInfo, StorageManager,
 };
 use primitives::{EpochId, MerkleHash, StateRoot};
 use std::sync::Arc;
@@ -60,7 +60,7 @@ impl Restorer {
 
     /// Start to restore chunks asynchronously.
     pub fn finalize_restoration(
-        &mut self, state_manager: Arc<StateManager>,
+        &mut self, state_manager: Arc<StorageManager>,
         snapshot_info: SnapshotInfo,
         parent_snapshot_info: Option<SnapshotInfo>,
         synced_state_root: StateRoot,

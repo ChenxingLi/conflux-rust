@@ -216,6 +216,7 @@ impl CowNodeRef {
     /// CowNodeRef will be inaccessible because it's obtained through
     /// Self::get_trie_node, which has shorter lifetime because it's a
     /// borrow of the CowNodeRef.
+    #[allow(dead_code)]
     pub fn delete_node(
         mut self, node_memory_manager: &DeltaMptsNodeMemoryManager,
         owned_node_set: &mut OwnedNodeSet,
@@ -239,6 +240,7 @@ impl CowNodeRef {
 
     /// The deletion is always successful. When return value is Error, the
     /// failing part is iteration.
+    #[allow(dead_code)]
     pub fn delete_subtree(
         mut self, trie: &DeltaMpt, owned_node_set: &OwnedNodeSet,
         guarded_trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
@@ -758,6 +760,7 @@ impl CowNodeRef {
         }
     }
 
+    #[allow(dead_code)]
     pub fn cow_merge_path(
         self, trie: &DeltaMpt, owned_node_set: &mut OwnedNodeSet,
         trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
@@ -808,6 +811,7 @@ impl CowNodeRef {
 
     /// When the node is unowned, it doesn't make sense to do copy-on-write
     /// creation because the new node will be deleted immediately.
+    #[allow(dead_code)]
     pub unsafe fn delete_value_unchecked_followed_by_node_deletion(
         &mut self, mut trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
     ) -> Box<[u8]> {
@@ -851,6 +855,7 @@ impl CowNodeRef {
         )
     }
 
+    #[allow(dead_code)]
     pub unsafe fn cow_delete_value_unchecked(
         &mut self, node_memory_manager: &DeltaMptsNodeMemoryManager,
         owned_node_set: &mut OwnedNodeSet,

@@ -172,7 +172,7 @@ pub fn initialize_data_manager(
             storage_manager
                 .open_layered_state(
                     &genesis_hash,
-                    OpenOptions::read_only(),
+                    OpenOptions::new(),
                     /* open_mpt_snapshot = */ false,
                 )
                 .unwrap()

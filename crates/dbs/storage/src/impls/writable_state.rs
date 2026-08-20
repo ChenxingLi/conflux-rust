@@ -15,11 +15,10 @@ use std::{
 /// The writable state of one epoch: the layered state the engine executes on,
 /// plus the single MPT replica when this node keeps one.
 ///
-/// Every writable state the engine hands out is one of these. The replica is
-/// optional, and with `replication` at `None` every method here is the plain
-/// forward to the layered state, which is what the bare `State` did when it
-/// was handed out on its own.
-pub struct WritableState {
+/// Every writable state the engine hands out is one of these. With
+/// `replication` at `None` every method here is a plain forward to the layered
+/// state.
+pub(crate) struct WritableState {
     state: State,
     replication: Option<ReplicationHandler>,
 }
@@ -294,7 +293,7 @@ impl StorageView for WritableState {
 }
 
 impl WritableState {
-    pub fn set(
+    pub(crate) fn set(
         &mut self, access_key: StorageKeyWithSpace, value: Box<[u8]>,
     ) -> Result<()> {
         self.send_op(StateOperation::Set {
@@ -304,23 +303,27 @@ impl WritableState {
         self.state.set(access_key, value)
     }
 
-    pub fn delete(&mut self, access_key: StorageKeyWithSpace) -> Result<()> {
+    pub(crate) fn delete(
+        &mut self, access_key: StorageKeyWithSpace,
+    ) -> Result<()> {
         self.send_op(StateOperation::Delete {
             access_key: access_key.into(),
         });
         self.state.delete(access_key)
     }
 
-    pub fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
+    pub(crate) fn compute_state_root(
+        &mut self,
+    ) -> Result<StateRootWithAuxInfo> {
         self.send_op(StateOperation::ComputeStateRoot);
         self.state.compute_state_root()
     }
 
-    pub fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
+    pub(crate) fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
         self.state.get_state_root()
     }
 
-    pub fn commit(
+    pub(crate) fn commit(
         &mut self, epoch_id: EpochId,
     ) -> Result<StateRootWithAuxInfo> {
         let r = self.state.commit(epoch_id);

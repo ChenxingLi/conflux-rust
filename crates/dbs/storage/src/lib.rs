@@ -12,15 +12,18 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+// The modules are private. Everything this crate exports is named one by one
+// in the `pub use` block at the bottom of this file. `utils` and `tests` are
+// still public because assets that do not belong to the engine live in them.
 #[macro_use]
 pub mod utils;
 
-pub mod delta_mpt_key;
+mod delta_mpt_key;
 pub(self) mod snapshot_manager;
-pub mod state;
-pub mod state_manager;
+mod state;
+mod state_manager;
 #[macro_use]
-pub mod storage_db;
+pub(crate) mod storage_db;
 
 pub mod tests;
 
@@ -203,43 +206,80 @@ impl StorageConfiguration {
     }
 }
 
+// The export surface. Everything below is named deliberately; anything not
+// listed here stays inside the crate.
+//
+// The public entry point, the state handle and the commit vocabulary:
 pub use self::{
-    delta_mpt_key::{
-        delta_mpt_padding, storage_key_from_delta_mpt_key,
-        to_delta_mpt_key_bytes, DeltaMptKeyPadding,
-        GENESIS_DELTA_MPT_KEY_PADDING,
+    impls::errors::{Error, Result},
+    state::{Changeset, CommitMeta, StorageView},
+    state_manager::{
+        ConsensusRecoveryView, OpenOptions, RecoveryPlan, StateConfirmedView,
+        StorageEngine, StorageVersion,
     },
+};
+// The construction configuration. `StorageConfiguration`, `ConsensusParam`,
+// `ProvideExtraSnapshotSyncConfig` and `storage_dir` are defined in this file;
+// `defaults` holds the default of every field the node configuration leaves
+// unset.
+pub use self::impls::defaults;
+
+// Proof data types, needed by the light protocol and by the RPC layer.
+pub use self::impls::{
+    merkle_patricia_trie::{trie_proof::TrieProofNode, TrieProof},
+    node_merkle_proof::{NodeMerkleProof, StorageRootProof},
+    state_proof::StateProof,
+};
+
+// The simple_mpt algorithm family, used outside the state engine.
+pub use self::impls::merkle_patricia_trie::simple_mpt::*;
+
+// The concrete engine type and the entry points its adapter modules use.
+pub use self::{
     impls::{
-        defaults,
-        delta_mpt::*,
-        errors::{Error, Result},
-        merkle_patricia_trie::{
-            mpt_cursor::rlp_key_value_len, simple_mpt::*,
-            trie_proof::TrieProofNode, CompressedPathRaw, KVInserter,
-            MptKeyValue, TrieProof, VanillaChildrenTable,
-        },
-        node_merkle_proof::{NodeMerkleProof, StorageRootProof},
-        proof_merger::StateProofMerger,
-        recording_storage::RecordingStorage,
-        snapshot_sync::FullSyncVerifier,
+        delta_mpt::DeltaMptIterator, snapshot_sync::FullSyncVerifier,
         state_export::StateExport,
-        state_proof::StateProof,
+        storage_db::snapshot_db_manager_sqlite::SnapshotDbManagerSqlite,
+    },
+    state::{State as StorageState, StateDbGetOriginalMethods},
+    state_manager::StateManager as StorageManager,
+    storage_db::{SnapshotInfo, SnapshotKeptToProvideSyncStatus},
+};
+
+// The delta MPT key prefix type and its derivation, recomputed by the light
+// protocol when it verifies a proof locally.
+pub use self::delta_mpt_key::{delta_mpt_padding, DeltaMptKeyPadding};
+
+// The engine's own error type is exported as `Error` and `Result` above.
+
+// Not part of the surface above: the ledger key value library, `MptKeyValue`
+// and the MPT node building blocks. Each disappears with a migration that is
+// already planned; until then `dev-support/check_storage_exports.py` reports
+// every use of them.
+pub use self::{
+    impls::{
+        merkle_patricia_trie::{
+            CompressedPathRaw, MptKeyValue, VanillaChildrenTable,
+        },
         storage_db::{
             kvdb_rocksdb::KvdbRocksdb,
             kvdb_sqlite::{KvdbSqlite, KvdbSqliteStatements},
-            kvdb_sqlite_sharded::KvdbSqliteSharded,
-            snapshot_db_manager_sqlite::SnapshotDbManagerSqlite,
-            sqlite::SqliteConnection,
         },
-        writable_state::WritableState,
     },
-    state::{Changeset, CommitMeta, State as StorageState, StorageView},
-    state_manager::{
-        ConsensusRecoveryView, OpenMode, OpenOptions, RecoveryPlan,
-        StateConfirmedView, StateIndex, StateManager as StorageManager,
-        StorageEngine, StorageVersion,
+    storage_db::{KeyValueDbTrait, KeyValueDbTraitRead},
+};
+
+// Reachable inside the engine under `crate::`, not exported. Some entries
+// are reached only from this crate's own tests, so the plain build sees them
+// as unused.
+#[allow(unused_imports)]
+pub(crate) use self::{
+    impls::{
+        delta_mpt::*, merkle_patricia_trie::KVInserter,
+        proof_merger::StateProofMerger, recording_storage::RecordingStorage,
+        storage_db::sqlite::SqliteConnection, writable_state::WritableState,
     },
-    storage_db::{KeyValueDbIterableTrait, KeyValueDbTrait},
+    state_manager::StateIndex,
 };
 
 #[cfg(any(test, feature = "testonly_code"))]

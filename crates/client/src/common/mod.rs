@@ -391,7 +391,7 @@ pub fn initialize_common_modules(
             storage_manager
                 .open_layered_state(
                     &genesis_hash,
-                    OpenOptions::read_only(),
+                    OpenOptions::new(),
                     /* open_mpt_snapshot = */ false,
                 )
                 .unwrap()

@@ -28,12 +28,9 @@ pub use self::{
     delta_mpt_open_db_manager::{
         ArcDeltaDbWrapper, OpenDeltaDbLru, OpenableOnDemandOpenDeltaDbTrait,
     },
-    mem_optimized_trie_node::MemOptimizedTrieNode,
-    node_memory_manager::{TrieNodeDeltaMpt, TrieNodeDeltaMptCell},
     node_ref::*,
     node_ref_map::DEFAULT_NODE_MAP_SIZE,
     owned_node_set::OwnedNodeSet,
-    slab::Slab,
     subtrie_visitor::SubTrieVisitor,
 };
 

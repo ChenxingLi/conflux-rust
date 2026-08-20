@@ -1,7 +1,7 @@
 use crate::errors::{invalid_params_check, Result as CoreResult};
 
 use cfx_statedb::StateDb;
-use cfx_storage::{state::StorageView, OpenOptions, StorageVersion};
+use cfx_storage::{OpenOptions, StorageVersion, StorageView};
 use cfx_types::{Space, H256};
 
 use primitives::EpochNumber;
@@ -109,9 +109,7 @@ impl ConsensusGraph {
             .clone()
             .open_state(
                 StorageVersion::Epoch(*hash),
-                OpenOptions::read_only()
-                    .with_try_open(true)
-                    .with_space(space),
+                OpenOptions::new().with_try_open(true).with_space(space),
             )
             .map_err(|e| format!("Error to get state, err={:?}", e))?;
 

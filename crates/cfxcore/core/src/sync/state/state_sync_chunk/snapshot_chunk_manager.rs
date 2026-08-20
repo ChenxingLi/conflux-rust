@@ -7,8 +7,7 @@ use crate::sync::{
     synchronization_state::PeerFilter,
 };
 use cfx_storage::{
-    storage_db::SnapshotInfo, FullSyncVerifier, Result as StorageResult,
-    TrieProof,
+    FullSyncVerifier, Result as StorageResult, SnapshotInfo, TrieProof,
 };
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use network::node_table::NodeId;

@@ -6,8 +6,6 @@
 // StateManager manages internal mutability and is thread-safe.
 pub use super::impls::state_manager::StateManager;
 
-pub type SharedStateManager = Arc<StateManager>;
-
 /// Which version of the state is opened, or committed against. `Empty` is
 /// the empty base: the state before any epoch exists. It is a concept of its
 /// own, not an epoch id that happens to be absent, and how an engine stands
@@ -182,11 +180,17 @@ pub struct RecoveryPlan {
     pub recompute_start_height: u64,
 }
 
-/// What the caller intends to do with the version it opens: read that
-/// epoch, or use it as the execution base of its child epoch. One entry point
-/// serves both.
+/// Which of the two layered opens the engine performs. Not part of
+/// `OpenOptions` and not exported: `open_state` only reads, and opening a
+/// version as the execution base of its child epoch produces a writable
+/// state, which stays inside the engine.
+///
+/// At a snapshot boundary the same epoch has two valid three-layer layouts:
+/// its own (what the block header commits to) and its child's (snapshot
+/// shifts up, delta starts empty). ReadOnly assembles the epoch's own layout;
+/// NextEpochBase assembles the child's.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OpenMode {
+pub(crate) enum OpenMode {
     /// Read the state of that epoch itself.
     ReadOnly,
     /// Open the state of that epoch as the execution base of its child
@@ -198,9 +202,9 @@ pub enum OpenMode {
 /// Everything `StateManager::open_state` needs besides the epoch hash.
 #[derive(Clone, Copy, Debug)]
 pub struct OpenOptions {
-    pub mode: OpenMode,
     /// `None` means data from all address spaces are required. Only consulted
-    /// in `ReadOnly` mode, which is the only mode with a single MPT fallback.
+    /// on the read only open, which is the only one with a single MPT
+    /// fallback.
     pub space: Option<Space>,
     /// Fail immediately instead of waiting when the engine has reached its
     /// limit of concurrently opened snapshots.
@@ -208,17 +212,8 @@ pub struct OpenOptions {
 }
 
 impl OpenOptions {
-    pub fn read_only() -> Self {
+    pub fn new() -> Self {
         Self {
-            mode: OpenMode::ReadOnly,
-            space: None,
-            try_open: false,
-        }
-    }
-
-    pub fn next_epoch_base() -> Self {
-        Self {
-            mode: OpenMode::NextEpochBase,
             space: None,
             try_open: false,
         }

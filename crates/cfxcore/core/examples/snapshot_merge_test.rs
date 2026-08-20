@@ -5,8 +5,9 @@
 use cfx_internal_common::state_root_with_aux_info::StateRootWithAuxInfo;
 use cfx_statedb::{StateDb, StateDbExt};
 use cfx_storage::{
-    state_manager::StateManager, storage_db::SnapshotInfo, DeltaMptIterator,
-    Error as StorageError, OpenOptions, StorageConfiguration,
+    Changeset, CommitMeta, DeltaMptIterator, Error as StorageError,
+    OpenOptions, SnapshotInfo, StorageConfiguration, StorageManager,
+    StorageVersion,
 };
 use cfx_types::{Address, AddressSpaceUtil, AddressWithSpace, H256};
 use cfxcore::sync::Error;
@@ -260,44 +261,39 @@ fn parse_args<'a>() -> ArgMatches {
 }
 fn new_state_manager(
     conflux_data_dir: &str,
-) -> Result<Arc<StateManager>, Error> {
+) -> Result<Arc<StorageManager>, Error> {
     let mut storage_conf = StorageConfiguration::new_default(
         conflux_data_dir,
         cfx_parameters::consensus::SNAPSHOT_EPOCHS_CAPACITY,
         cfx_parameters::consensus::ERA_DEFAULT_EPOCH_COUNT,
     );
     storage_conf.consensus_param.snapshot_epoch_count = 10000000;
-    Ok(Arc::new(StateManager::new(storage_conf).unwrap()))
+    Ok(Arc::new(StorageManager::new(storage_conf).unwrap()))
 }
 
 fn initialize_genesis(
-    manager: &Arc<StateManager>,
+    manager: &Arc<StorageManager>,
 ) -> Result<(H256, MerkleHash), Error> {
-    let mut state = manager.get_state_for_genesis_write();
-
-    //    state.set(
-    //        StorageKey::AccountKey(b"123"),
-    //        vec![1, 2, 3].into_boxed_slice(),
-    //    )?;
-    //    state.set(
-    //        StorageKey::AccountKey(b"124"),
-    //        vec![1, 2, 4].into_boxed_slice(),
-    //    )?;
-
-    let root = state.compute_state_root()?;
-    println!("genesis root: {:?}", root.state_root.delta_root);
-
     let genesis_hash = H256::from_str(
         "fa4e44bc69cca4cb2ae88a8fd452826faab9e8764e7eed934feede46c98962fa",
     )
     .unwrap();
-    state.commit(genesis_hash.clone())?;
+    // The genesis of this tool is empty.
+    let state_root = manager.commit_changeset(
+        StorageVersion::Empty,
+        Changeset::new(),
+        CommitMeta {
+            epoch_id: genesis_hash,
+            height: 0,
+        },
+    )?;
+    println!("genesis root: {:?}", state_root.delta_root);
 
-    Ok((genesis_hash, root.state_root.delta_root))
+    Ok((genesis_hash, state_root.delta_root))
 }
 
 fn prepare_state(
-    manager: &Arc<StateManager>, parent: H256, height: &mut u64,
+    manager: &Arc<StorageManager>, parent: H256, height: &mut u64,
     accounts: usize, accounts_per_epoch: usize,
     account_map: &mut HashMap<AddressWithSpace, Account>,
     old_state_root: &StateRootWithAuxInfo, state_root: &StateRootWithAuxInfo,
@@ -323,7 +319,7 @@ fn prepare_state(
 }
 
 fn add_accounts(
-    manager: &Arc<StateManager>, parent: H256, height: &mut u64,
+    manager: &Arc<StorageManager>, parent: H256, height: &mut u64,
     accounts_per_epoch: usize,
     new_account_map: &HashMap<AddressWithSpace, Account>,
     _old_state_root: &StateRootWithAuxInfo, _state_root: &StateRootWithAuxInfo,
@@ -361,7 +357,7 @@ fn add_accounts(
         // TODO consider snapshot.
         .open_layered_state(
             &epoch_id,
-            OpenOptions::read_only(),
+            OpenOptions::new(),
             /* open_mpt_snapshot = */ false,
         )?
         .expect("the epoch just committed is available")
@@ -373,7 +369,7 @@ fn add_accounts(
 }
 
 fn add_accounts_and_commit<'a, Iter>(
-    manager: &Arc<StateManager>, accounts: usize, account_map: &mut Iter,
+    manager: &Arc<StorageManager>, accounts: usize, account_map: &mut Iter,
     parent_epoch_id: H256, height: u64,
 ) -> H256
 where

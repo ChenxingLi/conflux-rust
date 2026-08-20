@@ -54,9 +54,7 @@ use cfx_statedb::{
     },
     StateDbExt,
 };
-use cfx_storage::{
-    state::StateDbGetOriginalMethods, OpenOptions, StorageManager,
-};
+use cfx_storage::{OpenOptions, StateDbGetOriginalMethods, StorageManager};
 use cfx_types::{
     Address, AddressSpaceUtil, BigEndianHash, Space, H160, H256, H520, U128,
     U256, U64,
@@ -878,7 +876,7 @@ impl CfxRpcServer for CfxHandler {
             .storage_engine
             .open_layered_state(
                 &epoch_hash,
-                OpenOptions::read_only().with_try_open(true),
+                OpenOptions::new().with_try_open(true),
                 /* open_mpt_snapshot = */ true,
             )
             .map_err(into_rpc_err)?
