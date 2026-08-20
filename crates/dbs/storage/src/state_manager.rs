@@ -26,23 +26,17 @@ pub enum StorageVersion {
 /// which cannot be recovered from a `&self` receiver. The other methods need
 /// only a borrow and take the ordinary `&self`.
 ///
-/// Two members are not in their final shape yet, and each is pinned there by
-/// a change that has not happened.
-///
-/// - `open_state` still names the version by its epoch hash rather than by
-///   `StorageVersion`. The read handle on the empty base is still handed out by
-///   an entry point of its own on the concrete engine, so nothing here would
-///   produce the `Empty` variant yet.
-/// - `open_state` answers with `Box<dyn StateTrait>`, the write capable
-///   supertrait of `StorageView`. `StateDb` still holds a write capable trait
-///   object in its transitional constructor, so the write methods have to come
-///   off `StateTrait` before this can narrow to `StorageView`.
+/// One member is not in its final shape yet: `open_state` answers with
+/// `Box<dyn StateTrait>`, the write capable supertrait of `StorageView`.
+/// `StateDb` still holds a write capable trait object in its transitional
+/// constructor, so the write methods have to come off `StateTrait` before this
+/// can narrow to `StorageView`.
 pub trait StorageEngine: Send + Sync {
     /// Open one version of the state for reading. `Ok(None)` means the
     /// version is not available on this node, which the caller tells apart
     /// from an engine failure by the `Result` around it.
     fn open_state(
-        self: Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
+        self: Arc<Self>, version: StorageVersion, opts: OpenOptions,
     ) -> Result<Option<Box<dyn StateTrait>>>;
 
     /// Apply a whole changeset on top of `parent` and persist it under

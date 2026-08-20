@@ -10,7 +10,7 @@ use cfx_executor::{
 };
 use cfx_parameters::consensus::TRANSACTION_DEFAULT_EPOCH_BOUND;
 use cfx_statedb::StateDb;
-use cfx_storage::state_manager::OpenOptions;
+use cfx_storage::state_manager::{OpenOptions, StorageVersion};
 use cfx_types::{H256, U256};
 use cfx_vm_types::Env;
 use cfxkey::{Generator, KeyPair, Random};
@@ -81,7 +81,12 @@ fn txexe_benchmark(c: &mut Criterion) {
                     .data_man
                     .storage_manager
                     .open_state(
-                        &handler.other_components.consensus.best_block_hash(),
+                        StorageVersion::Epoch(
+                            handler
+                                .other_components
+                                .consensus
+                                .best_block_hash(),
+                        ),
                         OpenOptions::read_only(),
                     )
                     .unwrap()

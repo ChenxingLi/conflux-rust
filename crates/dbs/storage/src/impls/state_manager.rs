@@ -1272,12 +1272,23 @@ impl StateManager {
     /// found" error variant arrives with the `StorageEngine` trait; until then
     /// this method keeps the `Option` shape its callers already branch on.
     pub fn open_state(
-        self: &Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
+        self: &Arc<Self>, version: StorageVersion, opts: OpenOptions,
     ) -> Result<Option<Box<dyn StateTrait>>> {
+        let epoch_hash = match version {
+            // The empty base is built rather than looked up: nothing has been
+            // committed for it to be found under. Every key is answered out of
+            // the null snapshot and an empty delta trie.
+            StorageVersion::Empty => {
+                return Ok(Some(Box::new(
+                    self.get_state_for_genesis_write_inner(),
+                )))
+            }
+            StorageVersion::Epoch(epoch_hash) => epoch_hash,
+        };
         match opts.mode {
-            OpenMode::ReadOnly => self.open_read_only(epoch_hash, opts),
+            OpenMode::ReadOnly => self.open_read_only(&epoch_hash, opts),
             OpenMode::NextEpochBase => {
-                self.open_next_epoch_base(epoch_hash, opts)
+                self.open_next_epoch_base(&epoch_hash, opts)
             }
         }
     }
@@ -1453,7 +1464,10 @@ impl StateManager {
         let mut state = match parent {
             StorageVersion::Empty => self.get_state_for_genesis_write(),
             StorageVersion::Epoch(parent) => self
-                .open_state(&parent, OpenOptions::next_epoch_base())?
+                .open_state(
+                    StorageVersion::Epoch(parent),
+                    OpenOptions::next_epoch_base(),
+                )?
                 .ok_or_else(|| {
                     Error::Msg(format!(
                         "commit: the parent version {:?} is not available",
@@ -1483,13 +1497,6 @@ impl StateManager {
     /// of. It is spelled as the null epoch, which the genesis state object
     /// already carries as its parent epoch id and which no real epoch can
     /// collide with.
-    /// A read only handle on the empty base, which the genesis execution reads
-    /// through. Every key is answered out of the null snapshot and an empty
-    /// delta trie.
-    pub fn open_empty_base(self: &Arc<Self>) -> Box<dyn StorageView> {
-        Box::new(self.get_state_for_genesis_write_inner())
-    }
-
     pub fn get_state_for_genesis_write(
         self: &Arc<Self>,
     ) -> Box<dyn StateTrait> {
@@ -1512,9 +1519,9 @@ impl StateManager {
 
 impl StorageEngine for StateManager {
     fn open_state(
-        self: Arc<Self>, epoch_hash: &EpochId, opts: OpenOptions,
+        self: Arc<Self>, version: StorageVersion, opts: OpenOptions,
     ) -> Result<Option<Box<dyn StateTrait>>> {
-        StateManager::open_state(&self, epoch_hash, opts)
+        StateManager::open_state(&self, version, opts)
     }
 
     fn commit(

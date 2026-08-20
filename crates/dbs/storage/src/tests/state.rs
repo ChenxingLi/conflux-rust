@@ -90,7 +90,10 @@ fn test_get_set_at_second_commit() {
 
     let mut state_1 = state_manager
         .clone()
-        .open_state(&epoch_id_0, OpenOptions::next_epoch_base())
+        .open_state(
+            StorageVersion::Epoch(epoch_id_0),
+            OpenOptions::next_epoch_base(),
+        )
         .unwrap()
         .unwrap();
     println!("Set new {} keys for state_1.", keys_1_new.len());
@@ -284,7 +287,10 @@ fn simulate_transactions(
     epoch_id.as_bytes_mut()[0] = epoch;
     let mut state = (**state_manager)
         .clone()
-        .open_state(&epoch_id, OpenOptions::next_epoch_base())
+        .open_state(
+            StorageVersion::Epoch(epoch_id),
+            OpenOptions::next_epoch_base(),
+        )
         .unwrap()
         .unwrap();
     let mut values = vec![None; keys.len()];
@@ -431,7 +437,10 @@ fn test_set_delete() {
     // In second state, insert part 2, then delete everything.
     let mut state = state_manager
         .clone()
-        .open_state(&epoch_id, OpenOptions::next_epoch_base())
+        .open_state(
+            StorageVersion::Epoch(epoch_id),
+            OpenOptions::next_epoch_base(),
+        )
         .unwrap()
         .unwrap();
     for key in keys_1.iter() {
@@ -563,7 +572,10 @@ fn test_set_order_concurrent() {
 
     let mut state_1 = state_manager
         .clone()
-        .open_state(&parent_epoch_0, OpenOptions::next_epoch_base())
+        .open_state(
+            StorageVersion::Epoch(parent_epoch_0),
+            OpenOptions::next_epoch_base(),
+        )
         .unwrap()
         .unwrap();
     println!("Setting state_1 with {} keys.", keys.len());
@@ -597,7 +609,10 @@ fn test_set_order_concurrent() {
         let merkle_1 = merkle_1.clone();
         threads.push(thread::spawn(move || {
             let mut state_2 = state_manager
-                .open_state(&parent_epoch_0, OpenOptions::next_epoch_base())
+                .open_state(
+                    StorageVersion::Epoch(parent_epoch_0),
+                    OpenOptions::next_epoch_base(),
+                )
                 .unwrap()
                 .unwrap();
             //            println!(

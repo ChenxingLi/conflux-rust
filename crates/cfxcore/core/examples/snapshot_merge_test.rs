@@ -8,6 +8,7 @@ use cfx_storage::{
     state_manager::StateManager,
     storage_db::{KeyValueDbTraitRead, SnapshotDbManagerTrait, SnapshotInfo},
     DeltaMptIterator, Error as StorageError, OpenOptions, StorageConfiguration,
+    StorageVersion,
 };
 use cfx_types::{Address, AddressSpaceUtil, AddressWithSpace, H256};
 use cfxcore::sync::Error;
@@ -362,7 +363,7 @@ fn add_accounts(
 
     let root = manager
         // TODO consider snapshot.
-        .open_state(&epoch_id, OpenOptions::read_only())?
+        .open_state(StorageVersion::Epoch(epoch_id), OpenOptions::read_only())?
         .unwrap()
         .get_state_root()?
         .state_root
@@ -379,7 +380,10 @@ where
     Iter: Iterator<Item = (&'a AddressWithSpace, &'a Account)>,
 {
     let state = manager
-        .open_state(&parent_epoch_id, OpenOptions::next_epoch_base())
+        .open_state(
+            StorageVersion::Epoch(parent_epoch_id),
+            OpenOptions::next_epoch_base(),
+        )
         .unwrap()
         .unwrap();
     let mut state = StateDb::new_on_owned_state(state);

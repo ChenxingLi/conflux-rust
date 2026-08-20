@@ -27,7 +27,10 @@ use cfx_internal_common::{
 };
 use cfx_parameters::consensus::*;
 use cfx_statedb::{Result as DbResult, StateDb};
-use cfx_storage::{defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, OpenOptions};
+use cfx_storage::{
+    defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, OpenOptions, StorageEngine,
+    StorageVersion,
+};
 use cfx_types::{
     AddressSpaceUtil, AllChainID, BigEndianHash, Space, H160, H256,
     KECCAK_EMPTY_BLOOM, U256, U512,
@@ -739,9 +742,12 @@ impl ConsensusExecutor {
             if executed {
                 let maybe_cached_state = self
                     .handler
-                    .data_man
-                    .storage_manager
-                    .open_state(&block_hash, OpenOptions::read_only())
+                    .storage
+                    .clone()
+                    .open_state(
+                        StorageVersion::Epoch(*block_hash),
+                        OpenOptions::read_only(),
+                    )
                     .map_err(|_| "Internal storage error".to_owned())?;
                 if maybe_cached_state.is_some() {
                     return Ok(());
@@ -832,6 +838,8 @@ impl ConsensusExecutor {
 pub struct ConsensusExecutionHandler {
     tx_pool: SharedTransactionPool,
     data_man: Arc<BlockDataManager>,
+    /// The state engine this node executes on.
+    storage: Arc<dyn StorageEngine>,
     config: ConsensusExecutionConfiguration,
     verification_config: VerificationConfig,
     machine: Arc<Machine>,
@@ -848,6 +856,7 @@ impl ConsensusExecutionHandler {
     ) -> Self {
         ConsensusExecutionHandler {
             tx_pool,
+            storage: data_man.storage_manager.clone(),
             data_man,
             config,
             verification_config,
@@ -917,11 +926,10 @@ impl ConsensusExecutionHandler {
 
     fn new_state(&self, pivot_block: &Block) -> DbResult<State> {
         let state_db = StateDb::new_for_commit(
-            self.data_man.storage_manager.clone(),
+            self.storage.clone(),
             *pivot_block.block_header.parent_hash(),
             pivot_block.block_header.height(),
         )
-        // Unwrapping is safe because the state exists.
         .expect("State exists");
         State::new(state_db)
     }
@@ -1707,10 +1715,10 @@ impl ConsensusExecutionHandler {
         }
 
         let state_db = StateDb::new_readonly(
-            self.data_man
-                .storage_manager
+            self.storage
+                .clone()
                 .open_state(
-                    epoch_id,
+                    StorageVersion::Epoch(*epoch_id),
                     OpenOptions::read_only()
                         .with_try_open(true)
                         .with_space(state_space),

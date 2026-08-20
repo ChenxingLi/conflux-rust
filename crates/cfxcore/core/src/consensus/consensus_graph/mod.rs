@@ -29,6 +29,7 @@ use crate::{
 };
 
 use cfx_executor::spec::CommonParams;
+use cfx_storage::StorageEngine;
 
 use super::config::ConsensusConfig;
 
@@ -61,6 +62,10 @@ pub struct ConsensusGraph {
     pub inner: Arc<RwLock<ConsensusGraphInner>>,
     pub txpool: SharedTransactionPool,
     pub data_man: Arc<BlockDataManager>,
+    /// The state engine the RPC state reads go through. The read path names
+    /// the engine by its interface; the engine specific query behind
+    /// `cfx_getStorageRoot` keeps its own concrete handle.
+    storage: Arc<dyn StorageEngine>,
     executor: Arc<ConsensusExecutor>,
     statistics: SharedStatistics,
     pub new_block_handler: ConsensusNewBlockHandler,
@@ -127,6 +132,7 @@ impl ConsensusGraph {
         let graph = ConsensusGraph {
             inner,
             txpool: txpool.clone(),
+            storage: data_man.storage_manager.clone(),
             data_man: data_man.clone(),
             executor: executor.clone(),
             statistics: statistics.clone(),

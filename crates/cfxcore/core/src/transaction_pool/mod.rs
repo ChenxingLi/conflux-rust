@@ -31,7 +31,7 @@ use cfx_parameters::{
 };
 use cfx_rpc_cfx_types::{PendingReason, TransactionStatus};
 use cfx_statedb::{Result as StateDbResult, StateDb};
-use cfx_storage::OpenOptions;
+use cfx_storage::{OpenOptions, StorageEngine, StorageVersion};
 use cfx_types::{
     AddressWithSpace as Address, AllChainID, Space, SpaceMap, H256, U256,
 };
@@ -174,6 +174,8 @@ pub struct TransactionPool {
     inner: RwLock<TransactionPoolInner>,
     to_propagate_trans: Arc<RwLock<HashMap<H256, Arc<SignedTransaction>>>>,
     pub data_man: Arc<BlockDataManager>,
+    /// The state engine the pool reads the best executed state from.
+    storage: Arc<dyn StorageEngine>,
     best_executed_state: Mutex<Arc<State>>,
     consensus_best_info: Mutex<Arc<BestInformation>>,
     set_tx_requests: Mutex<Vec<Arc<SignedTransaction>>>,
@@ -220,8 +222,9 @@ impl TransactionPool {
             config.max_packing_batch_size,
             config.packing_pool_degree,
         );
+        let storage: Arc<dyn StorageEngine> = data_man.storage_manager.clone();
         let best_executed_state = Mutex::new(
-            Self::get_best_executed_state_by_epoch(&data_man, genesis_hash)
+            Self::get_best_executed_state_by_epoch(&storage, genesis_hash)
                 .expect("The genesis state is guaranteed to exist."),
         );
         TransactionPool {
@@ -230,6 +233,7 @@ impl TransactionPool {
             inner: RwLock::new(inner),
             to_propagate_trans: Arc::new(RwLock::new(HashMap::new())),
             data_man: data_man.clone(),
+            storage,
             best_executed_state,
             consensus_best_info: Mutex::new(Arc::new(Default::default())),
             set_tx_requests: Mutex::new(Default::default()),
@@ -1171,11 +1175,14 @@ impl TransactionPool {
     }
 
     fn get_best_executed_state_by_epoch(
-        data_man: &BlockDataManager, best_executed_epoch: EpochId,
+        storage: &Arc<dyn StorageEngine>, best_executed_epoch: EpochId,
     ) -> StateDbResult<Arc<State>> {
-        let storage = data_man
-            .storage_manager
-            .open_state(&best_executed_epoch, OpenOptions::read_only())?
+        let storage = storage
+            .clone()
+            .open_state(
+                StorageVersion::Epoch(best_executed_epoch),
+                OpenOptions::read_only(),
+            )?
             // Safe because the state is guaranteed to be available
             .unwrap();
         let state_db = StateDb::new_readonly(storage);
@@ -1188,7 +1195,7 @@ impl TransactionPool {
     ) -> StateDbResult<()> {
         *self.best_executed_state.lock() =
             Self::get_best_executed_state_by_epoch(
-                &self.data_man,
+                &self.storage,
                 best_executed_epoch,
             )?;
 

@@ -42,7 +42,7 @@ mod impls {
     /// construction; the engine opens the writable state of the next epoch
     /// itself when the changeset arrives.
     struct CommitContext {
-        manager: Arc<StorageManager>,
+        manager: Arc<dyn StorageEngine>,
         parent: StorageVersion,
         /// Height of the epoch this instance commits, i.e. the parent's height
         /// plus one.
@@ -102,20 +102,14 @@ mod impls {
         /// The read handle of that version is opened here and held until the
         /// commit; the writable state of the epoch being executed is opened by
         /// the engine when the changeset arrives.
-        ///
-        /// The read handle is the layered state of the parent, which is what
-        /// the execution used to read through: the state the old
-        /// `get_state_for_next_epoch` returned answered reads out of the same
-        /// three layers, and the single MPT replica it may be paired with is
-        /// written to but never read from.
         pub fn new_for_commit(
-            manager: Arc<StorageManager>, parent: EpochId, height: u64,
+            manager: Arc<dyn StorageEngine>, parent: EpochId, height: u64,
         ) -> Result<Self> {
             let view = manager
-                .open_layered_state(
-                    &parent,
+                .clone()
+                .open_state(
+                    StorageVersion::Epoch(parent),
                     OpenOptions::read_only(),
-                    /* open_mpt_snapshot = */ false,
                 )?
                 .ok_or_else(|| {
                     Error::Msg(format!(
@@ -126,7 +120,7 @@ mod impls {
             Ok(StateDb {
                 accessed_entries: Default::default(),
                 storage: Storage::Commit {
-                    view: Box::new(view),
+                    view,
                     ctx: CommitContext {
                         manager,
                         parent: StorageVersion::Epoch(parent),
@@ -138,13 +132,18 @@ mod impls {
 
         /// The commit capable instance of the genesis epoch. Its parent is
         /// the empty base, which has no epoch id of its own, so it cannot go
-        /// through `new_for_commit`; the engine opens the genesis coordinates
-        /// itself, both for `preview_genesis_root` and for the commit. The
-        /// height is 0, the genesis epoch's own height on the convention the
-        /// open path uses.
-        pub fn new_for_genesis(manager: Arc<StorageManager>) -> Self {
-            let view = manager.open_empty_base();
-            StateDb {
+        /// through `new_for_commit`. The height is 0, the genesis epoch's own
+        /// height on the convention the open path uses.
+        pub fn new_for_genesis(
+            manager: Arc<dyn StorageEngine>,
+        ) -> Result<Self> {
+            let view = manager
+                .clone()
+                .open_state(StorageVersion::Empty, OpenOptions::read_only())?
+                .ok_or_else(|| {
+                    Error::Msg("the empty base is always open".into())
+                })?;
+            Ok(StateDb {
                 accessed_entries: Default::default(),
                 storage: Storage::Commit {
                     view,
@@ -154,7 +153,7 @@ mod impls {
                         height: 0,
                     },
                 },
-            }
+            })
         }
 
         /// The transitional constructor, see `Storage::OwnedState`.
@@ -654,6 +653,7 @@ mod impls {
                         )));
                     }
                     ctx.manager
+                        .clone()
                         .preview_genesis_root(&changeset)
                         .map_err(Into::into)
                 }
@@ -708,16 +708,14 @@ mod impls {
             let changeset = self.build_changeset(debug_record)?;
             let state_root = match &mut self.storage {
                 Storage::ReadOnly(_) => return Err(Error::ReadOnlyStateDb),
-                Storage::Commit { ctx, .. } => {
-                    ctx.manager.clone().commit_changeset(
-                        ctx.parent,
-                        changeset,
-                        CommitMeta {
-                            epoch_id,
-                            height: Some(ctx.height),
-                        },
-                    )?
-                }
+                Storage::Commit { ctx, .. } => ctx.manager.clone().commit(
+                    ctx.parent,
+                    changeset,
+                    CommitMeta {
+                        epoch_id,
+                        height: Some(ctx.height),
+                    },
+                )?,
                 Storage::OwnedState(state) => state.commit_changeset(
                     changeset,
                     CommitMeta {
@@ -776,7 +774,7 @@ mod impls {
     };
     use cfx_storage::{
         utils::{access_mode, to_key_prefix_iter_upper_bound},
-        Changeset, CommitMeta, MptKeyValue, OpenOptions, StorageManager,
+        Changeset, CommitMeta, MptKeyValue, OpenOptions, StorageEngine,
         StorageStateTrait, StorageVersion, StorageView,
     };
     use cfx_types::{

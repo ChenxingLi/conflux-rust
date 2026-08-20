@@ -1,7 +1,7 @@
 use crate::errors::{invalid_params_check, Result as CoreResult};
 
 use cfx_statedb::StateDb;
-use cfx_storage::{state::StorageView, OpenOptions};
+use cfx_storage::{state::StorageView, OpenOptions, StorageVersion};
 use cfx_types::{Space, H256};
 
 use primitives::EpochNumber;
@@ -105,10 +105,10 @@ impl ConsensusGraph {
             ));
         }
         let maybe_state = self
-            .data_man
-            .storage_manager
+            .storage
+            .clone()
             .open_state(
-                &hash,
+                StorageVersion::Epoch(*hash),
                 OpenOptions::read_only()
                     .with_try_open(true)
                     .with_space(space),

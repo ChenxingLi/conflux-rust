@@ -21,7 +21,7 @@ use crate::{
     NodeType, Notifications, SharedTransactionPool,
 };
 use cfx_parameters::{consensus::*, consensus_internal::*};
-use cfx_storage::{ConsensusRecoveryView, StateConfirmedView};
+use cfx_storage::{ConsensusRecoveryView, StateConfirmedView, StorageEngine};
 use cfx_types::H256;
 use hibitset::{BitSet, BitSetLike, DrainableBitSet};
 use parking_lot::Mutex;
@@ -37,6 +37,9 @@ pub struct ConsensusNewBlockHandler {
     conf: ConsensusConfig,
     txpool: SharedTransactionPool,
     data_man: Arc<BlockDataManager>,
+    /// The state engine this handler drives the restart recovery and the
+    /// maintenance events with.
+    storage: Arc<dyn StorageEngine>,
     executor: Arc<ConsensusExecutor>,
     pos_verifier: Arc<PosVerifier>,
     statistics: SharedStatistics,
@@ -73,6 +76,7 @@ impl ConsensusNewBlockHandler {
             pos_verifier,
             conf,
             txpool,
+            storage: data_man.storage_manager.clone(),
             data_man,
             executor,
             statistics,
@@ -1651,10 +1655,8 @@ impl ConsensusNewBlockHandler {
             }
             confirmed_height =
                 inner.confirmed_height_for_state_maintenance(confirmed_height);
-            let physical_openable_lower_bound = self
-                .data_man
-                .storage_manager
-                .notify_state_confirmed(&StateConfirmedFacts {
+            let physical_openable_lower_bound =
+                self.storage.notify_state_confirmed(&StateConfirmedFacts {
                     data_man: &self.data_man,
                     confirmed_height,
                     stable_checkpoint_height: inner.cur_era_stable_height,
@@ -2053,7 +2055,7 @@ impl ConsensusNewBlockHandler {
                 proposed_recompute_start_height: inner
                     .pivot_index_to_height(start_compute_epoch_pivot_index),
             };
-            self.data_man.storage_manager.plan_recovery(&view)
+            self.storage.plan_recovery(&view)
         };
         let start_compute_epoch_pivot_index =
             inner.height_to_pivot_index(recovery_plan.recompute_start_height);
@@ -2119,8 +2121,7 @@ impl ConsensusNewBlockHandler {
                         );
 
                     let physical_openable_lower_bound = self
-                        .data_man
-                        .storage_manager
+                        .storage
                         .notify_state_confirmed(&StateConfirmedFacts {
                             data_man: &self.data_man,
                             confirmed_height,
@@ -2149,7 +2150,7 @@ impl ConsensusNewBlockHandler {
             let pivot_arena_index = inner.pivot_chain[pivot_index];
             let pivot_hash = inner.arena[pivot_arena_index].hash;
 
-            if self.data_man.storage_manager.usable_as_base(&pivot_hash) {
+            if self.storage.usable_as_base(&pivot_hash) {
                 epoch_count += 1;
 
                 // force to recompute last 5 epochs in case state database

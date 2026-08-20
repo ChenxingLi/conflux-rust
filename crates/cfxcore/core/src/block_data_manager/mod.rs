@@ -11,6 +11,7 @@ use crate::{
 use cfx_executor::internal_contract::make_staking_events;
 use cfx_storage::{
     state_manager::OpenOptions, utils::guarded_value::*, StorageManager,
+    StorageVersion,
 };
 use cfx_types::{Bloom, Space, H256};
 pub use cfxcore_types::block_data_manager::block_data_types;
@@ -362,7 +363,10 @@ impl BlockDataManager {
     pub fn true_genesis_state_root(&self) -> StateRootWithAuxInfo {
         let true_genesis_hash = self.true_genesis.hash();
         self.storage_manager
-            .open_state(&true_genesis_hash, OpenOptions::read_only())
+            .open_state(
+                StorageVersion::Epoch(true_genesis_hash),
+                OpenOptions::read_only(),
+            )
             .unwrap()
             .unwrap()
             .get_state_root()
