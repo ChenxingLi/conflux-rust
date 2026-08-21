@@ -618,7 +618,7 @@ mod impls {
         }
 
         pub fn commit(
-            &mut self, epoch_id: EpochId,
+            mut self, epoch_id: EpochId,
             debug_record: Option<&mut ComputeEpochDebugRecord>,
         ) -> Result<StateRoot> {
             let changeset = self.build_changeset(debug_record)?;
