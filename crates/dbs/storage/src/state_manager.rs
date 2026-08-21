@@ -56,10 +56,10 @@ pub trait StorageEngine: Send + Sync {
     ) -> Result<StateRoot>;
 
     /// Whether the epoch `base` identifies can serve as the execution base
-    /// of its child epoch. An engine error answers `false`; every caller
-    /// reacts to `false` by skipping or re-executing the epoch, and both
-    /// are the safe move.
-    fn usable_as_base(&self, base: &EpochId) -> bool;
+    /// of its child epoch. `Ok(false)` means this node does not have the
+    /// state of `base`; an engine failure is an `Err` and must not be
+    /// reported as `false`.
+    fn usable_as_base(&self, base: &EpochId) -> Result<bool>;
 
     /// The restart handshake: get the engine ready for the replay consensus
     /// is about to drive, and answer where it should start. The returned

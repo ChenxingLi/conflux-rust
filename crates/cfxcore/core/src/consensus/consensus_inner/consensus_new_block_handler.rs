@@ -2137,7 +2137,8 @@ impl ConsensusNewBlockHandler {
             let pivot_arena_index = inner.pivot_chain[pivot_index];
             let pivot_hash = inner.arena[pivot_arena_index].hash;
 
-            if self.storage.usable_as_base(&pivot_hash) {
+            // Nothing here can act on a database error, so it stays fatal.
+            if self.storage.usable_as_base(&pivot_hash).expect("DB Error") {
                 epoch_count += 1;
 
                 // force to recompute last 5 epochs in case state database

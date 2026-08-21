@@ -114,7 +114,19 @@ impl StorageEngine for InmemoryManager {
         })?;
         Self::apply(&mut version, changeset);
         let state_root = Self::state_root_of(&version);
-        self.versions.write().insert(meta.epoch_id, version);
+        let mut versions = self.versions.write();
+        // Without this check, a code change that made one epoch produce two
+        // different states would still pass this crate's tests, though
+        // `State::do_db_commit` panics on such a commit.
+        if let Some(existing) = versions.get(&meta.epoch_id) {
+            assert_eq!(
+                Self::state_root_of(existing),
+                state_root,
+                "Overwriting computed state with a different merkle root."
+            );
+            return Ok(state_root);
+        }
+        versions.insert(meta.epoch_id, version);
         Ok(state_root)
     }
 
@@ -126,8 +138,8 @@ impl StorageEngine for InmemoryManager {
         Ok(Self::state_root_of(&version))
     }
 
-    fn usable_as_base(&self, base: &EpochId) -> bool {
-        self.versions.read().contains_key(base)
+    fn usable_as_base(&self, base: &EpochId) -> Result<bool> {
+        Ok(self.versions.read().contains_key(base))
     }
 
     /// Nothing is ever lost here, so the plan is the height consensus

@@ -1114,11 +1114,12 @@ impl StateManager {
         match self.storage_manager.maintain_state_confirmed(view) {
             Ok(physical_openable_lower_bound) => physical_openable_lower_bound,
             Err(e) => {
+                SNAPSHOT_MAINTENANCE_FAILURES.mark(1);
                 warn!(
                     "state confirmed at height {}: maintenance failed, {:?}. \
                      The engine will retry at the next confirmation.",
                     view.confirmed_height(),
-                    e
+                    e,
                 );
                 self.storage_manager.physical_openable_lower_bound()
             }
@@ -1203,21 +1204,13 @@ impl StateManager {
     /// The answer comes from the read-only open, not the base open: the
     /// two are not known to agree on availability in the snapshot-sync
     /// special case.
-    pub fn usable_as_base(&self, base: &EpochId) -> bool {
-        match self.get_state_trees(
-            base, /* try_open = */ false,
-            /* open_mpt_snapshot = */ false,
-        ) {
-            Ok(maybe_state_trees) => maybe_state_trees.is_some(),
-            Err(e) => {
-                warn!(
-                    "usable_as_base({:?}): the engine could not tell, {:?}. \
-                     Answering not usable.",
-                    base, e
-                );
-                false
-            }
-        }
+    pub fn usable_as_base(&self, base: &EpochId) -> Result<bool> {
+        Ok(self
+            .get_state_trees(
+                base, /* try_open = */ false,
+                /* open_mpt_snapshot = */ false,
+            )?
+            .is_some())
     }
 
     /// Open one version of the state for an operational export, which needs
@@ -1418,7 +1411,7 @@ impl StorageEngine for StateManager {
         StateManager::preview_genesis_root(&self, changeset)
     }
 
-    fn usable_as_base(&self, base: &EpochId) -> bool {
+    fn usable_as_base(&self, base: &EpochId) -> Result<bool> {
         StateManager::usable_as_base(self, base)
     }
 
@@ -1429,6 +1422,11 @@ impl StorageEngine for StateManager {
     fn notify_state_confirmed(&self, view: &dyn StateConfirmedView) -> u64 {
         StateManager::notify_state_confirmed(self, view)
     }
+}
+
+lazy_static! {
+    static ref SNAPSHOT_MAINTENANCE_FAILURES: Arc<dyn Meter> =
+        register_meter_with_group("storage", "snapshot_maintenance_failures");
 }
 
 use crate::{
@@ -1457,7 +1455,9 @@ use crate::{
     utils::guarded_value::GuardedValue,
     StorageConfiguration,
 };
+use lazy_static::lazy_static;
 use malloc_size_of_derive::MallocSizeOf as MallocSizeOfDerive;
+use metrics::{register_meter_with_group, Meter};
 use primitives::{
     EpochId, MerkleHash, StateRoot, MERKLE_NULL_NODE, NULL_EPOCH,
 };

@@ -26,6 +26,7 @@ log4rs = { workspace = true, features = ["background_rotation", "gzip"] }
 malloc_size_of = { workspace = true }
 malloc_size_of_derive = { workspace = true }
 memoffset = { workspace = true }
+metrics = { workspace = true }
 parking_lot = { workspace = true }
 primitives = { workspace = true, optional = true }
 rand = { workspace = true }
