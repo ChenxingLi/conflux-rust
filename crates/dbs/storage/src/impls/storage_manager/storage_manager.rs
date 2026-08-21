@@ -177,7 +177,8 @@ pub struct StorageManager {
 
     /// The lowest height on disk from which execution can run continuously
     /// upwards. The in-memory value and the record inside the index must
-    /// move together.
+    /// move together; after construction `raise_physical_openable_lower_bound`
+    /// is the only writer of either.
     physical_openable_lower_bound: RwLock<u64>,
 }
 
@@ -611,11 +612,24 @@ impl StorageManager {
         *self.physical_openable_lower_bound.read()
     }
 
-    pub(crate) fn set_physical_openable_lower_bound(
+    /// Raise the bound to `height`; returns the larger of `height` and the
+    /// previous value.
+    ///
+    /// The bound must never move down: it would then claim that heights are
+    /// openable when garbage collection may already have removed the data
+    /// they need. `store_lower_bound` runs before the in-memory value
+    /// changes, so a crash after it leaves the stored bound above the
+    /// in-memory one, never below.
+    pub(crate) fn raise_physical_openable_lower_bound(
         &self, height: u64,
-    ) -> Result<()> {
-        *self.physical_openable_lower_bound.write() = height;
-        self.state_index_db.store_lower_bound(height)
+    ) -> Result<u64> {
+        let mut bound = self.physical_openable_lower_bound.write();
+        if height <= *bound {
+            return Ok(*bound);
+        }
+        self.state_index_db.store_lower_bound(height)?;
+        *bound = height;
+        Ok(height)
     }
 
     /// The sync write port of the private index: the one entry a synced
@@ -654,12 +668,7 @@ impl StorageManager {
         );
         self.state_index_db.put(snapshot_epoch_id, &entry)?;
 
-        // The bound is only raised. A record already above the synced height
-        // claims less openable than what is on disk, which is the safe
-        // direction; lowering it back would claim more.
-        if snapshot_info.height > self.physical_openable_lower_bound() {
-            self.set_physical_openable_lower_bound(snapshot_info.height)?;
-        }
+        self.raise_physical_openable_lower_bound(snapshot_info.height)?;
         Ok(())
     }
 
@@ -1791,16 +1800,9 @@ impl StorageManager {
         if !non_pivot_snapshots_to_remove.is_empty()
             || !old_pivot_snapshots_to_remove.is_empty()
         {
-            // The bound is written before the snapshots below are removed:
-            // a crash in between leaves it claiming less than what is on
-            // disk, never more.
-            if first_available_state_height
-                > self.physical_openable_lower_bound()
-            {
-                self.set_physical_openable_lower_bound(
-                    first_available_state_height,
-                )?;
-            }
+            self.raise_physical_openable_lower_bound(
+                first_available_state_height,
+            )?;
 
             self.remove_snapshots(
                 &old_pivot_snapshots_to_remove,

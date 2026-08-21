@@ -1117,7 +1117,16 @@ impl ConsensusNewBlockHandler {
         if physical_openable_lower_bound > boundary.lower_bound
             && physical_openable_lower_bound <= boundary.upper_bound
         {
+            let previous_lower_bound = boundary.lower_bound;
             boundary.adjust_lower_bound(physical_openable_lower_bound);
+            debug!(
+                "state availability lower bound raised from {} to {}, \
+                 boundary is [{}, {}]",
+                previous_lower_bound,
+                physical_openable_lower_bound,
+                boundary.lower_bound,
+                boundary.upper_bound,
+            );
         } else {
             debug!(
                 "state availability lower bound left alone: engine reports {}, \

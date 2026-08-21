@@ -37,13 +37,18 @@ old defect took:
   the lowest stretch of heights was claimed openable with nothing to open it
   with.
 
-Both are subjected to the same four checks: the published bound is the one the
-documented rule gives, which is the lower end of the snapshot run on disk
-raised past any stretch of heights the rebuild wrote no entry for, every height
-from the bound up answers exactly as the archive does, every height below it is
-refused rather than answered, and the rebuild log carries no commitment row
-miss and no height left out at or above the bound. Each check records what it saw instead
-of ending the run, so one boot is judged on all four at once.
+Both are subjected to the same five checks:
+
+1. the published bound is the lower end of the run of snapshots on disk, raised
+   past any stretch of heights the rebuild wrote no entry for;
+2. every height from the bound up answers exactly as the archive does;
+3. every height below the bound is refused rather than answered;
+4. the rebuild log names no epoch whose state roots were unreadable, and no
+   height left out at or above the bound;
+5. consensus was told the published bound during the replay, not after it.
+
+Each check records what it saw instead of ending the run, so one boot is judged
+on all five at once.
 """
 
 import os
@@ -117,6 +122,17 @@ REBUILD_SUMMARY_PATTERN = re.compile(
 )
 SKIPPED_RANGE_PATTERN = re.compile(
     r"Writing no entry for heights (\d+)\.\.=(\d+)"
+)
+HANDSHAKE_START_PATTERN = re.compile(
+    r"construct_pivot_state: start=\d+, pivot_chain\.len\(\)=\d+, "
+    r"state_boundary_height=(\d+)"
+)
+REPLAY_EPOCH_PATTERN = re.compile(
+    r"construct_pivot_state: index \d+ height \d+ compute_epoch"
+)
+NORMAL_PHASE_PATTERN = re.compile(r'start phase "NormalSyncPhase"')
+BOUND_RAISED_PATTERN = re.compile(
+    r"state availability lower bound raised from (\d+) to (\d+)"
 )
 # Warnings which say the rebuild could not read what it needed from the
 # commitment rows, or read something which contradicts the snapshot registry.
@@ -488,13 +504,13 @@ class StateIndexMigrationTest(ConfluxTestFramework):
     def check_migrated_node(
         self, index, label, registry, log_text, receiver, expect_kept_rows
     ):
-        """The four checks, against one node which has just rebuilt its index.
+        """The five checks, against one node which has just rebuilt its index.
 
-        The four are independent observations of the same boot, so a failing
+        The five are independent observations of the same boot, so a failing
         one records what it saw and the rest still run; the collected list is
-        what the test fails on. Statements about the run having produced the
-        situation under test at all are asserted on the spot instead, because
-        every check below reads them.
+        what the test fails on. Anything that has to hold for the boot to be
+        worth checking at all is asserted on the spot instead, because every
+        check below relies on it.
         """
         self.log.info("=== %s (node %d) ===", label, index)
         problems = []
@@ -740,6 +756,73 @@ class StateIndexMigrationTest(ConfluxTestFramework):
             "heights %s are refused here and answered by the archive",
             below,
         )
+
+        # Check five: consensus was told the published bound while the replay
+        # was running, not afterwards. Both the replay and ordinary block
+        # processing go through `adjust_state_availability_lower_bound`, so
+        # the only thing that tells the two apart is where in the log the
+        # bound moves.
+        handshake = HANDSHAKE_START_PATTERN.search(log_text)
+        replay_epochs = [
+            m.start() for m in REPLAY_EPOCH_PATTERN.finditer(log_text)
+        ]
+        normal_phase = NORMAL_PHASE_PATTERN.search(log_text)
+        raises = [
+            (m.start(), int(m.group(1)), int(m.group(2)))
+            for m in BOUND_RAISED_PATTERN.finditer(log_text)
+        ]
+        if handshake is None or not replay_epochs or normal_phase is None:
+            problems.append(
+                "the boot log does not show a replay bracketed by a phase "
+                "change (start line {}, {} epoch lines, normal phase line "
+                "{}), so there is no window to look for the trim in".format(
+                    handshake is not None,
+                    len(replay_epochs),
+                    normal_phase is not None,
+                )
+            )
+        elif int(handshake.group(1)) >= published_bound:
+            self.log.info(
+                "the replay started from state availability lower bound %d, "
+                "which is already at or above the published bound %d, so "
+                "there was nothing for it to trim",
+                int(handshake.group(1)),
+                published_bound,
+            )
+        else:
+            during_replay = [
+                (raised_from, raised_to)
+                for position, raised_from, raised_to in raises
+                if replay_epochs[0] < position < normal_phase.start()
+            ]
+            if not during_replay:
+                problems.append(
+                    "the replay started from state availability lower bound "
+                    "{} and the engine published {}, but no trim was logged "
+                    "between the replay's first epoch and the phase change "
+                    "after it; the {} trim(s) in the whole boot log are "
+                    "{}".format(
+                        int(handshake.group(1)),
+                        published_bound,
+                        len(raises),
+                        [(f, t) for _, f, t in raises],
+                    )
+                )
+            elif sorted({raised_to for _, raised_to in during_replay}) != [
+                published_bound
+            ]:
+                problems.append(
+                    "the replay trimmed the state availability lower bound to "
+                    "{} where the engine published {}".format(
+                        [t for _, t in during_replay], published_bound
+                    )
+                )
+            else:
+                self.log.info(
+                    "the replay trimmed the state availability lower bound "
+                    "%s, matching the bound the rebuild published",
+                    during_replay,
+                )
 
         assert not problems, "{} (node {}):\n  {}".format(
             label, index, "\n  ".join(problems)

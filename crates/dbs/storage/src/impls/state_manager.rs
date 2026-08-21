@@ -386,10 +386,10 @@ impl StateManager {
                 skipped_heights,
             )));
         }
-        // Seeding only. From here on the bound is maintained by garbage
-        // collection inside `StorageManager`, on the snapshot half of the
-        // formula alone: every height above this bound has an entry.
-        storage_manager.set_physical_openable_lower_bound(lower_bound)?;
+        // The stored bound may already be above `lower_bound`, in which case
+        // the call below returns the stored one.
+        let published_bound =
+            storage_manager.raise_physical_openable_lower_bound(lower_bound)?;
         self.state_index_db.set_migrated()?;
         let lowest_entry_height_text = match lowest_entry_height {
             Some(height) => height.to_string(),
@@ -397,13 +397,14 @@ impl StateManager {
         };
         info!(
             "state index rebuild: {} entries written, physical openable \
-             lower bound {}; {} periods and {} single heights left out. The \
-             bound is the higher of the lower end the snapshots give, {}, and \
-             the lowest height an entry was written for, {}.",
+             lower bound {}; {} periods and {} single heights left out. This \
+             rebuild computed {}, the higher of the lower end the snapshots \
+             give, {}, and the lowest height an entry was written for, {}.",
             written,
-            lower_bound,
+            published_bound,
             skipped_periods,
             skipped_heights,
+            lower_bound,
             snapshot_lower_bound,
             lowest_entry_height_text,
         );
