@@ -16,17 +16,13 @@ pub const NO_PROOF: bool = false;
 
 /// A read-only handle on one version of the state: a point read and a prefix
 /// lookup, nothing else.
-///
-/// `iter_prefix` guarantees that a key appears at most once, carrying the
-/// value from the newest layer that has it, and that keys shadowed by a
-/// tombstone do not appear. It does NOT guarantee a globally sorted order:
-/// the items come out as three concatenated sorted runs, one per layer. That
-/// order is consensus visible — do not "fix" it into a global sort without
-/// an equivalence argument.
 pub trait StorageView: Sync + Send {
     fn get(&self, access_key: StorageKeyWithSpace)
         -> Result<Option<Box<[u8]>>>;
 
+    /// `iter_prefix` yields each key at most once, with the value the version
+    /// holds for it, and never yields a key the version has deleted. The order
+    /// is unspecified.
     fn iter_prefix(
         &self, access_key_prefix: StorageKeyWithSpace,
     ) -> Result<Box<dyn Iterator<Item = MptKeyValue>>>;

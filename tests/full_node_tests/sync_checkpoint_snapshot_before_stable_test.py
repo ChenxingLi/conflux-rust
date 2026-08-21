@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import shutil
 import sys
 import time
@@ -24,6 +25,18 @@ POS0_KEY = "0x0000000000000000000000000000000000000000000000000000000000000000"
 POS1_KEY = "0x6661e9d6d8b923d5bbaab1b96e1dd51ff6ea2a93520fdc9eb75d059238b8c5e9"
 POS0_INITIAL_VALUE = 1234
 POS1_VALUE = "0x000000000000000000000000000000000000000000000000000000000000162e"
+
+REBUILD_SUMMARY_PATTERN = re.compile(
+    r"state index rebuild: (\d+) entries written, physical openable lower "
+    r"bound (\d+); (\d+) periods and (\d+) single heights left out"
+)
+# Part of the warning the rebuild prints when the snapshot root recorded for
+# an epoch differs from the merkle root of the snapshot registered for it.
+ROOT_DISAGREEMENT_MARKER = "carries snapshot root"
+SKIPPED_RANGE_PATTERN = re.compile(
+    r"Writing no entry for heights (\d+)\.\.=(\d+)"
+)
+SKIPPED_STATE_SYNC_MARKER = "skip state sync"
 
 class SyncCheckpointTests(ConfluxTestFramework):
     def set_test_params(self):
@@ -74,6 +87,53 @@ class SyncCheckpointTests(ConfluxTestFramework):
             "would not be taken".format(path)
         shutil.rmtree(path)
         self.log.info("removed %s", path)
+
+    def _log_size(self, index):
+        return os.path.getsize(os.path.join(self.nodes[index].datadir, "conflux.log"))
+
+    def _read_log(self, index, offset=0):
+        with open(os.path.join(self.nodes[index].datadir, "conflux.log"),
+                  encoding="utf8", errors="replace") as f:
+            f.seek(offset)
+            return f.read()
+
+    def _check_index_was_rebuilt(self, log_text, snapshot_epoch):
+        """Assert that the entry for `snapshot_epoch` came from the rebuild.
+
+        `snapshot_epoch` is the landing epoch, and opening it needs its index
+        entry. Only one thing other than the rebuild could have written that
+        entry: a second download of the checkpoint, through
+        `register_synced_snapshot_state`, which is what this method rules out.
+        Re-execution could not have written it, since re-executing needs the
+        blocks below the landing epoch, which a synced node never downloaded.
+        """
+        summary = REBUILD_SUMMARY_PATTERN.search(log_text)
+        assert summary is not None, \
+            "no state index rebuild summary in the boot log; the first boot " \
+            "path this checks would not have been taken"
+        written, published_bound = int(summary.group(1)), int(summary.group(2))
+        self.log.info("the rebuild wrote %d entries and published bound %d",
+                      written, published_bound)
+        assert SKIPPED_STATE_SYNC_MARKER in log_text, \
+            "the boot did not report finding the checkpoint state already on " \
+            "disk, so it may have synced it again and registered the landing " \
+            "entry through the sync rather than through the rebuild"
+        assert ROOT_DISAGREEMENT_MARKER not in log_text, \
+            "the rebuild found a commitment row and the snapshot registry " \
+            "describing different states"
+        # A snapshot period gets entries only if the data of the snapshot it
+        # sits on, or of the snapshot one period below that, is still on
+        # disk. A synced node has neither for the period ending at the
+        # landing epoch, so that period is the only one whose entries may be
+        # missing. Every height above the landing epoch must have an entry,
+        # including the heights of the period `_check_synced_landing` reads.
+        skipped = [(int(begin), int(end))
+                   for begin, end in SKIPPED_RANGE_PATTERN.findall(log_text)]
+        self.log.info("height ranges the rebuild left out: %s", skipped)
+        assert_equal([r for r in skipped if r[1] > snapshot_epoch], [])
+        # The landing epoch's parent snapshot was registered without its data files,
+        # so nothing below the landing epoch can be opened.
+        assert_equal(published_bound, snapshot_epoch)
 
     def _find_landing_epoch(self, full_node_client):
         """The lowest epoch the full node can still answer state queries for.
@@ -291,11 +351,14 @@ class SyncCheckpointTests(ConfluxTestFramework):
         self.nodes[full_node_index].stop_node()
         self.nodes[full_node_index].wait_until_stopped()
         self._remove_state_index(full_node_index)
+        rebuild_log_offset = self._log_size(full_node_index)
         self.start_node(full_node_index, None, phase_to_wait=None)
         for i in range(self.num_nodes - 1):
             connect_nodes(self.nodes, full_node_index, i)
         self.nodes[full_node_index].wait_for_phase(["NormalSyncPhase"], wait_time=240)
         wait_until(lambda: full_node_client.epoch_number("latest_state") == archive_node_client.epoch_number("latest_state"))
+        self._check_index_was_rebuilt(
+            self._read_log(full_node_index, rebuild_log_offset), snapshot_epoch)
         self._check_synced_landing("after the state index was rebuilt", full_node_client, archive_node_client,
                                    snapshot_epoch, snapshot_epoch_count, contract_addr, expected_pos0)
 

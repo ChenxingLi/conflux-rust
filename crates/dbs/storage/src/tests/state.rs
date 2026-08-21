@@ -463,6 +463,103 @@ fn test_set_delete() {
     state.commit(epoch_id).unwrap();
 }
 
+/// Prefix traversal over a real MPT. The `StateDb` tests call `iter_prefix`
+/// on the in-memory engine's ordered map, so they never reach the traversal
+/// this test exercises.
+#[test]
+fn test_iter_prefix() {
+    let mut rng = get_rng_for_test();
+    let state_manager = new_state_manager_for_unit_test();
+
+    let mut state = state_manager.get_state_for_genesis_write();
+
+    let keys: Vec<Vec<u8>> = generate_keys(TEST_NUMBER_OF_KEYS);
+    let (keys_0, keys_1) = (
+        &keys[0..TEST_NUMBER_OF_KEYS / 2],
+        &keys[TEST_NUMBER_OF_KEYS / 2..],
+    );
+
+    for key in keys_0.iter() {
+        state
+            .set(
+                StorageKey::AccountKey(
+                    vec![&key[..], &key[..]].concat().as_slice(),
+                )
+                .with_native_space(),
+                key[..].into(),
+            )
+            .expect("Failed to insert key.");
+    }
+    let mut epoch_id = H256::default();
+    epoch_id.as_bytes_mut()[0] = 1;
+    state.compute_state_root().unwrap();
+    state.commit(epoch_id).unwrap();
+
+    let mut state = state_manager
+        .clone()
+        .open_next_epoch_base(&epoch_id, OpenOptions::new())
+        .unwrap()
+        .unwrap();
+    for key in keys_1.iter() {
+        state
+            .set(
+                StorageKey::AccountKey(
+                    vec![&key[..], &key[..]].concat().as_slice(),
+                )
+                .with_native_space(),
+                key[..].into(),
+            )
+            .expect("Failed to insert key.");
+    }
+
+    let mut expected = HashMap::<Vec<u8>, HashSet<Vec<u8>>>::new();
+    for key in &keys {
+        for prefix_len in 2..4 {
+            expected
+                .entry(key[0..prefix_len].to_vec())
+                .or_default()
+                .insert(vec![&key[..], &key[..]].concat());
+        }
+    }
+
+    const PROBES: usize = 2000;
+    let mut probes: Vec<&Vec<u8>> = keys.iter().collect();
+    probes.shuffle(&mut rng);
+    println!("Testing with {} prefix lookups.", PROBES);
+    let mut probes_with_several_items = 0usize;
+    for key in probes.into_iter().take(PROBES) {
+        let key_prefix = &key[0..(2 + rng.random_range(0..2))];
+
+        let mut returned = HashSet::new();
+        for (item_key, item_value) in state
+            .iter_prefix(StorageKey::AccountKey(key_prefix).with_native_space())
+            .expect("Failed to look the prefix up.")
+        {
+            assert_eq!(key_prefix, &item_key[0..key_prefix.len()]);
+            assert_eq!(item_key, vec![item_value.as_ref(); 2].concat());
+            assert!(
+                returned.insert(item_key),
+                "the same key came back twice for prefix {:?}",
+                key_prefix,
+            );
+        }
+        assert_eq!(&returned, expected.get(key_prefix).unwrap());
+        if returned.len() > 1 {
+            probes_with_several_items += 1;
+        }
+    }
+    println!(
+        "{} of the {} lookups returned more than one item.",
+        probes_with_several_items, PROBES,
+    );
+    assert!(probes_with_several_items > 0);
+
+    let mut epoch_id = H256::default();
+    epoch_id.as_bytes_mut()[0] = 2;
+    state.compute_state_root().unwrap();
+    state.commit(epoch_id).unwrap();
+}
+
 #[test]
 fn test_set_order() {
     let mut rng = get_rng_for_test();
@@ -656,6 +753,7 @@ use rand::{
 };
 use rlp::Rlp;
 use std::{
+    collections::{HashMap, HashSet},
     sync::Arc,
     thread,
     time::{Duration, Instant},

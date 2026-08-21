@@ -246,7 +246,10 @@ class RestartFromBrokenSnapshotTest(ConfluxTestFramework):
         # End to end: the replayed states have to agree with the archive node.
         sync_blocks(self.nodes, timeout=120)
         assert_equal(client1.epoch_number(), client0.epoch_number())
-        for block_hash in block_hashes[EXPECTED_RECOMPUTE_START:-8]:
+        # `EXPECTED_RECOMPUTE_START` is a height, and `block_hashes[i]` is the
+        # block of epoch i + 1, so that height sits at index
+        # `EXPECTED_RECOMPUTE_START - 1`.
+        for block_hash in block_hashes[EXPECTED_RECOMPUTE_START - 1:-8]:
             executed1 = self.nodes[node_index].test_getExecutedInfo(block_hash)
             executed0 = self.nodes[0].test_getExecutedInfo(block_hash)
             assert_equal(executed1, executed0)
