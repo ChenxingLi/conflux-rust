@@ -782,6 +782,28 @@ impl Configuration {
     }
 
     pub fn storage_config(&self, node_type: &NodeType) -> StorageConfiguration {
+        if self.raw_conf.storage_max_open_snapshots < 2 {
+            panic!(
+                "storage_max_open_snapshots is {}; 2 is the minimum, \
+                 because a commit that crosses a snapshot boundary opens a \
+                 second snapshot while still holding the first.",
+                self.raw_conf.storage_max_open_snapshots,
+            );
+        }
+        if self.raw_conf.keep_snapshot_before_stable_checkpoint
+            && !self
+                .raw_conf
+                .provide_more_snapshot_for_sync
+                .contains(&ProvideExtraSnapshotSyncConfig::StableCheckpoint)
+        {
+            panic!(
+                "keep_snapshot_before_stable_checkpoint is true while \
+                 provide_more_snapshot_for_sync is {:?}, which omits \
+                 checkpoint, so the switch is never read. Add checkpoint, or \
+                 set the switch to false.",
+                self.raw_conf.provide_more_snapshot_for_sync,
+            );
+        }
         let conflux_data_path = Path::new(&self.raw_conf.conflux_data_dir);
         StorageConfiguration {
             additional_maintained_snapshot_count: self

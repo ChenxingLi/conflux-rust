@@ -217,6 +217,14 @@ class StateIndexMigrationTest(ConfluxTestFramework):
         self.set_conf(
             KEEP_NO_SNAPSHOTS, "provide_more_snapshot_for_sync", '""'
         )
+        # The garbage collector reads keep_snapshot_before_stable_checkpoint
+        # only in the branch taken for a checkpoint entry of
+        # provide_more_snapshot_for_sync. With that list empty the switch
+        # would silently do nothing, which is why startup refuses to run with
+        # the switch left at its default of true.
+        self.set_conf(
+            KEEP_NO_SNAPSHOTS, "keep_snapshot_before_stable_checkpoint", "false"
+        )
         self.start_nodes()
         for i in range(self.num_nodes - 1):
             connect_nodes(self.nodes, i, i + 1)
