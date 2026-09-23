@@ -208,7 +208,10 @@ build_config! {
         (osaka_opcode_transition_height, (Option<u64>), None)
         (cip166_transition_height, (Option<u64>), None)
         (cip167_transition_height, (Option<u64>), None)
-        (canonical_tx_rlp_transition_height, (Option<u64>), None)
+        (cip172_transition_height, (Option<u64>), None)
+        (cip174_transition_height, (Option<u64>), None)
+        (cip175_transition_height, (Option<u64>), None)
+        (cip176_transition_height, (Option<u64>), None)
         (hn_fix_transition_height, (Option<u64>), None)
         (max_difficulty_guard, (Option<U256>), None)
         (max_finalize_confirmation_guard, (Option<u64>), None)
@@ -405,7 +408,7 @@ build_config! {
         (pos_cip156_transition_view, (u64), u64::MAX)
         // 6 months with 30s rounds
         (pos_cip156_dispute_locked_views, (u64), 6 * 30 * 24 * 60 * 2)
-        (pos_fix_cip156_transition_view, (u64), u64::MAX)
+        (pos_cip173_transition_view, (u64), u64::MAX)
         (dev_pos_private_key_encryption_password, (Option<String>), None)
         (pos_started_as_voter, (bool), true)
 
@@ -1347,7 +1350,7 @@ impl Configuration {
             self.raw_conf.pos_cip136_round_per_term,
             self.raw_conf.pos_cip156_transition_view,
             self.raw_conf.pos_cip156_dispute_locked_views,
-            self.raw_conf.pos_fix_cip156_transition_view,
+            self.raw_conf.pos_cip173_transition_view,
         )
     }
 
@@ -1538,13 +1541,25 @@ impl Configuration {
         // hardfork (V3.1)
         set_conf!(
             self.raw_conf.osaka_opcode_transition_height.unwrap_or(default_transition_time);
-            params.transition_heights => { cip166, cip167, cip_hn_fix }
+            params.transition_heights => { cip166, cip167, cip172, cip174, cip175, cip176, cip_hn_fix }
         );
         if let Some(x) = self.raw_conf.cip166_transition_height {
             params.transition_heights.cip166 = x;
         }
         if let Some(x) = self.raw_conf.cip167_transition_height {
             params.transition_heights.cip167 = x;
+        }
+        if let Some(x) = self.raw_conf.cip172_transition_height {
+            params.transition_heights.cip172 = x;
+        }
+        if let Some(x) = self.raw_conf.cip174_transition_height {
+            params.transition_heights.cip174 = x;
+        }
+        if let Some(x) = self.raw_conf.cip175_transition_height {
+            params.transition_heights.cip175 = x;
+        }
+        if let Some(x) = self.raw_conf.cip176_transition_height {
+            params.transition_heights.cip176 = x;
         }
         if let Some(x) = self.raw_conf.hn_fix_transition_height {
             params.transition_heights.cip_hn_fix = x;
@@ -1553,11 +1568,6 @@ impl Configuration {
         params.max_difficulty_guard = self.raw_conf.max_difficulty_guard;
         params.max_finalize_confirmation_guard =
             self.raw_conf.max_finalize_confirmation_guard;
-
-        params.transition_heights.canonical_tx_rlp = self
-            .raw_conf
-            .canonical_tx_rlp_transition_height
-            .unwrap_or(default_transition_time);
     }
 }
 
